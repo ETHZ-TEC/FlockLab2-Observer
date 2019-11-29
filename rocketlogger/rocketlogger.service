@@ -1,0 +1,18 @@
+# RocketLogger daemon service
+[Unit]
+Description=RocketLogger daemon
+Documentation=https://rocketlogger.ethz.ch/
+
+[Service]
+Type=simple
+ExecStart=/bin/rocketloggerd
+PIDFile=/run/rocketloggerd.pid
+TimeoutStopSec=2s
+KillMode=mixed
+KillSignal=SIGTERM
+FinalKillSignal=SIGKILL
+Restart=always
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target
