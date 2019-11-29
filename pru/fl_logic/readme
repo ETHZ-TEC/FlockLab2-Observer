@@ -1,0 +1,22 @@
+Basic logic analyzer functionality for FlockLab2 rev1.1
+
+Displays the current state of all 8 tracing/actuation pins in the command line.
+Runs in Linux userspace.
+
+Prerequisites:
+- BeagleBone Green
+- Debian 9 or later
+- install PRU package:
+  git clone https://github.com/beagleboard/am335x_pru_package.git
+  (cd am335x_pru_package && make && make install)
+- enable UIO device overlay:
+  sudo sed "s~^uboot_overlay_pru=/lib/firmware/AM335X-PRU-RPROC~#uboot_overlay_pru=/lib/firmware/AM335X-PRU-RPROC~g" -i /boot/uEnv.txt
+  sudo sed "s~^#uboot_overlay_pru=/lib/firmware/AM335X-PRU-UIO~uboot_overlay_pru=/lib/firmware/AM335X-PRU-UIO~g" -i /boot/uEnv.txt
+  reboot
+
+How to use:
+- compile the code:
+  make
+- generate a binary PRU image:
+  make PRU
+- execute fl_logic
