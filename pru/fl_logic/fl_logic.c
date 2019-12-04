@@ -39,8 +39,9 @@
 #include <pruss_intc_mapping.h>
 #include <prussdrv.h>
 #include <time.h>
+#include <sys/stat.h>
 
-#include "gpio.h"
+//#include "gpio.h"
 
 // DEFINES
 #define BUFFER_SIZE           8                     // in bytes (must be a power of 2, minimum is 8 bytes)
@@ -48,6 +49,7 @@
 #define MAX_READOUT_CNT       1000
 #define PRU1_FIRMWARE         "./pru_logic.bin"     // must be a binary file
 #define DATA_FILENAME_PREFIX  "tracing_data"
+#define OUTPUT_DIR            "data/"                // with last slash
 #define SPRINTF_BUFFER_LENGTH 256
 #define CSV_FILE_HDR          "# timestamp,observer_id,node_id,pin_name,value\r\n"
 #define OBSERVER_ID           1
@@ -131,7 +133,7 @@ int pru1_run(FILE* data_file)
 
   res = prussdrv_exec_program(1, PRU1_FIRMWARE);  // requires a binary file
   if (res < 0) {
-    printf("failed to start PRU (invalid firmware file '%s')\n", PRU1_FIRMWARE);
+    printf("failed to start PRU (invalid or inexisting firmware file '%s')\n", PRU1_FIRMWARE);
     return -2;
   }
   printf("firmware loaded\n");
@@ -268,10 +270,10 @@ int main(void)
   }
   
   // init
-  gpio_init(GPIO_LED_STATUS, GPIO_MODE_OUT);
+  /*gpio_init(GPIO_LED_STATUS, GPIO_MODE_OUT);
   gpio_init(GPIO_LED_ERROR, GPIO_MODE_OUT);
   gpio_set_value(GPIO_LED_STATUS, 1);
-  gpio_set_value(GPIO_LED_ERROR, 0);
+  gpio_set_value(GPIO_LED_ERROR, 0);*/
 
   // initialize and open PRU device
   prussdrv_init();
@@ -285,7 +287,8 @@ int main(void)
   prussdrv_pruintc_init(&pruss_intc_initdata);
   
   // create/open file
-  sprintf(filename, "%s_%lu.dat", DATA_FILENAME_PREFIX, time(NULL));
+  mkdir(OUTPUT_DIR, 0777);   // create directory
+  sprintf(filename, OUTPUT_DIR "%s_%lu.dat", DATA_FILENAME_PREFIX, time(NULL));
   FILE* data_file = fopen(filename, "wb");
   if (NULL == data_file) {
     printf("failed to open file %s\n", filename);
@@ -293,8 +296,7 @@ int main(void)
     // start sampling
     ret = pru1_run(data_file);
     if (ret < 0) {
-      // error occurred
-      gpio_set_value(GPIO_LED_ERROR, 1);
+      printf("an error occurred\n");
     }
     fflush(data_file);
     fclose(data_file);
@@ -302,7 +304,6 @@ int main(void)
   }
   
   // deinit
-  gpio_set_value(GPIO_LED_STATUS, 0);
   prussdrv_pru_disable(0);
   prussdrv_exit();
   

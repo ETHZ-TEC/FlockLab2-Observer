@@ -96,14 +96,14 @@ if [ $? -ne 0 ]; then
   # mount the SD card
   echo "> Mounting SD card"
   mkdir /media/card
-  mnt /dev/mmcblk0p1 /media/card
+  mount /dev/mmcblk0p1 /media/card
 else
   echo "> SD card already mounted"
 fi
 # add to fstab
 grep /dev/mmcblk0p1 /etc/fstab
 if [ $? -ne 0 ]; then
-  echo '/dev/mmcblk0p1  /  ext4  noatime  0  2' >> /etc/fstab
+  echo '/dev/mmcblk0p1  /media/card  ext4  noatime  0  2' >> /etc/fstab
   echo "> fstab updated"
 fi
 
