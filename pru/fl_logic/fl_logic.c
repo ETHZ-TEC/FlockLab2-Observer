@@ -47,7 +47,7 @@
 #define BUFFER_SIZE           8                     // in bytes (must be a power of 2, minimum is 8 bytes)
 #define SAMPLING_RATE         1000
 #define MAX_READOUT_CNT       1000
-#define PRU1_FIRMWARE         "./pru_logic.bin"     // must be a binary file
+#define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"     // must be a binary file
 #define DATA_FILENAME_PREFIX  "tracing_data"
 #define OUTPUT_DIR            "data/"                // with last slash
 #define SPRINTF_BUFFER_LENGTH 256
