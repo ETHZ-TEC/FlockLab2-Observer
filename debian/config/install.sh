@@ -57,6 +57,13 @@ cat user/password | chpasswd
 # add flocklab user to admin and sudo group for super user commands
 usermod --append --groups admin flocklab
 usermod --append --groups sudo flocklab
+usermod --append --groups dialout flocklab
+usermod --append --groups i2c flocklab
+usermod --append --groups gpio flocklab
+usermod --append --groups pwm flocklab
+usermod --append --groups remoteproc flocklab
+usermod --append --groups spi flocklab
+usermod --append --groups adm flocklab
 
 # display updated user configuration
 id flocklab

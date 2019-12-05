@@ -1,42 +1,10 @@
 #!/bin/bash
 
+# NOTE: no need to unexport and export!
 # reset GPIOs export to ensure initial state is NOT EXPORTED
-echo 47 > /sys/class/gpio/unexport
-echo 27 > /sys/class/gpio/unexport
-echo 26 > /sys/class/gpio/unexport
-echo 46 > /sys/class/gpio/unexport
-echo 65 > /sys/class/gpio/unexport
-echo 44 > /sys/class/gpio/unexport
-echo 68 > /sys/class/gpio/unexport
-echo 67 > /sys/class/gpio/unexport
-echo 76 > /sys/class/gpio/unexport
-echo 22 > /sys/class/gpio/unexport
-echo 75 > /sys/class/gpio/unexport
-echo 73 > /sys/class/gpio/unexport
-echo 71 > /sys/class/gpio/unexport
-echo 72 > /sys/class/gpio/unexport
-echo 70 > /sys/class/gpio/unexport
-echo 88 > /sys/class/gpio/unexport
-echo 77 > /sys/class/gpio/unexport
-
+#echo 47 > /sys/class/gpio/unexport
 # export GPIOs
-echo 47 > /sys/class/gpio/export
-echo 27 > /sys/class/gpio/export
-echo 26 > /sys/class/gpio/export
-echo 46 > /sys/class/gpio/export
-echo 65 > /sys/class/gpio/export
-echo 44 > /sys/class/gpio/export
-echo 68 > /sys/class/gpio/export
-echo 67 > /sys/class/gpio/export
-echo 76 > /sys/class/gpio/export
-echo 22 > /sys/class/gpio/export
-echo 75 > /sys/class/gpio/export
-echo 73 > /sys/class/gpio/export
-echo 71 > /sys/class/gpio/export
-echo 72 > /sys/class/gpio/export
-echo 70 > /sys/class/gpio/export
-echo 88 > /sys/class/gpio/export
-echo 77 > /sys/class/gpio/export
+#echo 47 > /sys/class/gpio/export
 
 # set direction
 echo out > /sys/class/gpio/gpio47/direction
@@ -49,11 +17,12 @@ echo out > /sys/class/gpio/gpio68/direction
 echo out > /sys/class/gpio/gpio67/direction
 echo out > /sys/class/gpio/gpio76/direction
 echo out > /sys/class/gpio/gpio22/direction
-echo in  > /sys/class/gpio/gpio75/direction # Target_LED1
-echo in  > /sys/class/gpio/gpio73/direction # Target_LED2
-echo in  > /sys/class/gpio/gpio71/direction # Target_LED3
-echo in  > /sys/class/gpio/gpio72/direction # Target_INT1
-echo in  > /sys/class/gpio/gpio70/direction # Target_INT2
+# NOTE PRU1 input pins already configured via device tree overlay
+#echo in  > /sys/class/gpio/gpio75/direction # Target_LED1
+#echo in  > /sys/class/gpio/gpio73/direction # Target_LED2
+#echo in  > /sys/class/gpio/gpio71/direction # Target_LED3
+#echo in  > /sys/class/gpio/gpio72/direction # Target_INT1
+#echo in  > /sys/class/gpio/gpio70/direction # Target_INT2
 echo out > /sys/class/gpio/gpio88/direction
 echo out > /sys/class/gpio/gpio77/direction
 
