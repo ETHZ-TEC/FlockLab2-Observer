@@ -18,5 +18,5 @@ How to use:
 - compile the code:
   make
 - generate a binary PRU image:
-  make PRU
+  make pru
 - execute fl_logic

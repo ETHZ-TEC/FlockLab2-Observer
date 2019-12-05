@@ -1,16 +1,16 @@
 #!/bin/bash
-# Basic operating system configuration of a new BeagleBone Black/Green/Green Wireless
-# Usage: ./deploy_system.sh <beaglebone-host-address> [<hostname>]
 #
-# Copyright (c) 2016-2018, ETH Zurich, Computer Engineering Group
+# FlockLab2 observer setup script, requires a running and configured Debian system.
+#
+# Copyright (c) 2019, ETH Zurich, Computer Engineering Group
 # All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # * Redistributions of source code must retain the above copyright notice, this
 #   list of conditions and the following disclaimer.
-# 
+#
 # * Redistributions in binary form must reproduce the above copyright notice,
 #   this list of conditions and the following disclaimer in the documentation
 #   and/or other materials provided with the distribution.
@@ -18,7 +18,7 @@
 # * Neither the name of the copyright holder nor the names of its
 #   contributors may be used to endorse or promote products derived from
 #   this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -29,50 +29,51 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# 
+#
 
 REBOOT_TIMEOUT=120
-PORT=22
-USER="debian"
+PORT=2322
+USER="flocklab"
 
 # check arguments
-if [ $# -lt 2 ]; then
-  echo "Usage: ./deploy_system.sh <beaglebone-host-address> <hostname>"
+if [ $# -lt 1 ]; then
+  echo "Usage: ./setup_observer.sh <beaglebone-host-address>"
   exit -1
 fi
 
 HOST=$1
-HOSTNAME=$2
-
-echo "Deploying system configuration on host '${HOST}'..."
+echo "Setting up FlockLab observer '${HOST}'..."
 sleep 3   # give the user time to abort, just in case
+
+# verify that SSH login works
+ssh -p ${PORT} ${USER}@${HOST} "exit" > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+  echo "[ !! ] SSH login failed."
+  exit 1
+fi
+echo "[ OK ] SSH login successful."
 
 # either clone the repo on the beaglebone or copy all files
 #ssh -p $PORT ${HOST} "git clone git@gitlab.ethz.ch:tec/research/flocklab/observer.git observer"
-echo "Copying config files... (enter default password 'temppwd' when asked)"
-scp -P ${PORT} -r config ${USER}@${HOST}:
-COPY=$?
-if [ $COPY -ne 0 ]; then
-  echo "[ !! ] Failed to copy config files!"
-  exit $COPY
-else
-  echo "[ OK ] Files copied."
+echo "       Copying repository files..."
+rsync -a -q --progress -e "ssh -p ${PORT}" ../observer ${USER}@${HOST}: > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+  echo "[ !! ] Failed to copy repository files!"
+  exit 1
 fi
+echo "[ OK ] Files copied."
 
-# perform system configuration
-echo "Run system configuration. You will be asked for the default user password ('temppwd') two times."
-ssh -F /dev/null -p $PORT -t ${USER}@${HOST} "(cd config && sudo ./install.sh)"
-# verify system configuration worked
-CONFIG=$?
-if [ $CONFIG -ne 255 ]; then
-  echo "[ !! ] System configuration failed (code $CONFIG)."
-  exit $CONFIG
-else
-  echo "[ OK ] System configuration was successful."
+
+# run install script
+ssh -q -p ${PORT} -t ${USER}@${HOST} "sudo ~/observer/install_obs.sh"
+if [ $? -ne 255 ]; then
+  echo "[ !! ] Failed to execute install script."
+  exit 1
 fi
+echo "[ OK ] Install script terminated."
 
 # wait for system to reboot
-echo -n "Waiting for the system to reboot..."
+echo -n "       Waiting for the system to reboot..."
 sleep 5
 while [[ $REBOOT_TIMEOUT -gt 0 ]]; do
   REBOOT_TIMEOUT=`expr $REBOOT_TIMEOUT - 1`

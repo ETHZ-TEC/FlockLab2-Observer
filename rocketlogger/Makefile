@@ -99,7 +99,7 @@ CXXSTD = -std=c++11
 
 ## libraries
 LIBS = -lprussdrv
-LIBS += -li2c
+#LIBS += -li2c     -> only for Debian 10
 LIBS += -lncurses
 LIBS += -lrt
 

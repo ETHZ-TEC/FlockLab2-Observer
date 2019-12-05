@@ -31,7 +31,8 @@
 
 #include <stdint.h>
 
-#include <i2c/smbus.h>
+//#include <i2c/smbus.h>
+#include <linux/i2c-dev.h>
 
 #include "../log.h"
 #include "sensor.h"

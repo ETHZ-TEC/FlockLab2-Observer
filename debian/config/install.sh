@@ -134,14 +134,13 @@ git clone https://github.com/beagleboard/am335x_pru_package.git
 (cd am335x_pru_package && make && make install)
 ldconfig
 
-# move repository files
-echo "> Moving repository files"
-mv /home/debian/observer /home/flocklab/
-chown flocklab:flocklab -R /home/flocklab/observer
-
 # set expiration date in the past to disable logins
 echo "> Disable default user 'debian'"
 chage -E 1970-01-01 debian
+
+# cleanup
+(cd .. && rm -rf config)
+echo "> Directory 'config' removed"
 
 # reboot
 echo "Platform initialized. System will reboot to apply configuration changes."

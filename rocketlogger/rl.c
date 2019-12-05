@@ -105,7 +105,19 @@ const char *RL_CHANNEL_VALID_NAMES[RL_CHANNEL_SWITCHED_COUNT] = {"I1L_valid",
                                                                  "I2L_valid"};
 
 /// Global RocketLogger status variable.
-rl_status_t rl_status = rl_status_default;
+rl_status_t rl_status = {
+    .sampling = false,
+    .error = false,
+    .sample_count = 0,
+    .buffer_count = 0,
+    .calibration_time = 0,
+    .calibration_file = RL_CALIBRATION_SYSTEM_FILE,
+    .disk_free = 0,
+    .disk_free_permille = 0,
+    .disk_use_rate = 0,
+    .sensor_count = 0,
+    .sensor_available = {false},
+};  /* same as rl_status_default, but gcc6 does not accept const variables as initializers */
 
 /**
  * Print a configuration setting line with formated string value.
