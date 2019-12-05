@@ -64,6 +64,7 @@ usermod --append --groups pwm flocklab
 usermod --append --groups remoteproc flocklab
 usermod --append --groups spi flocklab
 usermod --append --groups adm flocklab
+usermod --append --groups users flocklab
 
 # display updated user configuration
 id flocklab

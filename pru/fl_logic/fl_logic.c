@@ -49,7 +49,7 @@
 #define MAX_READOUT_CNT       1000
 #define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"     // must be a binary file
 #define DATA_FILENAME_PREFIX  "tracing_data"
-#define OUTPUT_DIR            "data/"                // with last slash
+#define OUTPUT_DIR            "/home/flocklab/data/"                // with last slash
 #define SPRINTF_BUFFER_LENGTH 256
 #define CSV_FILE_HDR          "# timestamp,observer_id,node_id,pin_name,value\r\n"
 #define OBSERVER_ID           1
