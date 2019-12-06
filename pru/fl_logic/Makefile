@@ -12,7 +12,6 @@ all: pru
 
 pru:
 	hexpru $(PRU_FW_INFILE) -b -o $(PRU_FW_OUTFILE)
-	rm pru_logic.b10
 
 install: all
 	cp -f $(PRU_FW_OUTFILE) $(INSTALL_FIRMWARE_DIR)

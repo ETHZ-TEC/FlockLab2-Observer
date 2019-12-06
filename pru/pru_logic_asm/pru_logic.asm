@@ -233,6 +233,7 @@ dbg_loop_end:
         ; stall the loop to achieve the desired sampling frequency
     .if SAMPLING_FREQ < 10000000                    ; max is ~10MHz
         DELAYI  (200000000/SAMPLING_FREQ - 20)      ; one loop pass takes ~20 cycles
+        ; note: there is also a LOOP instruction!
     .endif
         JMP     main_loop
 
@@ -323,23 +324,3 @@ done_alt2:
     .endif
         JMP     main_loop_alt
 
-
-; -----------------------------------------------------------------------
-
-; Resource table
-        .global pru_remoteproc_ResourceTable
-        .sect   ".resource_table:retain", RW
-        .retain
-        .align  1
-        .elfsym pru_remoteproc_ResourceTable,SYM_SIZE(20)
-pru_remoteproc_ResourceTable:
-        .bits       0x1,32
-            ; pru_remoteproc_ResourceTable.base.ver @ 0
-        .bits       0,32
-            ; pru_remoteproc_ResourceTable.base.num @ 32
-        .bits       0,32
-            ; pru_remoteproc_ResourceTable.base.reserved[0] @ 64
-        .bits       0,32
-            ; pru_remoteproc_ResourceTable.base.reserved[1] @ 96
-        .bits       0,32
-            ; pru_remoteproc_ResourceTable.offset[0] @ 128

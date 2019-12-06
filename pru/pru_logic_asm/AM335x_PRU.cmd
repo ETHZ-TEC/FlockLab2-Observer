@@ -7,7 +7,8 @@
 /*                 the resulting .out file on an AM335x device.             */
 /****************************************************************************/
 
--cr    /* Link using C conventions */
+//-cr    /* Link using C conventions */
+--entry_point=main
 
 /* Specify the System Memory Map */
 MEMORY
