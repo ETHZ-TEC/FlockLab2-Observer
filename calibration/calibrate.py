@@ -40,7 +40,7 @@ from calibration.smu import SMU2450
 from rocketlogger.data import RocketLoggerData
 from rocketlogger.calibration import RocketLoggerCalibration, CALIBRATION_SETUP_SMU2450
 
-DATA_DIR = '/home/rocketlogger/.config/rocketlogger/'
+DATA_DIR = '/home/flocklab/.config/rocketlogger/'
 
 ROCKETLOGGER_SAMPLE_RATES = [1000, 2000, 4000, 8000, 16000, 32000, 64000]
 

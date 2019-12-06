@@ -53,9 +53,8 @@ fi
 echo "[ OK ] Checking for root permission."
 
 # create various directories
-[ -d /var/www/rocketlogger ]      || (mkdir /var/www/rocketlogger && chown flocklab:flocklab /var/www/rocketlogger)
-[ -d /var/www/rocketlogger/log ]  || mkdir /var/www/rocketlogger/log
-[ -d /var/www/rocketlogger/data ] || mkdir /var/www/rocketlogger/data
+[ -d /etc/rocketlogger ] || (mkdir /etc/rocketlogger && chown flocklab:flocklab /etc/rocketlogger)
+[ -d /var/log/rocketlogger ]      || (mkdir /var/log/rocketlogger && chown flocklab:flocklab /var/log/rocketlogger)
 check_retval "Failed to create directories." "Directories created."
 
 cd ${HOMEDIR}observer/device_tree_overlay && ./install.sh > /dev/null 2>&1
@@ -78,7 +77,7 @@ check_retval "Failed to install JLink." "JLink installed."
 
 # configure time sync
 echo "       Installing required packages for time sync..."
-apt -y install gpsd gpsd-clients linuxptp chrony pps-tools
+apt -y install gpsd gpsd-clients linuxptp chrony pps-tools > /dev/null 2>&1
 check_retval "Failed to install packages." "Packages installed."
 
 # change permission of pps device

@@ -69,7 +69,7 @@
 #define RL_CONFIG_SYSTEM_FILE "/etc/rocketlogger/settings.dat"
 /// User configuration file path
 #define RL_CONFIG_USER_FILE                                                    \
-    "/home/rocketlogger/.config/rocketlogger/settings.dat"
+    "/home/flocklab/.config/rocketlogger/settings.dat"
 
 /// Default system configuration file path
 #define RL_CONFIG_VERSION 0x03
@@ -92,7 +92,7 @@
 #define RL_CONFIG_CHANNEL_FORCE_RANGE_DEFAULT                                  \
     { false, false }
 /// Configuration file name default
-#define RL_CONFIG_FILE_DEFAULT "/var/www/rocketlogger/data/data.rld"
+#define RL_CONFIG_FILE_DEFAULT "/tmp/rocketlogger/data/data.rld"
 /// Minimum measurement split file size (5 MB to fit largest block at max rate)
 #define RL_CONFIG_FILE_SIZE_MIN (5UL * 1000UL * 1000UL)
 /// Configuration file size default

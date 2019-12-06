@@ -41,7 +41,7 @@
 
 /// User folder calibration file path
 #define RL_CALIBRATION_USER_FILE                                               \
-    "/home/rocketlogger/.config/rocketlogger/calibration.dat"
+    "/home/flocklab/.config/rocketlogger/calibration.dat"
 
 /// Calibraiton file header magic
 #define RL_CALIBRATION_FILE_MAGIC 0x434C5225

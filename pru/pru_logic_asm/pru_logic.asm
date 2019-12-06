@@ -17,22 +17,21 @@
 
 
 ; Define symbols
-        .asg C0,         PRUSS_INTC
-        .asg C4,         PRUSS_CFG
-        .asg 0x00024000, PRU1_CTRL
-        .asg 0x4,        PRUSS_SYSCFG_OFS
-        .asg 0xC,        PRUSS_CYCLECNT_OFS
-        .asg 0x10,       PRUSS_STALLCNT_OFS
-        .asg 7,          DBG_GPIO1              ; 0x80     (P8.40)
-        .asg 10,         DBG_GPIO2              ; 0x400    (P8.28)
-        .asg 0x20,       SYSEVT_GEN_VALID_BIT
-        .asg 0x04,       PRU_EVTOUT_2
-        .asg 0x0,        BUFFER_ADDR_OFS
-        .asg 0x4,        BUFFER_SIZE_OFS
-        .asg 0x8,        SAMPLING_RATE_OFS
-        .asg 0x0B,       PRU_CRTL_CTR_ON
-        .asg 0x03,       PRU_CRTL_CTR_OFF
-
+PRUSS_INTC              .set    C0
+PRUSS_CFG               .set    C4
+PRU1_CTRL               .set    0x00024000
+PRUSS_SYSCFG_OFS        .set    0x4
+PRUSS_CYCLECNT_OFS      .set    0xC
+PRUSS_STALLCNT_OFS      .set    0x10
+DBG_GPIO1               .set    7              ; 0x80     (P8.40)
+DBG_GPIO2               .set    10             ; 0x400    (P8.28)
+SYSEVT_GEN_VALID_BIT    .set    0x20
+PRU_EVTOUT_2            .set    0x04
+BUFFER_ADDR_OFS         .set    0x0
+BUFFER_SIZE_OFS         .set    0x4
+SAMPLING_RATE_OFS       .set    0x8
+PRU_CRTL_CTR_ON         .set    0x0B
+PRU_CRTL_CTR_OFF        .set    0x03
 
 
 ; Register mapping
@@ -46,8 +45,7 @@ ADDR    .set R6     ; buffer address
 OFS     .set R7     ; buffer index
 SIZE    .set R8     ; buffer size - 1
 SIZE2   .set R9     ; half buffer size
-IBUF    .set R10    ; intermediate buffer (R10 - R17, 32 bytes)
-IBUF2   .set R18    ; intermediate buffer 2 (R18 - R25, 32 bytes)
+IBUF    .set R10    ; intermediate buffer (R10 - R25, 64 bytes)
 IPTR    .set R26    ; instruction pointer for jump to the correct buffer
 IPTR0   .set R27    ; initial value for IPTR
 CCNT    .set R28    ; cycle counter 1
@@ -62,43 +60,53 @@ DELAYU .macro us        ; delay microseconds (pass immediate value)
 $M?:    SUB     TMP, TMP, 1
         QBNE    $M?, TMP, 0
         .endm
+
 DELAYI  .macro cycles   ; delay cycles (pass immediate value)
         LDI32   TMP, cycles/2
 $M?:    SUB     TMP, TMP, 1
         QBNE    $M?, TMP, 0
         .endm
+
 DELAY   .macro Rx       ; delay cycles (pass register)
 $M?:    SUB Rx, Rx, 1
         QBNE    $M?, Rx, 0
         .endm
+
 ASSERT  .macro exp      ; if argument is zero, then stall indefinitely
 $M?:    NOP
         QBEQ    $M?, exp, 0
         .endm
+
 CNTR_ON .macro          ; enable cycle counter
         LDI     TMP, PRU_CRTL_CTR_ON
         SBBO    &TMP, CTRL, 0, 1
         .endm
+
 CNTR_OFF    .macro      ; disable cycle counter
         LDI     TMP, PRU_CRTL_CTR_OFF
         SBBO    &TMP, CTRL, 0, 1
         .endm
+
 START_CCNT  .macro      ; start cycle count (capture the current value)
         .if DEBUG
         LBBO    &CCNT, CTRL, PRUSS_CYCLECNT_OFS, 4
         .endif
         .endm
+
 STOP_CCNT   .macro      ; stop cycle count (capture the current value)
         .if DEBUG
         LBBO    &CCNT2, CTRL, PRUSS_CYCLECNT_OFS, 4
         .endif
         .endm
+
 PIN_XOR .macro  pin_bit
         XOR     GPO, GPO, 1<<pin_bit
         .endm
+
 PIN_SET .macro  pin_bit
         SET     GPO, GPO, pin_bit
         .endm
+
 PIN_CLR .macro  pin_bit
         CLR     GPO, GPO, pin_bit
         .endm
@@ -117,7 +125,7 @@ main:
         LDI     SCNT, 0
         LDI     OFS, 0
         LDI32   CTRL, PRU1_CTRL           ; address of CFG register
-        LDI     IPTR0, copy_val_alt + 84
+        LDI     IPTR0, copy_val_alt
         LSR     IPTR0, IPTR0, 2           ; divide by 4 to get #instr instead of address
         MOV     IPTR, IPTR0
 
@@ -148,7 +156,7 @@ main:
 
         ; wait for status bit (host event), then signal to host processor that PRU is ready by generating an event
         WBS     GPI, 31                   ; wait until bit set
-        LDI32   GPI, 0                    ; clear events
+        LDI     GPI, 0                    ; clear events
         LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
 
     .if USE_32B_BUFFER
@@ -158,7 +166,6 @@ main:
         ; sampling loop
 main_loop:
         START_CCNT
-        PIN_XOR DBG_GPIO1
 
         ; sample pins (3 cycles)
         AND     CVAL, GPI, 0x1F           ; tracing pins
@@ -167,7 +174,7 @@ main_loop:
 
         ; value changed?
         QBNE    update_val, CVAL, PVAL
-        LDI32   TMP, 0xFFFFFF
+        LDI32   TMP, 0xFFFFFF             ; pseudo instruction, takes 2 cycles?
         QBEQ    update_val2, SCNT, TMP
         ADD     SCNT, SCNT, 0x01
         NOP
@@ -181,6 +188,7 @@ main_loop:
         JMP     done
 
 update_val:
+        NOP
         NOP
         NOP
 update_val2:
@@ -204,8 +212,7 @@ notify_host:
 notify_host2:
         LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
 done:
-        ; 17 cycles
-        NOP
+        ; 18 cycles
         NOP                             ; make it 19 cycles (+1 cycle for jump below)
 
         STOP_CCNT
@@ -239,7 +246,6 @@ dbg_loop_end:
 
 
 
-
 ; -----------------------------------------------------------------------
 
         ; alternative sampling loop, writes 32 bytes at once into the RAM
@@ -253,7 +259,7 @@ main_loop_alt:
 
         ; value changed?
         QBNE    update_val_alt, CVAL, PVAL
-        LDI32   TMP, 0xFFFFFF
+        LDI32   TMP, 0xFFFFFF             ; pseudo instruction, takes 2 cycles
         QBEQ    update_val2_alt, SCNT, TMP
         ADD     SCNT, SCNT, 0x01
         NOP
@@ -265,6 +271,7 @@ main_loop_alt:
         JMP     done_alt
 
 update_val_alt:
+        NOP
         NOP
         NOP
 update_val2_alt:
@@ -300,14 +307,41 @@ copy_val_alt:
         ADD     IPTR, IPTR, 3
         JMP     done_alt
         MOV     R17, TMP2
+        ADD     IPTR, IPTR, 3
+        JMP     done_alt
+        MOV     R18, TMP2
+        ADD     IPTR, IPTR, 3
+        JMP     done_alt
+        MOV     R19, TMP2
+        ADD     IPTR, IPTR, 3
+        JMP     done_alt
+        MOV     R20, TMP2
+        ADD     IPTR, IPTR, 3
+        JMP     done_alt
+        MOV     R21, TMP2
+        ADD     IPTR, IPTR, 3
+        JMP     done_alt
+        MOV     R22, TMP2
+        ADD     IPTR, IPTR, 3
+        JMP     done_alt
+        MOV     R23, TMP2
+        ADD     IPTR, IPTR, 3
+        JMP     done_alt
+        MOV     R24, TMP2
+        ADD     IPTR, IPTR, 3
+        JMP     done_alt
+        MOV     R25, TMP2
         MOV     IPTR, IPTR0
 
-        ; when full, copy registers (takes 2 cycles)
-        XOUT    10, &IBUF, 32
-        XIN     10, &IBUF2, 32
+        ; when full, copy all registers into the scratchpad (takes 1 cycle)
+        XOUT    10, &IBUF, 64       ; 64 bytes
 
         ; notify other PRU
         SET     GPI.t30
+
+        ; alternatively, write directly into a register on PRU0
+        ;LDI     TMP, 1          ; TMP = R0
+        ;XOUT    14, &TMP, 1     ; not verified!
 
         JMP     done_alt2
 
@@ -316,11 +350,64 @@ done_alt:
         NOP
         NOP
 done_alt2:
-        ; 18 cycles -> make it 19 cycles
-        NOP
+        QBBS    exit, GPI, 31       ; jump to exit if PRU1 status bit set
+
+        ; 19 cycles
 
     .if SAMPLING_FREQ < 10000000
-        DELAYI  (200000000/SAMPLING_FREQ - 20)      ; one loop pass takes 20 cycles
+        DELAYI  (200000000/SAMPLING_FREQ - 20)  ; one loop pass takes 20 cycles
     .endif
         JMP     main_loop_alt
 
+exit:
+        ; find out how many bytes have not yet been transferred
+        QBEQ    exit_halt, IPTR, IPTR0          ; no bytes to transfer?
+        LDI     TMP, 0
+regcnt_loop:
+        ADD     TMP, TMP, 1
+        SUB     IPTR, IPTR, 3
+        QBNE    regcnt_loop, IPTR, IPTR0
+        ; at this point, TMP2 still contains the last stored value
+        MOV     PVAL, TMP2
+        ; fill up the empty space with the last captured value
+        LDI     TMP2, duplicate_last
+        ADD     TMP2, TMP2, TMP
+        JMP     TMP2
+duplicate_last:
+        MOV     R10, PVAL
+        MOV     R11, PVAL
+        MOV     R12, PVAL
+        MOV     R13, PVAL
+        MOV     R14, PVAL
+        MOV     R15, PVAL
+        MOV     R16, PVAL
+        MOV     R17, PVAL
+        MOV     R18, PVAL
+        MOV     R19, PVAL
+        MOV     R20, PVAL
+        MOV     R21, PVAL
+        MOV     R22, PVAL
+        MOV     R23, PVAL
+        MOV     R24, PVAL
+        MOV     R25, PVAL
+
+        ; copy remaining data into scratchpad and signal PRU0
+        XOUT    10, &IBUF, 64       ; 64 bytes
+        SET     GPI.t30
+
+exit_halt:
+        HALT
+
+
+; -----------------------------------------------------------------------
+
+; PRU0 code for alternative main loop:
+
+;        JMP     check_pru1_data_ready
+;copy_pru1_data:
+;        LDI     GPI, 0                          ; clear events
+;        XIN     10, DI_REG, 64                  ; load 64 bytes
+;        SBBO    &DI_REG, ?, 0, 64               ; single block transfer
+        ; TODO: increase memory pointer and handle rollover
+;check_pru1_data_ready:
+;        QBBS    copy_pru1_data, R31, 30

@@ -29,7 +29,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define LOG_FILE "/var/www/rocketlogger/log/daemon.log"
+#define LOG_FILE "/var/log/rocketlogger/daemon.log"
 
 #include <stdlib.h>
 
@@ -44,7 +44,7 @@
 #define RL_DAEMON_MIN_INTERVAL 1
 
 /// RocketLogger daemon log file.
-static char const *const log_filename = "/var/www/rocketlogger/log/daemon.log";
+static char const *const log_filename = LOG_FILE;
 
 /// Flag to terminate the infinite daemon loop
 volatile bool daemon_shutdown = false;
