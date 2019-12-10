@@ -31,7 +31,18 @@
 #
 
 
-HOMEDIR=/home/flocklab/
+HOMEDIR="/home/flocklab"
+DBDIR="/home/flocklab/db"
+RLCFGDIR="/var/log/rocketlogger"
+RLCONFIGDIR="/etc/rocketlogger"
+TESTDIR="/home/flocklab/data/curtest";
+
+# installation directories
+SCRIPTPATH="/home/flocklab/observer/testmanagement"
+JLINKPATH="/opt"
+BINPATH="/usr/bin"
+USERSPACEMODPATH="/usr/bin"
+LIBPATH="/usr/lib/flocklab/python"
 
 
 # helper function, checks last return value and exists if not 0 (requires 2 arguments: error msg and success msg)
@@ -53,27 +64,41 @@ fi
 echo "[ OK ] Checking for root permission."
 
 # create various directories
-[ -d /etc/rocketlogger ] || (mkdir /etc/rocketlogger && chown flocklab:flocklab /etc/rocketlogger)
-[ -d /var/log/rocketlogger ]      || (mkdir /var/log/rocketlogger && chown flocklab:flocklab /var/log/rocketlogger)
+[ -d $DBDIR ]    || (mkdir -p $DBDIR && chown flocklab:flocklab $DBDIR)
+[ -d $TESTDIR ]  || (mkdir -p $TESTDIR && chown flocklab:flocklab $TESTDIR)
+[ -d $RLCFGDIR ] || (mkdir -p $RLCFGDIR && chown flocklab:flocklab $RLCFGDIR)
+[ -d $RLLOGDIR ] || (mkdir -p $RLLOGDIR && chown flocklab:flocklab $RLLOGDIR)
 check_retval "Failed to create directories." "Directories created."
 
-cd ${HOMEDIR}observer/device_tree_overlay && ./install.sh > /dev/null 2>&1
+# add script directory to path
+grep ${SCRIPTPATH} ${HOMEDIR}/.profile || echo 'export PATH=$PATH:'${SCRIPTPATH} >> ${HOMEDIR}/.profile
+check_retval "Failed to set PATH variable." "PATH variable adjusted."
+
+# install device tree overlay
+cd ${HOMEDIR}/observer/device_tree_overlay && ./install.sh > /dev/null 2>&1
 check_retval "Failed to install device tree overlay." "Device tree overlay installed."
 
 # install rocketlogger software
 echo "       Compiling RocketLogger code..."
-cd ${HOMEDIR}observer/rocketlogger && make install > /dev/null 2>&1
+cd ${HOMEDIR}/observer/rocketlogger && make install > /dev/null 2>&1
 check_retval "Failed to install RocketLogger software." "RocketLogger software installed."
 
 # install binary for GPIO tracing
-cd ${HOMEDIR}observer/pru/fl_logic && make install > /dev/null 2>&1
+cd ${HOMEDIR}/observer/pru/fl_logic && make install > /dev/null 2>&1
 check_retval "Failed to install fl_logic software." "fl_logic software installed."
 
 # extract JLink files
-JLINK=$(ls -1 ${HOMEDIR}observer/jlink | grep JLink_Linux | sort | tail -n 1)
+JLINK=$(ls -1 ${HOMEDIR}/observer/jlink | grep JLink_Linux | sort | tail -n 1)
 JLINKDIR=${JLINK::-4}
-tar xzf ${HOMEDIR}observer/jlink/${JLINK} -C /opt && cp -f /opt/${JLINKDIR}/99-jlink.rules /etc/udev/rules.d/ && ln -sf /opt/${JLINKDIR} /opt/jlink && ln -sf /opt/jlink/JRunExe /bin/JRunExe && ln -sf /opt/jlink/JLinkExe /bin/JLinkExe && ln -sf /opt/jlink/JLinkGDBServer /bin/JLinkGDBServer
+tar xzf ${HOMEDIR}/observer/jlink/${JLINK} -C ${JLINKPATH} && cp -f ${JLINKPATH}/${JLINKDIR}/99-jlink.rules /etc/udev/rules.d/ && ln -sf ${JLINKPATH}/${JLINKDIR} ${JLINKPATH}/jlink && ln -sf ${JLINKPATH}/jlink/JRunExe ${BINPATH}/JRunExe && ln -sf ${JLINKPATH}/jlink/JLinkExe ${BINPATH}/JLinkExe && ln -sf ${JLINKPATH}/jlink/JLinkGDBServer ${BINPATH}/JLinkGDBServer
 check_retval "Failed to install JLink." "JLink installed."
+
+# install required packages for serial logging and GPIO actuation
+echo "       Installing required packages for serial logging..."
+apt -y install python3-serial minicom && pip3 install Adafruit_BBIO pyserial
+check_retval "Failed to install pyserial." "pyserial installed."
+tar xzf ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools-patched.tar.gz -C ${HOMEDIR}/observer/various/python-msp430-tools/ && cd ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools && python2.7 setup.py install
+check_retval "Failed to install python-msp430-tools." "python-msp430-tools installed."
 
 # configure time sync
 echo "       Installing required packages for time sync..."
@@ -117,4 +142,4 @@ check_retval "Failed to restart services." "Restart chrony and gpsd service."
 
 # check if chrony is working: chronyc sources -v
 
-reboot
+reboot && exit 0

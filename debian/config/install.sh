@@ -134,13 +134,16 @@ apt update --assume-yes
 apt upgrade --assume-yes
 
 # install fundamental dependencies
-apt install --assume-yes unzip git ntp make device-tree-compiler gcc g++ libncurses5-dev libi2c-dev linux-headers-$(uname -r)
+apt install --assume-yes unzip git ntp make build-essential python3 python3-dev python3-pip device-tree-compiler gcc g++ libncurses5-dev libi2c-dev linux-headers-$(uname -r)
 
 # install am355x PRU support package from git
 echo "> Manually download, compile and install am335x-pru-package"
 git clone https://github.com/beagleboard/am335x_pru_package.git
 (cd am335x_pru_package && make && make install)
 ldconfig
+
+# make python3 the default version
+ln -sf $(which python3) /usr/bin/python
 
 # set expiration date in the past to disable logins
 echo "> Disable default user 'debian'"
