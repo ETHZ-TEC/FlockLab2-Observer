@@ -31,6 +31,12 @@
 #
 
 
+# check argument (requires hostname)
+if [[ $# -lt 1 ]]; then
+  echo "No hostname provided."
+  exit 1
+fi
+
 # need to run as root
 echo "> Checking root permission"
 if [[ $(id -u) -ne 0 ]]; then
@@ -45,6 +51,9 @@ if [ $? -ne 0 ]; then
   echo "No network connectivity! Aborting."
   exit 2
 fi
+
+# set hostname
+echo $1 > /etc/hostname
 
 # create flocklab user
 echo "> Create new user 'flocklab'"

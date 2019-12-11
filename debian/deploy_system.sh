@@ -61,7 +61,7 @@ fi
 
 # perform system configuration
 echo "Run system configuration. You will be asked for the default user password ('temppwd') two times."
-ssh -F /dev/null -p $PORT -t ${USER}@${HOST} "(cd config && sudo ./install.sh)"
+ssh -F /dev/null -p $PORT -t ${USER}@${HOST} "(cd config && sudo ./install.sh ${HOSTNAME})"
 # verify system configuration worked
 CONFIG=$?
 if [ $CONFIG -ne 255 ]; then

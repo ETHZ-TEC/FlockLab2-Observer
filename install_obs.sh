@@ -56,6 +56,13 @@ check_retval()
 }
 
 
+# check if this is a flocklab observer
+hostname | grep "fl-" > /dev/null 2>&1
+if [[ $? -ne 0 ]]; then
+  echo "Script must run on a FlockLab observer. Aborting"
+  exit 1
+fi
+
 # need to run as root
 if [[ $(id -u) -ne 0 ]]; then
   echo "Please run as root. Aborting."
@@ -71,7 +78,7 @@ echo "[ OK ] Checking for root permission."
 check_retval "Failed to create directories." "Directories created."
 
 # add script directory to path
-grep ${SCRIPTPATH} ${HOMEDIR}/.profile || echo 'export PATH=$PATH:'${SCRIPTPATH} >> ${HOMEDIR}/.profile
+grep ${SCRIPTPATH} ${HOMEDIR}/.profile > /dev/null 2>&1 || echo 'export PATH=$PATH:'${SCRIPTPATH} >> ${HOMEDIR}/.profile
 check_retval "Failed to set PATH variable." "PATH variable adjusted."
 
 # install device tree overlay
@@ -95,9 +102,9 @@ check_retval "Failed to install JLink." "JLink installed."
 
 # install required packages for serial logging and GPIO actuation
 echo "       Installing required packages for serial logging..."
-apt -y install python3-serial minicom && pip3 install Adafruit_BBIO pyserial
+apt -y install python3-serial minicom > /dev/null 2>&1 && pip3 install Adafruit_BBIO pyserial > /dev/null 2>&1
 check_retval "Failed to install pyserial." "pyserial installed."
-tar xzf ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools-patched.tar.gz -C ${HOMEDIR}/observer/various/python-msp430-tools/ && cd ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools && python2.7 setup.py install
+tar xzf ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools-patched.tar.gz -C ${HOMEDIR}/observer/various/python-msp430-tools/ && cd ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools && python2.7 setup.py install > /dev/null 2>&1
 check_retval "Failed to install python-msp430-tools." "python-msp430-tools installed."
 
 # configure time sync
@@ -118,7 +125,7 @@ GPSD_OPTIONS='-n /dev/pps0'" > /etc/default/gpsd
 check_retval "Failed to configure gpsd." "gpsd configured."
 
 # configure chrony
-grep "refclock PPS /dev/pps0" /etc/chrony/chrony.conf || echo "
+grep "refclock PPS /dev/pps0" /etc/chrony/chrony.conf >> /dev/null 2>&1 || echo "
 # GPSD via SHM
 refclock PPS /dev/pps0 refid PPS offset 0.5 poll 4 prefer
 refclock SHM 0 refid GPS precision 1e-1 poll 4 filter 1000 offset 0.130 noselect
