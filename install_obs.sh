@@ -36,6 +36,7 @@ DBDIR="/home/flocklab/db"
 RLCFGDIR="/var/log/rocketlogger"
 RLCONFIGDIR="/etc/rocketlogger"
 TESTDIR="/home/flocklab/data/curtest";
+SDCARDLINK="/home/flocklab/data"
 
 # installation directories
 SCRIPTPATH="/home/flocklab/observer/testmanagement"
@@ -44,12 +45,17 @@ BINPATH="/usr/bin"
 USERSPACEMODPATH="/usr/bin"
 LIBPATH="/usr/lib/flocklab/python"
 
+ERRORLOG="/tmp/flocklab_obs_install.log"
+
 
 # helper function, checks last return value and exists if not 0 (requires 2 arguments: error msg and success msg)
 check_retval()
 {
   if [ $? -ne 0 ]; then
     echo "[ !! ]" $1
+    # display error log:
+    echo "       Error log:"
+    cat $ERRORLOG
     exit 1
   fi
   echo "[ OK ]" $2
@@ -59,16 +65,22 @@ check_retval()
 # check if this is a flocklab observer
 hostname | grep "fl-" > /dev/null 2>&1
 if [[ $? -ne 0 ]]; then
-  echo "Script must run on a FlockLab observer. Aborting"
+  echo "[ !! ] Script must run on a FlockLab observer. Aborting"
   exit 1
 fi
 
 # need to run as root
 if [[ $(id -u) -ne 0 ]]; then
-  echo "Please run as root. Aborting."
+  echo "[ !! ] Script must run as root. Aborting."
   exit 1
 fi
 echo "[ OK ] Checking for root permission."
+
+# clear log file
+[ -f $ERRORLOG ] && rm $ERRORLOG
+
+# link to SD card
+ln -sf /media/card $SDCARDLINK
 
 # create various directories
 [ -d $DBDIR ]    || (mkdir -p $DBDIR && chown flocklab:flocklab $DBDIR)
@@ -82,16 +94,16 @@ grep ${SCRIPTPATH} ${HOMEDIR}/.profile > /dev/null 2>&1 || echo 'export PATH=$PA
 check_retval "Failed to set PATH variable." "PATH variable adjusted."
 
 # install device tree overlay
-cd ${HOMEDIR}/observer/device_tree_overlay && ./install.sh > /dev/null 2>&1
+cd ${HOMEDIR}/observer/device_tree_overlay && ./install.sh > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install device tree overlay." "Device tree overlay installed."
 
 # install rocketlogger software
 echo "       Compiling RocketLogger code..."
-cd ${HOMEDIR}/observer/rocketlogger && make install > /dev/null 2>&1
+cd ${HOMEDIR}/observer/rocketlogger && make install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install RocketLogger software." "RocketLogger software installed."
 
 # install binary for GPIO tracing
-cd ${HOMEDIR}/observer/pru/fl_logic && make install > /dev/null 2>&1
+cd ${HOMEDIR}/observer/pru/fl_logic && make install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install fl_logic software." "fl_logic software installed."
 
 # extract JLink files
@@ -102,14 +114,14 @@ check_retval "Failed to install JLink." "JLink installed."
 
 # install required packages for serial logging and GPIO actuation
 echo "       Installing required packages for serial logging..."
-apt -y install python3-serial minicom > /dev/null 2>&1 && pip3 install Adafruit_BBIO pyserial > /dev/null 2>&1
+apt-get --assume-yes install python3-serial minicom > /dev/null 2>> $ERRORLOG && pip3 install Adafruit_BBIO pyserial > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install pyserial." "pyserial installed."
-tar xzf ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools-patched.tar.gz -C ${HOMEDIR}/observer/various/python-msp430-tools/ && cd ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools && python2.7 setup.py install > /dev/null 2>&1
+tar xzf ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools-patched.tar.gz -C ${HOMEDIR}/observer/various/python-msp430-tools/ && cd ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools && python2.7 setup.py install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install python-msp430-tools." "python-msp430-tools installed."
 
 # configure time sync
 echo "       Installing required packages for time sync..."
-apt -y install gpsd gpsd-clients linuxptp chrony pps-tools > /dev/null 2>&1
+apt-get --assume-yes install gpsd gpsd-clients linuxptp chrony pps-tools > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install packages." "Packages installed."
 
 # change permission of pps device
@@ -125,7 +137,7 @@ GPSD_OPTIONS='-n /dev/pps0'" > /etc/default/gpsd
 check_retval "Failed to configure gpsd." "gpsd configured."
 
 # configure chrony
-grep "refclock PPS /dev/pps0" /etc/chrony/chrony.conf >> /dev/null 2>&1 || echo "
+grep "refclock PPS /dev/pps0" /etc/chrony/chrony.conf > /dev/null 2>&1 || echo "
 # GPSD via SHM
 refclock PPS /dev/pps0 refid PPS offset 0.5 poll 4 prefer
 refclock SHM 0 refid GPS precision 1e-1 poll 4 filter 1000 offset 0.130 noselect
@@ -144,9 +156,12 @@ server time2.ethz.ch minpoll 5 maxpoll 6
 check_retval "Failed to configure chrony." "Chrony configured."
 
 # restart chrony
-systemctl restart gpsd chrony
-check_retval "Failed to restart services." "Restart chrony and gpsd service."
+systemctl restart gpsd
+systemctl restart chrony
 
 # check if chrony is working: chronyc sources -v
+
+# cleanup
+apt-get --assume-yes autoremove > /dev/null 2>> $ERRORLOG
 
 reboot && exit 0

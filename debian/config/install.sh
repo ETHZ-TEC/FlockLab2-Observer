@@ -31,35 +31,53 @@
 #
 
 
+ERRORLOG="/tmp/debian_install.log"
+
+
+# helper function, checks last return value and exists if not 0 (requires 2 arguments: error msg and success msg)
+check_retval()
+{
+  if [ $? -ne 0 ]; then
+    echo "[ !! ]" $1
+    # display error log:
+    echo "       Error log:"
+    cat $ERRORLOG
+    exit 1
+  fi
+  echo "[ OK ]" $2
+}
+
 # check argument (requires hostname)
 if [[ $# -lt 1 ]]; then
-  echo "No hostname provided."
+  echo "[ !! ] No hostname provided."
   exit 1
 fi
 
 # need to run as root
-echo "> Checking root permission"
 if [[ $(id -u) -ne 0 ]]; then
-  echo "Please run as root. Aborting."
+  echo "[ !! ] Please run as root. Aborting."
   exit 1
 fi
+echo "[ OK ] Checking root permission."
 
 # check network connectivity
-echo "> Checking network connectifiy"
 ping -q -c 1 -W 2 "8.8.8.8" > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-  echo "No network connectivity! Aborting."
+  echo "[ !! ] No network connectivity! Aborting."
   exit 2
 fi
+echo "[ OK ] Checking network connectifiy."
+
+# clear log file
+[ -f $ERRORLOG ] && rm $ERRORLOG
 
 # set hostname
 echo $1 > /etc/hostname
 
 # create flocklab user
-echo "> Create new user 'flocklab'"
 
 # add new flocklab user with home directory and bash shell
-useradd --create-home --shell /bin/bash flocklab
+useradd --create-home --shell /bin/bash flocklab > /dev/null 2>> $ERRORLOG
 # set default password
 cat user/password | chpasswd
 
@@ -70,16 +88,14 @@ usermod --append --groups dialout flocklab
 usermod --append --groups i2c flocklab
 usermod --append --groups gpio flocklab
 usermod --append --groups pwm flocklab
-usermod --append --groups remoteproc flocklab
 usermod --append --groups spi flocklab
 usermod --append --groups adm flocklab
 usermod --append --groups users flocklab
+usermod --append --groups disk flocklab
 
-# display updated user configuration
-id flocklab
+echo "[ OK ] New user 'flocklab' created."  # $(id flocklab)
 
 # security
-echo "> Updating some security and permission settings"
 
 # copy public keys for log in
 mkdir -p /home/flocklab/.ssh/
@@ -96,72 +112,86 @@ cp -f system/issue.net /etc/issue.net
 # make user owner of its own files
 chown flocklab:flocklab -R /home/flocklab/
 
-# network configuration
-echo "> Updating network configuration"
-
-# copy network interface configuration
-cp -f network/interfaces /etc/network/
-
 # create flocklab system config folder
 mkdir -p /etc/flocklab
 
+echo "[ OK ] Security and permission settings updated."
+
+# network configuration
+
+# copy network interface configuration
+cp -f network/interfaces /etc/network/
+check_retval "Failed to update network configuration." "Network configuration updated."
+
 # format the SD card if not mounted
-mount | grep mmcblk0p1
+mount | grep mmcblk0p1 > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-  echo "> Formatting SD card..."
+  echo "       Formatting SD card..."
   mkfs.ext4 -q /dev/mmcblk0p1
+  check_retval "Failed to format SD card." "SD card formatted."
   # mount the SD card
-  echo "> Mounting SD card"
   mkdir /media/card
   mount /dev/mmcblk0p1 /media/card
+  chown flocklab:flocklab /media/card
+  chmod 755 /media/card
+  check_retval "Failed to mount SD card." "SD card mounted."
 else
-  echo "> SD card already mounted"
+  echo "[ OK ] SD card already mounted"
 fi
 # add to fstab
-grep /dev/mmcblk0p1 /etc/fstab
+grep /dev/mmcblk0p1 /etc/fstab > /dev/null 2>&1
 if [ $? -ne 0 ]; then
+  echo "       Updating fstab..."
   echo '/dev/mmcblk0p1  /media/card  ext4  noatime  0  2' >> /etc/fstab
-  echo "> fstab updated"
+  echo "[ OK ] Entry added to fstab."
 fi
 
 # updates and software dependencies
-echo "> Deactivating and uninstalling potentially conflicting services"
+echo "       Deactivating and uninstalling potentially conflicting services..."
 
 # stop preinstalled web services
-systemctl stop bonescript-autorun.service cloud9.service cloud9.socket nginx.service
-systemctl disable bonescript-autorun.service cloud9.service cloud9.socket nginx.service
+systemctl stop bonescript-autorun.service cloud9.service cloud9.socket nginx.service > /dev/null 2>> $ERRORLOG
+systemctl disable bonescript-autorun.service cloud9.service cloud9.socket nginx.service > /dev/null 2>> $ERRORLOG
+echo "[ OK ] Services stopped."
 
 # uninstall preinstalled web services
-apt remove --assume-yes --allow-change-held-packages nginx nodejs? c9-core-installer bonescript?
-apt autoremove --assume-yes
+echo "       Removing unused packages..."
+apt-get --assume-yes remove --allow-change-held-packages nginx nodejs? c9-core-installer bonescript? > /dev/null 2>> $ERRORLOG
+apt-get --assume-yes autoremove > /dev/null 2>> $ERRORLOG
+check_retval "Failed to remove unused packages." "Unused packages removed."
 
 # updates and software dependencies
-echo "> Updating system and installing software dependencies"
+echo "       Updating system..."
 
 # update packages
-apt update --assume-yes
-apt upgrade --assume-yes
+apt-get --assume-yes update > /dev/null 2>> $ERRORLOG
+apt-get -qq --assume-yes upgrade    # can't redirect to /dev/null, apt-get may ask questions during the process...
+check_retval "Failed to install system updates." "System updates installed."
 
 # install fundamental dependencies
-apt install --assume-yes unzip git ntp make build-essential python3 python3-dev python3-pip device-tree-compiler gcc g++ libncurses5-dev libi2c-dev linux-headers-$(uname -r)
+echo "       Installing fundamental dependencies..."
+apt-get --assume-yes install unzip git ntp make build-essential python3 python3-dev python3-pip device-tree-compiler gcc g++ libncurses5-dev libi2c-dev linux-headers-$(uname -r) > /dev/null 2>> $ERRORLOG
+check_retval "Failed to install packages." "Packages installed."
 
 # install am355x PRU support package from git
-echo "> Manually download, compile and install am335x-pru-package"
-git clone https://github.com/beagleboard/am335x_pru_package.git
-(cd am335x_pru_package && make && make install)
+echo "       Compiling and installing am335x-pru-package..."
+git clone https://github.com/beagleboard/am335x_pru_package.git > /dev/null 2>> $ERRORLOG
+check_retval "Failed to clone repository." "Repository cloned."
+(cd am335x_pru_package && make && make install) > /dev/null 2>> $ERRORLOG
+check_retval "Failed to install am335x-pru-package." "am335x-pru-package installed."
 ldconfig
 
-# make python3 the default version
-ln -sf $(which python3) /usr/bin/python
+# add user flocklab to newly created 'remoteproc' group
+usermod --append --groups remoteproc flocklab
 
 # set expiration date in the past to disable logins
-echo "> Disable default user 'debian'"
 chage -E 1970-01-01 debian
+echo "[ OK ] User 'debian' disabled."
 
 # cleanup
 (cd .. && rm -rf config)
-echo "> Directory 'config' removed"
+echo "[ OK ] Directory 'config' removed."
 
 # reboot
-echo "Platform initialized. System will reboot to apply configuration changes."
+echo "       System will reboot to apply configuration changes..."
 reboot && exit 0

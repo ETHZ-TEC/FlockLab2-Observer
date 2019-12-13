@@ -32,47 +32,47 @@
 # 
 
 REBOOT_TIMEOUT=120
-PORT=22
+PORT=22   #2322
 USER="debian"
 
 # check arguments
-if [ $# -lt 2 ]; then
-  echo "Usage: ./deploy_system.sh <beaglebone-host-address> <hostname>"
+if [ $# -lt 1 ]; then
+  echo "Usage: ./deploy_system.sh <beaglebone-host-address> [<hostname>]"
   exit -1
 fi
-
 HOST=$1
-HOSTNAME=$2
+
+if [ $# -gt 1 ]; then
+  HOSTNAME=$2
+else
+  HOSTNAME=$HOST
+fi
 
 echo "Deploying system configuration on host '${HOST}'..."
 sleep 3   # give the user time to abort, just in case
 
 # either clone the repo on the beaglebone or copy all files
-#ssh -p $PORT ${HOST} "git clone git@gitlab.ethz.ch:tec/research/flocklab/observer.git observer"
-echo "Copying config files... (enter default password 'temppwd' when asked)"
-scp -P ${PORT} -r config ${USER}@${HOST}:
-COPY=$?
-if [ $COPY -ne 0 ]; then
+echo "       Copying config files... (enter default password 'temppwd' when asked)"
+scp -F /dev/null -P ${PORT} -r config ${USER}@${HOST}: > /dev/null
+if [ $? -ne 0 ]; then
   echo "[ !! ] Failed to copy config files!"
-  exit $COPY
+  exit 1
 else
   echo "[ OK ] Files copied."
 fi
 
 # perform system configuration
-echo "Run system configuration. You will be asked for the default user password ('temppwd') two times."
-ssh -F /dev/null -p $PORT -t ${USER}@${HOST} "(cd config && sudo ./install.sh ${HOSTNAME})"
-# verify system configuration worked
-CONFIG=$?
-if [ $CONFIG -ne 255 ]; then
+echo "       Initiating system configuration. You will be asked for the default user password ('temppwd') two times."
+ssh -q -F /dev/null -p $PORT -t ${USER}@${HOST} "(cd config && sudo ./install.sh ${HOSTNAME})"
+if [ $? -ne 255 ]; then
   echo "[ !! ] System configuration failed (code $CONFIG)."
-  exit $CONFIG
+  exit 1
 else
   echo "[ OK ] System configuration was successful."
 fi
 
 # wait for system to reboot
-echo -n "Waiting for the system to reboot..."
+echo -n "       Waiting for the system to reboot..."
 sleep 5
 while [[ $REBOOT_TIMEOUT -gt 0 ]]; do
   REBOOT_TIMEOUT=`expr $REBOOT_TIMEOUT - 1`

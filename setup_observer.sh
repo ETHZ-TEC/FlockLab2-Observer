@@ -46,7 +46,7 @@ echo "Setting up FlockLab observer '${HOST}'..."
 sleep 3   # give the user time to abort, just in case
 
 # verify that SSH login works
-ssh -p ${PORT} ${USER}@${HOST} "exit" > /dev/null 2>&1
+ssh -q -p ${PORT} ${USER}@${HOST} "exit" > /dev/null 2>&1
 if [ $? -ne 0 ]; then
   echo "[ !! ] SSH login failed."
   exit 1
