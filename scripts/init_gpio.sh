@@ -27,8 +27,8 @@ echo out > /sys/class/gpio/gpio88/direction
 echo out > /sys/class/gpio/gpio77/direction
 
 # set pin state
-echo 0 > /sys/class/gpio/gpio47/value # select0
-echo 0 > /sys/class/gpio/gpio27/value # select1
+echo 1 > /sys/class/gpio/gpio47/value # select0
+echo 1 > /sys/class/gpio/gpio27/value # select1
 echo 1 > /sys/class/gpio/gpio26/value # power_EN
 echo 0 > /sys/class/gpio/gpio46/value # Target_nEN
 echo 0 > /sys/class/gpio/gpio65/value # act_nEN

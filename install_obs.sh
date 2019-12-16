@@ -61,7 +61,6 @@ check_retval()
   echo "[ OK ]" $2
 }
 
-
 # check if this is a flocklab observer
 hostname | grep "fl-" > /dev/null 2>&1
 if [[ $? -ne 0 ]]; then
@@ -124,8 +123,8 @@ echo "       Installing required packages for time sync..."
 apt-get --assume-yes install gpsd gpsd-clients linuxptp chrony pps-tools > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install packages." "Packages installed."
 
-# change permission of pps device
-chmod 660 /dev/pps0 && chown root:gpio /dev/pps0
+# add a udev rules for PPS device to allow access by the user
+[ -e /etc/udev/rules.d/99-pps-noroot.rules ] || echo 'KERNEL=="pps0", OWNER="root", GROUP="gpio", MODE="0660"' > /etc/udev/rules.d/99-pps-noroot.rules
 
 # test GNSS receiver availability: gpsmon /dev/ttyO4
 # test gpsd: gpsd -D 5 -N -n /dev/ttyO4 /dev/pps0
@@ -156,10 +155,23 @@ server time2.ethz.ch minpoll 5 maxpoll 6
 check_retval "Failed to configure chrony." "Chrony configured."
 
 # restart chrony
-systemctl restart gpsd
-systemctl restart chrony
+systemctl restart gpsd && systemctl restart chrony
+check_retval  "Failed to restart gpsd and chrony." "gpsd and chrony restarted."
 
 # check if chrony is working: chronyc sources -v
+
+# add startup script
+[ -f /etc/systemd/system/flocklab.service ] || echo "[Unit]
+Description=FlockLab Service
+[Service]
+Type=idle
+ExecStart=/home/flocklab/observer/scripts/flocklab_init.sh
+[Install]
+WantedBy=default.target" > /etc/systemd/system/flocklab.service
+chmod +x /home/flocklab/observer/scripts/flocklab_init.sh
+chmod 664 /etc/systemd/system/flocklab.service
+systemctl daemon-reload && systemctl enable flocklab.service
+check_retval "Failed to enable FlockLab service." "FlockLab service enabled."
 
 # cleanup
 apt-get --assume-yes autoremove > /dev/null 2>> $ERRORLOG
