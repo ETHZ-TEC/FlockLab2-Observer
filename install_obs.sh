@@ -61,6 +61,7 @@ check_retval()
   echo "[ OK ]" $2
 }
 
+##########################################################
 # check if this is a flocklab observer
 hostname | grep "fl-" > /dev/null 2>&1
 if [[ $? -ne 0 ]]; then
@@ -78,6 +79,7 @@ echo "[ OK ] Checking for root permission."
 # clear log file
 [ -f $ERRORLOG ] && rm $ERRORLOG
 
+##########################################################
 # link to SD card
 ln -sf /media/card $SDCARDLINK
 
@@ -92,25 +94,30 @@ check_retval "Failed to create directories." "Directories created."
 grep ${SCRIPTPATH} ${HOMEDIR}/.profile > /dev/null 2>&1 || echo 'export PATH=$PATH:'${SCRIPTPATH} >> ${HOMEDIR}/.profile
 check_retval "Failed to set PATH variable." "PATH variable adjusted."
 
+##########################################################
 # install device tree overlay
 cd ${HOMEDIR}/observer/device_tree_overlay && ./install.sh > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install device tree overlay." "Device tree overlay installed."
 
+##########################################################
 # install rocketlogger software
 echo "       Compiling RocketLogger code..."
 cd ${HOMEDIR}/observer/rocketlogger && make install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install RocketLogger software." "RocketLogger software installed."
 
+##########################################################
 # install binary for GPIO tracing
 cd ${HOMEDIR}/observer/pru/fl_logic && make install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install fl_logic software." "fl_logic software installed."
 
+##########################################################
 # extract JLink files
 JLINK=$(ls -1 ${HOMEDIR}/observer/jlink | grep JLink_Linux | sort | tail -n 1)
 JLINKDIR=${JLINK::-4}
 tar xzf ${HOMEDIR}/observer/jlink/${JLINK} -C ${JLINKPATH} && cp -f ${JLINKPATH}/${JLINKDIR}/99-jlink.rules /etc/udev/rules.d/ && ln -sf ${JLINKPATH}/${JLINKDIR} ${JLINKPATH}/jlink && ln -sf ${JLINKPATH}/jlink/JRunExe ${BINPATH}/JRunExe && ln -sf ${JLINKPATH}/jlink/JLinkExe ${BINPATH}/JLinkExe && ln -sf ${JLINKPATH}/jlink/JLinkGDBServer ${BINPATH}/JLinkGDBServer
 check_retval "Failed to install JLink." "JLink installed."
 
+##########################################################
 # install required packages for serial logging and GPIO actuation
 echo "       Installing required packages for serial logging..."
 apt-get --assume-yes install python3-serial minicom > /dev/null 2>> $ERRORLOG && pip3 install Adafruit_BBIO pyserial > /dev/null 2>> $ERRORLOG
@@ -118,48 +125,44 @@ check_retval "Failed to install pyserial." "pyserial installed."
 tar xzf ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools-patched.tar.gz -C ${HOMEDIR}/observer/various/python-msp430-tools/ && cd ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools && python2.7 setup.py install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install python-msp430-tools." "python-msp430-tools installed."
 
+##########################################################
 # configure time sync
 echo "       Installing required packages for time sync..."
 apt-get --assume-yes install gpsd gpsd-clients linuxptp chrony pps-tools > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install packages." "Packages installed."
 
-# add a udev rules for PPS device to allow access by the user
-[ -e /etc/udev/rules.d/99-pps-noroot.rules ] || echo 'KERNEL=="pps0", OWNER="root", GROUP="gpio", MODE="0660"' > /etc/udev/rules.d/99-pps-noroot.rules
-
-# test GNSS receiver availability: gpsmon /dev/ttyO4
-# test gpsd: gpsd -D 5 -N -n /dev/ttyO4 /dev/pps0
-# in another terminal, check for NTP2: ntpshmmon
+# add a udev rules for PPS device to allow access by the user 'flocklab' and 'gpsd'
+[ -e /etc/udev/rules.d/99-pps-noroot.rules ] || echo 'KERNEL=="pps0", OWNER="root", GROUP="dialout", MODE="0660"' > /etc/udev/rules.d/99-pps-noroot.rules
 
 # set config for gpsd
-echo "DEVICES=/dev/ttyO4
-GPSD_OPTIONS='-n /dev/pps0'" > /etc/default/gpsd
+echo 'DEVICES="/dev/pps0 /dev/ttyS4"
+GPSD_OPTIONS="-n -b"
+START_DAEMON="true"
+USBAUTO="true"' > /etc/default/gpsd
 check_retval "Failed to configure gpsd." "gpsd configured."
 
 # configure chrony
-grep "refclock PPS /dev/pps0" /etc/chrony/chrony.conf > /dev/null 2>&1 || echo "
+echo "driftfile /var/lib/chrony/chrony.drift
+logdir /var/log/chrony
+rtcsync
+makestep 1 3
 # GPSD via SHM
-refclock PPS /dev/pps0 refid PPS offset 0.5 poll 4 prefer
-refclock SHM 0 refid GPS precision 1e-1 poll 4 filter 1000 offset 0.130 noselect
-# refclock SOCK /var/run/chrony.ttyUSB0.sock refid GPS noselect
-
-# from chrony.conf manpage
+refclock PPS /dev/pps0 refid PPS precision 1e-7 poll 4 filter 128
+refclock SHM 0 refid PPS2 precision 1e-7 lock GPS
+refclock SHM 1 refid GPS precision 1e-1 offset 0.136 noselect
 refclock PHC /dev/ptp0 poll 3 dpoll -2 offset 0.0 noselect
-
-server 129.132.177.101 minpoll 4 maxpoll 5
+# NTP servers
 server 129.132.2.21 minpoll 5 maxpoll 6
 server 129.132.2.22 minpoll 5 maxpoll 6
 server time.ethz.ch minpoll 5 maxpoll 6
 server time1.ethz.ch minpoll 5 maxpoll 6
-server time2.ethz.ch minpoll 5 maxpoll 6
-" >> /etc/chrony/chrony.conf
+server time2.ethz.ch minpoll 5 maxpoll 6" > /etc/chrony/chrony.conf
 check_retval "Failed to configure chrony." "Chrony configured."
 
-# restart chrony
-systemctl restart gpsd && systemctl restart chrony
-check_retval  "Failed to restart gpsd and chrony." "gpsd and chrony restarted."
+# enable gpsd service and make sure gpsd is started after reboot
+ln -sf /lib/systemd/system/gpsd.service /etc/systemd/system/multi-user.target.wants/gpsd.service
 
-# check if chrony is working: chronyc sources -v
-
+##########################################################
 # add startup script
 [ -f /etc/systemd/system/flocklab.service ] || echo "[Unit]
 Description=FlockLab Service
