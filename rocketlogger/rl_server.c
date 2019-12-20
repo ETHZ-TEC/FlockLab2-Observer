@@ -55,7 +55,7 @@
 #define TIME_MARGIN 10
 
 /// RocketLogger daemon log file.
-static char const *const log_filename = "/var/log/rocketlogger/server.log";
+static char const *const log_filename = "/var/log/flocklab/rocketlogger_server.log";
 
 // Global variables
 /// ID of semaphore set

@@ -218,8 +218,7 @@ static struct argp argp = {
 /**
  * RocketLogger main program log file.
  */
-static char const *const log_filename =
-    "/var/log/rocketlogger/rocketlogger.log";
+static char const *const log_filename = "/var/log/flocklab/rocketlogger.log";
 
 /**
  * Main RocketLogger binary, controls the sampling

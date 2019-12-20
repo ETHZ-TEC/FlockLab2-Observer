@@ -29,7 +29,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define LOG_FILE "/var/log/rocketlogger/daemon.log"
+#define LOG_FILE "/var/log/flocklab/rocketlogger_daemon.log"
 
 #include <stdlib.h>
 

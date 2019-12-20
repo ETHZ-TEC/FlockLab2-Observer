@@ -66,10 +66,9 @@
 #define SHMEM_PERMISSIONS 0666
 
 /// Default system configuration file path
-#define RL_CONFIG_SYSTEM_FILE "/etc/rocketlogger/settings.dat"
+#define RL_CONFIG_SYSTEM_FILE "/etc/flocklab/rocketlogger.dat"
 /// User configuration file path
-#define RL_CONFIG_USER_FILE                                                    \
-    "/home/flocklab/.config/rocketlogger/settings.dat"
+#define RL_CONFIG_USER_FILE   "/home/flocklab/.config/rocketlogger.dat"
 
 /// Default system configuration file path
 #define RL_CONFIG_VERSION 0x03
