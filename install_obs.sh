@@ -33,8 +33,8 @@
 
 HOMEDIR="/home/flocklab"
 DBDIR="/home/flocklab/db"
-RLCFGDIR="/var/log/rocketlogger"
-RLCONFIGDIR="/etc/rocketlogger"
+LOGDIR="/var/log/flocklab"
+CONFIGDIR="/etc/flocklab"
 TESTDIR="/home/flocklab/data/curtest";
 SDCARDLINK="/home/flocklab/data"
 
@@ -45,6 +45,7 @@ BINPATH="/usr/bin"
 USERSPACEMODPATH="/usr/bin"
 LIBPATH="/usr/lib/flocklab/python"
 
+# error log for this install script
 ERRORLOG="/tmp/flocklab_obs_install.log"
 
 
@@ -80,14 +81,15 @@ echo "[ OK ] Checking for root permission."
 [ -f $ERRORLOG ] && rm $ERRORLOG
 
 ##########################################################
-# link to SD card
+# link to SD card and log folder
 ln -sf /media/card $SDCARDLINK
+ln -sf $LOGDIR $HOMEDIR/log
 
 # create various directories
 [ -d $DBDIR ]    || (mkdir -p $DBDIR && chown flocklab:flocklab $DBDIR)
 [ -d $TESTDIR ]  || (mkdir -p $TESTDIR && chown flocklab:flocklab $TESTDIR)
-[ -d $RLCFGDIR ] || (mkdir -p $RLCFGDIR && chown flocklab:flocklab $RLCFGDIR)
-[ -d $RLLOGDIR ] || (mkdir -p $RLLOGDIR && chown flocklab:flocklab $RLLOGDIR)
+[ -d $LOGDIR ]   || (mkdir -p $LOGDIR && chown flocklab:flocklab $LOGDIR)
+[ -d $CONFIGDIR ] || (mkdir -p $CONFIGDIR && chown flocklab:flocklab $CONFIGDIR)
 check_retval "Failed to create directories." "Directories created."
 
 # add script directory to path
