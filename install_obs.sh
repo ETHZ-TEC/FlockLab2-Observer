@@ -120,7 +120,7 @@ check_retval "Failed to install JLink." "JLink installed."
 ##########################################################
 # install required packages for serial logging and GPIO actuation
 echo "       Installing required packages for serial logging..."
-apt-get --assume-yes install python3-serial minicom > /dev/null 2>> $ERRORLOG && pip3 install Adafruit_BBIO pyserial > /dev/null 2>> $ERRORLOG
+apt-get --assume-yes install python3-serial minicom > /dev/null 2>> $ERRORLOG && pip3 install Adafruit_BBIO pyserial smbus > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install pyserial." "pyserial installed."
 tar xzf ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools-patched.tar.gz -C ${HOMEDIR}/observer/various/python-msp430-tools/ && cd ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools && python2.7 setup.py install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install python-msp430-tools." "python-msp430-tools installed."
