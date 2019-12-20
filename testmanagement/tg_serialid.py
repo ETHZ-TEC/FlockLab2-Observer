@@ -30,11 +30,11 @@ def usage():
     print("Usage: %s [--target=<int>] [--searchtime=<float>] [--maxretries=<int>] [--help] [--version]" %sys.argv[0])
     print("Get serial ID of target adaptor(s).")
     print("Options:")
-    print("  --target\t\t\tOptional. If set, the serial ID of the requested target is fetched. Otherwise ID's of all targets are fetched.")
-    print("  --searchtime\t\t\tOptional. If set, standard time of %.1fs for waiting for the ID search is overwritten." %searchtime)
-    print("  --maxretries\t\t\tOptional. If set, standard number of retries of %d for reading an ID is overwritten." %maxretries)
-    print("  --help\t\t\tOptional. Print this help.")
-    print("  --version\t\t\tOptional. Print version number of software and exit.")
+    print("  --target\tOptional. If set, the serial ID of the requested target is fetched. Otherwise ID's of all targets are fetched.")
+    print("  --searchtime\tOptional. If set, standard time of %.1fs for waiting for the ID search is overwritten." %searchtime)
+    print("  --maxretries\tOptional. If set, standard number of retries of %d for reading an ID is overwritten." %maxretries)
+    print("  --help\tOptional. Print this help.")
+    print("  --version\tOptional. Print version number of software and exit.")
 ### END usage()
 
 
