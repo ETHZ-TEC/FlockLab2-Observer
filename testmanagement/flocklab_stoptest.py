@@ -56,13 +56,12 @@ def errchk_exit(led_path=None, errors=[], logger=None, rs=flocklab.SUCCESS):
 #
 ##############################################################################
 def usage():
-    print("Usage: %s --testid=<testid> [--debug] [--help] [--version]" %sys.argv[0])
+    print("Usage: %s --testid=<testid> [--debug] [--help]" %sys.argv[0])
     print("Stop a running FlockLab test.")
     print("Options:")
-    print("  --testid=<testid>\t\tID of the test.")
-    print("  --debug\t\t\tOptional. Print out debug messages.")
-    print("  --help\t\t\tOptional. Print this help.")
-    print("  --version\t\t\tOptional. Print version number of software and exit.")
+    print("  --testid=<testid>\tID of the test.")
+    print("  --debug\t\tOptional. Print out debug messages.")
+    print("  --help\t\tOptional. Print this help.")
 ### END usage()
 
 
@@ -75,7 +74,6 @@ def usage():
 def main(argv):
     global debug
     
-    FlockDAQ = "false"
     testid = None
     
     # Get logger:
@@ -92,8 +90,8 @@ def main(argv):
     
 
     # Get command line parameters.
-    try:                                
-        opts, args = getopt.getopt(argv, "dhvt:", ["debug", "help", "version", "testid="])
+    try:
+        opts, args = getopt.getopt(argv, "dht:", ["debug", "help", "testid="])
     except (getopt.GetoptError) as err:
         logger.error(str(err))
         usage()
@@ -101,18 +99,11 @@ def main(argv):
     for opt, arg in opts:
         if opt in ("-t", "--testid"):
             testid = int(arg)
-        
         elif opt in ("-d", "--debug"):
             debug = True
-            
         elif opt in ("-h", "--help"):
             usage()
             sys.exit(flocklab.SUCCESS)
-        
-        elif opt in ("-v", "--version"):
-            print(version)
-            sys.exit(flocklab.SUCCESS)
-        
         else:
             print("Wrong API usage")
             logger.error("Wrong API usage")
@@ -156,7 +147,6 @@ def main(argv):
         if rs != None:
             slotnr = int(rs.find('slotnr').text)
             platform = rs.find('platform')
-            #FlockDAQ = rs.find('FlockDAQ').text
             if platform != None:
                 platform = platform.text.lower()
             imagefiles_to_process = rs.findall('image')
@@ -221,117 +211,46 @@ def main(argv):
 #'flocklab_gpiosetting':['gpio_setting','GPIO setting'],
 #'flocklab_gpiomonitor':['gpio_monitor','GPIO monitoring']
 }
-    if FlockDAQ != "true":
-        cmd = ['flocklab_scheduler.py', '--remove', '--testid=%d' % testid]
-        p = subprocess.Popen(cmd, stdout=open('/dev/null', 'w'), stderr=subprocess.STDOUT)
-        (out, err) = p.communicate()
-        rs = p.returncode
-        if (rs not in (flocklab.SUCCESS,)):
-            msg = "Error when trying to remove test from observer scheduler."
-            errors.append(msg)
-            logger.error(msg)
-            if debug:
-                logger.error("Tried to start with: %s"%(str(cmd)))
-        errors.extend(flocklab.stop_services(services, logger, testid, debug))
-    else:
-        # stop potentially running daq config daemon
-        killtimeout = 10
-        while killtimeout > 0:
-            cmd = ['pkill', '-SIGINT', '-f', '^flocklab_config_daemon']
-            p = subprocess.Popen(cmd, stdout=open('/dev/null', 'w'), stderr=subprocess.STDOUT)
-            (out, err) = p.communicate()
-            killtimeout = killtimeout - 1
-            if p.returncode == 0: # there was a config_daemon process
-                time.sleep(1)
-            else:
-                break
-        # put FPGA to route through mode
-        daq_port = config.get("daq","serialport")
-        if (os.path.exists(daq_port)):
-            serDaq = serial.Serial(daq_port, 1000000, timeout=1)
-            # stop test
-            stopCmd = chr(int('0' + '100' + '0000',2))
-            serDaq.write(stopCmd)
-            # sleep for 1 second, so the there is enough time to fully transmit possible data in the SRAM (up to 250k*32Bit) over SPI to the database daemon
-            time.sleep(1)
-            if debug:
-                logger.debug("Stopped DAQ test.")
-        
-        # NOTE: BSL lines to program the target are routed through the FPGA, script will therefore fail without setting route through to on
-        # stop database daemon
-        cmd = ['flocklab_dbd', '-stop', '--testid=%d' % testid, '--service=flockdaq']
-        #p = subprocess.Popen(cmd, stdout=open('/dev/null', 'w'), stderr=subprocess.STDOUT)
-        #(out, err) = p.communicate()
-        #rs = p.returncode
-        rs = flocklab.SUCCESS
-        if (rs not in (flocklab.SUCCESS,)):
-            msg = "Error when trying to stop database daemon for flockdaq service."
-            errors.append(msg)
-            logger.error(msg)
-            if debug:
-                logger.error("Tried to start with: %s"%(str(cmd)))
-        # wait some time until dbd has finished
-        dbd_max_wait_count = int(config.get("daq", "dbd_max_wait_count"))
-        while dbd_max_wait_count > 0:
-            p = subprocess.Popen(['pgrep', '-f', 'dbd_flockdaq'], stdout=subprocess.PIPE)
-            out, err = p.communicate(None)
-            if (out != None) and len(out)>0:
-                time.sleep(1)
-            else:
-                logger.debug("dbd finished after %d seconds"%(int(config.get("daq", "dbd_max_wait_count")) - dbd_max_wait_count))
-                break
-            dbd_max_wait_count = dbd_max_wait_count - 1
-        #setting route through on
-        if (serDaq.isOpen()):
-            routeCmd = chr(int('0' + '000' + '1111',2))
-            serDaq.write(routeCmd)
-            if debug:
-                logger.debug("Configured DAQ to route through mode.")
-            serDaq.close()
-        
-    # Stop Moterunner LIP proxy:
-    if (operatingsystem == 'moterunner'):
-        cmd = ['pkill', '-f', 'lip-proxy']
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = p.communicate()
-        if p.returncode == 0:
-            if debug:
-                logger.debug("Killed Moterunner LIP proxy.")
-        
+    cmd = ['flocklab_scheduler.py', '--remove', '--testid=%d' % testid]
+    p = subprocess.Popen(cmd, stdout=open('/dev/null', 'w'), stderr=subprocess.STDOUT)
+    (out, err) = p.communicate()
+    rs = p.returncode
+    if (rs not in (flocklab.SUCCESS,)):
+        msg = "Error when trying to remove test from observer scheduler."
+        errors.append(msg)
+        logger.error(msg)
+        if debug:
+            logger.error("Tried to start with: %s"%(str(cmd)))
+    errors.extend(flocklab.stop_services(services, logger, testid, debug))
     
     # Flash target with default image ---
     if slotnr and platform:
-        #if (platform in ('tinynode', 'tmote', 'opal', 'iris', 'mica2', 'wismote', 'cc430', 'acm2', 'openmote','dpp')):
-            core = 0
-            while True:
+        core = 0
+        while True:
+            try:
+                imgfile = config.get("defaultimages", "img%d_%s"%(core,platform))
+                optional_reprogramming = False
+            except configparser.NoOptionError:
                 try:
-                    imgfile = config.get("defaultimages", "img%d_%s"%(core,platform))
-                    optional_reprogramming = False
+                    imgfile = config.get("defaultimages", "optional_img%d_%s"%(core,platform))
+                    optional_reprogramming = True
                 except configparser.NoOptionError:
-                    try:
-                        imgfile = config.get("defaultimages", "optional_img%d_%s"%(core,platform))
-                        optional_reprogramming = True
-                    except configparser.NoOptionError:
-                        break
-                cmd = ['tg_prog.py', '--image=%s%s'%(config.get("observer", "templatesfolder"), imgfile), '--target=%s'%(platform), '--core=%d' % core]
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                (out, err) = p.communicate()
-                rs = p.returncode
-                if (rs != flocklab.SUCCESS):
-                    msg = "Could not flash target with default image because error %d occurred."%rs
-                    if not optional_reprogramming:
-                        errors.append(msg)
-                    logger.error(msg)
-                    if debug:
-                        logger.error("Tried reprogramming with %s"%(str(cmd)))
-                else:
-                    if debug:
-                        logger.debug("Reprogrammed target with default image.")
-                core = core + 1
-        #else:
-        #    msg = "Could not flash target with default image because platform %s is unknown."%platform
-        #    errors.append(msg)
-        #    logger.error(msg)
+                    break
+            cmd = ['tg_prog.py', '--image=%s%s'%(config.get("observer", "templatesfolder"), imgfile), '--target=%s'%(platform), '--core=%d' % core]
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (out, err) = p.communicate()
+            rs = p.returncode
+            if (rs != flocklab.SUCCESS):
+                msg = "Could not flash target with default image because error %d occurred."%rs
+                if not optional_reprogramming:
+                    errors.append(msg)
+                logger.error(msg)
+                if debug:
+                    logger.error("Tried reprogramming with %s"%(str(cmd)))
+            else:
+                if debug:
+                    logger.debug("Reprogrammed target with default image.")
+            core = core + 1
     elif len(imagepath) > 0:
         msg = "Could not flash target with default image because slot number and/or platform could not be determined."
         if debug:
@@ -358,12 +277,6 @@ def main(argv):
     if os.path.exists("%s%d" % (config.get("observer", "testconfigfolder"), testid)):
         shutil.rmtree("%s%d" % (config.get("observer", "testconfigfolder"), testid))
 
-    if FlockDAQ == "true":
-        p = subprocess.Popen(['echo "out set" > %s' % config.get("daq","fpga_reset")], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        time.sleep(1)
-        p = subprocess.Popen(['echo "out clear" > %s' % config.get("daq","fpga_reset")], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        p = subprocess.Popen(['modprobe -rf daq_spi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    
     # stop gps log
     #rs = subprocess.call('/home/root/mmc/gpsdop/gpsdoplog.sh stop', shell=True)
     

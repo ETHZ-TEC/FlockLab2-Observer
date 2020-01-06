@@ -14,6 +14,7 @@ services = {
 #'flocklab_gpiomonitor':['obsGpioMonitorConf','gpio_monitor','gpiomonitoring','GPIO monitoring']
 }# Userspace API name:[XML Element name, service name for DBD, Service short name, Service long name]
 
+
 ##############################################################################
 #
 # errchk_exit -    Check for errors, report them and exit with appropriate code
@@ -47,17 +48,15 @@ def errchk_exit(led_path=None, errors=[], logger=None):
 # Usage
 #
 ##############################################################################
-def usage():                         
-    print("Usage: %s --testid=<testid> --xml=<path> [--daqconfig=<path>] [--debug] [--help] [--version]" %sys.argv[0])
+def usage():
+    print("Usage: %s --testid=<testid> --xml=<path> [--debug]" %sys.argv[0])
     print("Start a FlockLab test which is defined in the provided XMl.")
     print("Options:")
-    print("  --testid=<testid>\t\tID of the test.")
-    print("  --xml=<path>\t\t\tPath to the XML file with the testconfiguration.")
-    print("  --serialport=<port>\t\tPort for the serial forwarder.")
-    print("  --daqconfig=<path>\t\tOptional. Path to the DAQ config file.")
-    print("  --debug\t\t\tOptional. Print debug messages to log.")
-    print("  --help\t\t\tOptional. Print this help.")
-    print("  --version\t\t\tOptional. Print version number of software and exit.")
+    print("  --testid=<testid>\tID of the test.")
+    print("  --xml=<path>\t\tPath to the XML file with the testconfiguration.")
+    print("  --serialport=<port>\tPort for the serial forwarder.")
+    print("  --debug\t\tOptional. Print debug messages to log.")
+    print("  --help\t\tOptional. Print this help.")
 ### END usage()
 
 
@@ -73,9 +72,7 @@ def main(argv):
     global debug
     
     xmlfile = None
-    daqfile = None
     testid = None
-    FlockDAQ = "false"
     # Get logger:
     logger = flocklab.get_logger("flocklab_starttest.py")
     
@@ -89,8 +86,8 @@ def main(argv):
     led_path = config.get("observer","led_red")
 
     # Get command line parameters.
-    try:                                
-        opts, args = getopt.getopt(argv, "hvdt:x:f:p:", ["help", "version", "debug", "testid=", "xml=", "daqconfig=", "serialport="])
+    try:
+        opts, args = getopt.getopt(argv, "hdt:x:p:", ["help", "debug", "testid=", "xml=", "serialport="])
     except (getopt.GetoptError) as err:
         print(str(err))
         logger.error(str(err))
@@ -108,16 +105,11 @@ def main(argv):
                 err = "Error: file %s does not exist" %(str(xmlfile))
                 logger.error(err)
                 sys.exit(errno.EINVAL)
-        elif opt in ("-f", "--daqconfig"):
-            logger.info("No daqfile supported anymore")
         elif opt in ("-p", "--serialport"):
             serialport = int(arg)
         elif opt in ("-h", "--help"):
             debug = True
             usage()
-            sys.exit(flocklab.SUCCESS)
-        elif opt in ("-v", "--version"):
-            print(version)
             sys.exit(flocklab.SUCCESS)
         elif opt in ("-d", "--debug"):
             debug = True
@@ -159,13 +151,12 @@ def main(argv):
             logger.error(msg)
     # Get basic information from <obsTargetConf> ---
     voltage         = None
-    imagefile         = None
-    slotnr             = None
-    platform         = None
-    operatingsystem    = None
+    imagefile       = None
+    slotnr          = None
+    platform        = None
+    operatingsystem = None
     firmwareversion = None
     noimage         = False
-    moterunnerosonly= False
 
     imagefiles_to_process = tree.findall('obsTargetConf/image')
     imagefile = {}
@@ -175,11 +166,6 @@ def main(argv):
         if debug:
             logger.debug("Test without image")
         noimage = True
-        # Check if it is a moterunner OS only session:
-        try:
-            ret = tree.find('obsTargetConf/os').text
-        except:
-            pass
 
     try:
         voltage = int(10*float(tree.find('obsTargetConf/voltage').text))
@@ -189,7 +175,7 @@ def main(argv):
         except:
             if not noimage:
                 raise
-        if ((not noimage) or (moterunnerosonly)):
+        if not noimage:
             firmwareversion = tree.find('obsTargetConf/firmware').text
             platform = tree.find('obsTargetConf/platform').text.lower()
             platform = "dpp"
@@ -197,7 +183,7 @@ def main(argv):
         if debug:
             logger.debug("Got basic information from XML.")
     except:
-        msg ="XML: could not find mandatory element(s) in element <obsTargetConf>"
+        msg = "XML: could not find mandatory element(s) in element <obsTargetConf>"
         errors.append(msg)
         if debug:
             logger.error(msg)
@@ -221,7 +207,7 @@ def main(argv):
         msg = "Could not activate interface and turn off target power because slot number could not be determined."
         errors.append(msg)
         if debug:
-            logger.error(msg)    
+            logger.error(msg)
             
 
     # Make sure no serial service scripts are running ---
@@ -255,21 +241,20 @@ def main(argv):
             logger.debug("Killed at least one running database daemon (dbd) process.")
         
     # Make sure all kernel-module based services are running ---
-    if FlockDAQ != "true":
-        flocklab.start_services(services, logger, debug)
-                     
-        # Pull down GPIO setting lines ---
-        for pin in ('SIG1', 'SIG2'):
-            r = flocklab.tg_press_gpio(flocklab.pin_abbr2num(pin), 0)
-            if (r not in (flocklab.SUCCESS, )):
-                msg = "Error %d when trying to pull down GPIO line %s: %s"%(r, pin, str(err))
-                errors.append(msg)
-                if debug:
-                    logger.error(msg)
-                    logger.error("Tried to run command %s"%(str(cmd)))
-            else:
-                if debug:
-                    logger.debug("Successfully pulled down GPIO line %s."%pin)
+    flocklab.start_services(services, logger, debug)
+    
+    # Pull down GPIO setting lines ---
+    for pin in ('SIG1', 'SIG2'):
+        r = flocklab.tg_press_gpio(flocklab.pin_abbr2num(pin), 0)
+        if (r not in (flocklab.SUCCESS, )):
+            msg = "Error %d when trying to pull down GPIO line %s: %s"%(r, pin, str(err))
+            errors.append(msg)
+            if debug:
+                logger.error(msg)
+                logger.error("Tried to run command %s"%(str(cmd)))
+        else:
+            if debug:
+                  logger.debug("Successfully pulled down GPIO line %s."%pin)
     
     # Flash target, set voltage ---
     if not errors:
@@ -369,205 +354,164 @@ def main(argv):
         else:
             if debug:
                 logger.debug("No config for serial service found.")
-        
-        if FlockDAQ != "true":
+
         #TODO: new power profiling! && new GPIO setting
         # Powerprofiling ---
-            if (tree.find('obsPowerprofConf') != None and False):
-                if debug:
-                    logger.debug("Found config for powerprofiling.")
-                # Cycle trough all configurations and write them to a file which is then fed to the service.
-                # Create temporary file:
-                (fd, batchfile) = tempfile.mkstemp() 
-                f = os.fdopen(fd, 'w+b')
-                # Cycle through all powerprof configs and insert them into file:
-                subtree = tree.find('obsPowerprofConf')
-                profconfs = list(subtree.getiterator("profConf"))
-                for profconf in profconfs:
-                    duration = profconf.find('duration').text
-                    # Get time and bring it into right format:
-                    starttime = flocklab.timeformat_xml2service(config, profconf.find('absoluteTime/absoluteDateTime').text)
-                    microsecs = profconf.find('absoluteTime/absoluteMicrosecs').text
-                    nthsample = profconf.find('samplingDivider')
-                    if nthsample != None:
-                        nthsample = nthsample.text
-                    else:
-                        nthsample = config.get('powerprofiling', 'nthsample_default')
-                    f.write("%s;%s;%s;%s;\n" %(duration, starttime, microsecs, nthsample))
-                f.close()
-                # Feed service with batchfile:
-                cmd = ['flocklab_powerprofiling', '-addbatch', '--file=%s'%batchfile]
-                if not debug:
-                    cmd.append('--quiet')
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                (out, err) = p.communicate()
-                if (p.returncode != flocklab.SUCCESS):
-                    msg = "Error %d when trying to configure powerprofiling service: %s"%(p.returncode, str(err))
-                    errors.append(msg)
-                    if debug:
-                        logger.error(msg)
-                        logger.error("Tried to configure with: %s"%(str(cmd)))
+        if (tree.find('obsPowerprofConf') != None and False):
+            if debug:
+                logger.debug("Found config for powerprofiling.")
+            # Cycle trough all configurations and write them to a file which is then fed to the service.
+            # Create temporary file:
+            (fd, batchfile) = tempfile.mkstemp() 
+            f = os.fdopen(fd, 'w+b')
+            # Cycle through all powerprof configs and insert them into file:
+            subtree = tree.find('obsPowerprofConf')
+            profconfs = list(subtree.getiterator("profConf"))
+            for profconf in profconfs:
+                duration = profconf.find('duration').text
+                # Get time and bring it into right format:
+                starttime = flocklab.timeformat_xml2service(config, profconf.find('absoluteTime/absoluteDateTime').text)
+                microsecs = profconf.find('absoluteTime/absoluteMicrosecs').text
+                nthsample = profconf.find('samplingDivider')
+                if nthsample != None:
+                    nthsample = nthsample.text
                 else:
-                    # Remove batch file:
-                    os.remove(batchfile)
-                    if debug:
-                        logger.debug("Configured powerprofiling service.")
-            else:
-                if debug:
-                    logger.debug("No config for powerprofiling service found.")
-                  
-          # GPIO setting ---
-            if (tree.find('obsGpioSettingConf') != None):
-                if debug:
-                    logger.debug("Found config for GPIO setting.")
-                # Cycle trough all configurations and write them to a file which is then fed to the service.
-                # Create temporary file:
-                (fd, batchfile) = tempfile.mkstemp() 
-                f = os.fdopen(fd, 'w+b')
-                # Cycle through all configs and insert them into file:
-                subtree = tree.find('obsGpioSettingConf')
-                pinconfs = list(subtree.getiterator("pinConf"))
-                settingcount = 0
-                resets = []
-                for pinconf in pinconfs:
-                    pin = flocklab.pin_abbr2num(pinconf.find('pin').text)
-                    if pinconf.find('pin').text == 'RST':
-                        resets.append(flocklab.timeformat_xml2timestamp(config, pinconf.find('absoluteTime/absoluteDateTime').text))
-                    settingcount = settingcount + 1
-                    level = flocklab.level_str2abbr(pinconf.find('level').text)
-                    interval = pinconf.find('intervalMicrosecs').text
-                    count = pinconf.find('count').text
-                    # Get time and bring it into right format:
-                    starttime = flocklab.timeformat_xml2service(config, pinconf.find('absoluteTime/absoluteDateTime').text)
-                    microsecs = pinconf.find('absoluteTime/absoluteMicrosecs').text
-                    f.write("%s;%s;%s;%s;%s;%s;\n" %(pin, level, starttime, microsecs, interval, count))
-                f.close()
-                # Feed service with batchfile:
-                #cmd = ['flocklab_gpiosetting', '-addbatch', '--file=%s'%batchfile]
-                #if not debug:
-                #    cmd.append('--quiet')
-                #p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                #(out, err) = p.communicate()
-                #if (p.returncode != flocklab.SUCCESS):
-                if False:
-                    msg = "Error %d when trying to configure GPIO setting service: %s"%(p.returncode, str(err))
-                    errors.append(msg)
-                    if debug:
-                        logger.error(msg)
-                        logger.error("Tried to configure with: %s"%(str(cmd)))
-                else:
-                    # Remove batch file:
-                    os.remove(batchfile)
-                    if debug:
-                        logger.debug("Configured GPIO setting service.")
-                if len(resets) == 2 and settingcount == 2 and (max(resets) - min(resets) > 30): # only reset setting, register test switch at end of test
-                    cmd = ['flocklab_scheduler.py', '--add', '--testid=%d'%testid, '--switchtime=%d' % (max(resets) - 30) ]
-                    if debug:
-                        cmd.append('--debug')
-                    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    (out, err) = p.communicate()
-                    if (p.returncode != flocklab.SUCCESS):
-                        msg = "Error %d when trying to schedule test switch: %s"%(p.returncode, str(err))
-                        errors.append(msg)
-                        if debug:
-                            logger.error(msg)
-                            logger.error("Tried to configure with: %s"%(str(cmd)))
-            else:
-                if debug:
-                    logger.debug("No config for GPIO setting service found.")
-            # GPIO monitoring ---
-            if (tree.find('obsGpioMonitorConf') != None and False):
-                if debug:
-                    logger.debug("Found config for GPIO monitoring.")
-                # Cycle trough all configurations and write them to a file which is then fed to the service.
-                # Create temporary file:
-                (fd, batchfile) = tempfile.mkstemp() 
-                f = os.fdopen(fd, 'w+b')
-                # Cycle through all configs and insert them into file:
-                subtree = tree.find('obsGpioMonitorConf')
-                pinconfs = list(subtree.getiterator("pinConf"))
-                for pinconf in pinconfs:
-                    pin = flocklab.pin_abbr2num(pinconf.find('pin').text)
-                    edge = flocklab.edge_str2abbr(pinconf.find('edge').text)
-                    mode = flocklab.gpiomon_mode_str2abbr(pinconf.find('mode').text)
-                    # Check if there is a callback defined. If yes, add it.
-                    if (pinconf.find('callbackGpioSetAdd')):
-                        cbkpin = flocklab.pin_abbr2num(pinconf.find('callbackGpioSetAdd/pin').text)
-                        cbklevel = flocklab.level_str2abbr(pinconf.find('callbackGpioSetAdd/level').text)
-                        cbkoffsets  = pinconf.find('callbackGpioSetAdd/offsetSecs').text
-                        cbkoffsetms = pinconf.find('callbackGpioSetAdd/offsetMicrosecs').text
-                        callbackargs = "gpio_set_add,%s,%s,%s,%s" %(cbkpin, cbklevel, cbkoffsets, cbkoffsetms)
-                    elif (pinconf.find('callbackPowerprofAdd')):
-                        cbkdur      = pinconf.find('callbackPowerprofAdd/duration').text
-                        cbkoffsets  = pinconf.find('callbackPowerprofAdd/offsetSecs').text
-                        cbkoffsetms = pinconf.find('callbackPowerprofAdd/offsetMicrosecs').text
-                        callbackargs = "powerprof_add,%s,%s,%s" %(cbkdur, cbkoffsets, cbkoffsetms)
-                    else:
-                        callbackargs = ""
-                    # Write monitor command and possible callback to file:
-                    f.write("%s;%s;%s;%s;\n" %(pin, edge, mode, callbackargs))
-                f.close()
-                # Feed service with batchfile:
-                cmd = ['flocklab_gpiomonitor', '-addbatch', '--file=%s'%batchfile]
-                if not debug:
-                    cmd.append('--quiet')
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                (out, err) = p.communicate()
-                if (p.returncode != flocklab.SUCCESS):
-                    msg = "Error %d when trying to configure GPIO monitoring service: %s"%(p.returncode, str(err))
-                    errors.append(msg)
-                    if debug:
-                        logger.error(msg)
-                        logger.error("Tried to configure with: %s"%(str(cmd)))
-                else:
-                    # Remove batch file:
-                    os.remove(batchfile)
-                    if debug:
-                        logger.debug("Configured GPIO monitoring service.")
-            else:
-                if debug:
-                    logger.debug("No config for GPIO monitoring service found.")
-        # starting FPGA config writer
-        else:
-          # if the database daemon is started before setting route through off using the config daemon, it reads a huge amount of unwanted adc samples => set route through off before adding dbd_daemon
-            if (os.path.exists(daq_port)):
-                serDaq = serial.Serial(daq_port, 1000000, timeout=1)
-                routeCmd = chr(int('0' + '000' + '0000',2))
-                serDaq.write(routeCmd)
-                if debug:
-                    logger.debug("Configured DAQ to route through mode off.")
-                serDaq.close()
-
-            # starting database daemon
-            cmd = ['flocklab_dbd', '-start', '--testid=%d' % testid, '--service=flockdaq', '--threshold=1', '--quiet']
-            p = subprocess.Popen(cmd, stdout=open('/dev/null', 'w'), stderr=subprocess.STDOUT)
-            rs = p.wait()
-            if (rs not in (flocklab.SUCCESS,)):
-                msg = "Error %d when trying to start database daemon for flockdaq service."
-                errors.append(msg)
-                if debug:
-                    logger.error(msg)
-                    logger.error("Tried to start with: %s"%(str(cmd)))
-
-            # starting config daemon
-            cmd = ['flocklab_config_daemon --file=%s' % (daqfile)]
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-
-        # LIP Proxy for moterunner ---
-        if (operatingsystem == 'moterunner'):
-            # Start LIP proxy:
-            cmd = ["%s/%s"%(config.get("moterunner", "basedir"), config.get("moterunner", "lipproxy"))]
+                    nthsample = config.get('powerprofiling', 'nthsample_default')
+                f.write("%s;%s;%s;%s;\n" %(duration, starttime, microsecs, nthsample))
+            f.close()
+            # Feed service with batchfile:
+            cmd = ['flocklab_powerprofiling', '-addbatch', '--file=%s'%batchfile]
+            if not debug:
+                cmd.append('--quiet')
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if (p.returncode != None):
-                (out, err) = p.communicate()
-                msg = "Error when trying to start LIP proxy for Moterunner: %s, %s"%(str(out), str(err))
+            (out, err) = p.communicate()
+            if (p.returncode != flocklab.SUCCESS):
+                msg = "Error %d when trying to configure powerprofiling service: %s"%(p.returncode, str(err))
                 errors.append(msg)
                 if debug:
                     logger.error(msg)
-                    logger.error("Tried to execute: %s"%(str(cmd)))
+                    logger.error("Tried to configure with: %s"%(str(cmd)))
             else:
+                # Remove batch file:
+                os.remove(batchfile)
                 if debug:
-                    logger.debug("Started LIP proxy for Moterunner.")
+                    logger.debug("Configured powerprofiling service.")
+        else:
+            if debug:
+                logger.debug("No config for powerprofiling service found.")
+              
+      # GPIO setting ---
+        if (tree.find('obsGpioSettingConf') != None):
+            if debug:
+                logger.debug("Found config for GPIO setting.")
+            # Cycle trough all configurations and write them to a file which is then fed to the service.
+            # Create temporary file:
+            (fd, batchfile) = tempfile.mkstemp() 
+            f = os.fdopen(fd, 'w+b')
+            # Cycle through all configs and insert them into file:
+            subtree = tree.find('obsGpioSettingConf')
+            pinconfs = list(subtree.getiterator("pinConf"))
+            settingcount = 0
+            resets = []
+            for pinconf in pinconfs:
+                pin = flocklab.pin_abbr2num(pinconf.find('pin').text)
+                if pinconf.find('pin').text == 'RST':
+                    resets.append(flocklab.timeformat_xml2timestamp(config, pinconf.find('absoluteTime/absoluteDateTime').text))
+                settingcount = settingcount + 1
+                level = flocklab.level_str2abbr(pinconf.find('level').text)
+                interval = pinconf.find('intervalMicrosecs').text
+                count = pinconf.find('count').text
+                # Get time and bring it into right format:
+                starttime = flocklab.timeformat_xml2service(config, pinconf.find('absoluteTime/absoluteDateTime').text)
+                microsecs = pinconf.find('absoluteTime/absoluteMicrosecs').text
+                f.write("%s;%s;%s;%s;%s;%s;\n" %(pin, level, starttime, microsecs, interval, count))
+            f.close()
+            # Feed service with batchfile:
+            #cmd = ['flocklab_gpiosetting', '-addbatch', '--file=%s'%batchfile]
+            #if not debug:
+            #    cmd.append('--quiet')
+            #p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            #(out, err) = p.communicate()
+            #if (p.returncode != flocklab.SUCCESS):
+            if False:
+                msg = "Error %d when trying to configure GPIO setting service: %s"%(p.returncode, str(err))
+                errors.append(msg)
+                if debug:
+                    logger.error(msg)
+                    logger.error("Tried to configure with: %s"%(str(cmd)))
+            else:
+                # Remove batch file:
+                os.remove(batchfile)
+                if debug:
+                    logger.debug("Configured GPIO setting service.")
+            if len(resets) == 2 and settingcount == 2 and (max(resets) - min(resets) > 30): # only reset setting, register test switch at end of test
+                cmd = ['flocklab_scheduler.py', '--add', '--testid=%d'%testid, '--switchtime=%d' % (max(resets) - 30) ]
+                if debug:
+                    cmd.append('--debug')
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                (out, err) = p.communicate()
+                if (p.returncode != flocklab.SUCCESS):
+                    msg = "Error %d when trying to schedule test switch: %s"%(p.returncode, str(err))
+                    errors.append(msg)
+                    if debug:
+                        logger.error(msg)
+                        logger.error("Tried to configure with: %s"%(str(cmd)))
+        else:
+            if debug:
+                logger.debug("No config for GPIO setting service found.")
+        # GPIO monitoring ---
+        if (tree.find('obsGpioMonitorConf') != None and False):
+            if debug:
+                logger.debug("Found config for GPIO monitoring.")
+            # Cycle trough all configurations and write them to a file which is then fed to the service.
+            # Create temporary file:
+            (fd, batchfile) = tempfile.mkstemp() 
+            f = os.fdopen(fd, 'w+b')
+            # Cycle through all configs and insert them into file:
+            subtree = tree.find('obsGpioMonitorConf')
+            pinconfs = list(subtree.getiterator("pinConf"))
+            for pinconf in pinconfs:
+                pin = flocklab.pin_abbr2num(pinconf.find('pin').text)
+                edge = flocklab.edge_str2abbr(pinconf.find('edge').text)
+                mode = flocklab.gpiomon_mode_str2abbr(pinconf.find('mode').text)
+                # Check if there is a callback defined. If yes, add it.
+                if (pinconf.find('callbackGpioSetAdd')):
+                    cbkpin = flocklab.pin_abbr2num(pinconf.find('callbackGpioSetAdd/pin').text)
+                    cbklevel = flocklab.level_str2abbr(pinconf.find('callbackGpioSetAdd/level').text)
+                    cbkoffsets  = pinconf.find('callbackGpioSetAdd/offsetSecs').text
+                    cbkoffsetms = pinconf.find('callbackGpioSetAdd/offsetMicrosecs').text
+                    callbackargs = "gpio_set_add,%s,%s,%s,%s" %(cbkpin, cbklevel, cbkoffsets, cbkoffsetms)
+                elif (pinconf.find('callbackPowerprofAdd')):
+                    cbkdur      = pinconf.find('callbackPowerprofAdd/duration').text
+                    cbkoffsets  = pinconf.find('callbackPowerprofAdd/offsetSecs').text
+                    cbkoffsetms = pinconf.find('callbackPowerprofAdd/offsetMicrosecs').text
+                    callbackargs = "powerprof_add,%s,%s,%s" %(cbkdur, cbkoffsets, cbkoffsetms)
+                else:
+                    callbackargs = ""
+                # Write monitor command and possible callback to file:
+                f.write("%s;%s;%s;%s;\n" %(pin, edge, mode, callbackargs))
+            f.close()
+            # Feed service with batchfile:
+            cmd = ['flocklab_gpiomonitor', '-addbatch', '--file=%s'%batchfile]
+            if not debug:
+                cmd.append('--quiet')
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (out, err) = p.communicate()
+            if (p.returncode != flocklab.SUCCESS):
+                msg = "Error %d when trying to configure GPIO monitoring service: %s"%(p.returncode, str(err))
+                errors.append(msg)
+                if debug:
+                    logger.error(msg)
+                    logger.error("Tried to configure with: %s"%(str(cmd)))
+            else:
+                # Remove batch file:
+                os.remove(batchfile)
+                if debug:
+                    logger.debug("Configured GPIO monitoring service.")
+        else:
+            if debug:
+                logger.debug("No config for GPIO monitoring service found.")
+
     else:
         msg = "Could not configure services because of previous errors in start script."
         errors.append(msg)
