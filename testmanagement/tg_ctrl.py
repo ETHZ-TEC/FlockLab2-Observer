@@ -39,6 +39,7 @@ def usage():
     print("\t\t   select\tselect the target specified with --target")
     print("\t\t   active\tget the currently selected target adapter")
     print("\t\t   volt\tset the target voltage")
+    print("\t\t   reset\treset the target")
     print("  --target, -t\tOptional. If set, the requested target's interface is enabled. If no target is given, all target's interfaces are turned off.")
     print("  --help, -h\tOptional. Print this help.")
 ### END usage()
@@ -92,8 +93,10 @@ def main(argv):
 
     if action in "enable":
         flocklab.tg_pwr_en(True)
+        flocklab.tg_en(True)
     elif action in "disable":
         flocklab.tg_pwr_en(False)
+        flocklab.tg_en(False)
     elif action in "state":
         if flocklab.tg_pwr_state():
             print("on")
@@ -110,6 +113,8 @@ def main(argv):
         if flocklab.tg_set_vcc(vcc) != flocklab.SUCCESS:
             print("Failed to set target voltage.")
             sys.exit(errno.EINVAL)
+    elif action in "reset":
+        flocklab.tg_reset()
     else:
         print("unknown action '%s'" % action)
         sys.exit(errno.EINVAL)

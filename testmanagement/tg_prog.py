@@ -2,20 +2,14 @@
 
 import os, sys, getopt, subprocess, errno, time, serial
 import lib.flocklab as flocklab
+import stm32loader.stm32loader as stm32loader
+from intelhex import hex2bin
+
+# bootstrap loader scripts
+#import msp430.bsl5.uart
 
 
-### Global variables ###
-imagefile    = None
-target           = None
-targetlist  = ('tmote', 'dpp')
-porttypelist= ('usb', 'serial')
-porttype    = None
-pin_rst          = "P8_9"
-pin_prog    = "P8_28"
-pin_sig1    = "P8_45"
-pin_sig2    = "P8_46"
-noreset        = False
-debug        = False
+debug = False
 
 
 ##############################################################################
@@ -29,179 +23,203 @@ class Error(Exception):
 ### END Error classes
 
 
-
 ##############################################################################
 #
 # Usage
 #
 ##############################################################################
 def usage():
-    print("Usage: %s --image=<path> --target=<string> [--port=<string>] [--core=<int>] [--noreset] [--debug] [--help] [--version]" %sys.argv[0])
-    print("Reprogram a target node on the FlockBoard. The target will be turned on after the reprogramming.")
+    print("Usage: %s --image=<path> --target=<string> [--port=<string>] [--core=<int>] [--debug] [--help]" %sys.argv[0])
+    print("Program a target node. Target voltage will be changed to 3.3V.")
     print("Options:")
     print("  --image=<path>\tAbsolute path to image file which is to be flashed onto target node")
-    print("  --target=<string>\tType of target. Allowed targets: %s" %(", ".join(targetlist)))
-    print("  --port=<string>\tOptional. Specify port which is used for reprogramming. Allowed values are: %s. Defaults: usb for tmote, serial for dpp." %(", ".join(porttypelist)))
+    print("  --target=<string>\tType of target")
+    print("  --port=<string>\tOptional. Specify port which is used for reprogramming (serial or SWD).")
     print("  --core=<int>\t\tOptional. Specify core to program. Defaults to 0.")
-    print("  --noreset\t\tOptional. If set, node will not be reset after reprogramming.")
     print("  --debug\t\tOptional. Print debug messages to log.")
     print("  --help\t\tOptional. Print this help.")
 ### END usage()
 
-##############################################################################
-#
-# Helper functions
-#
-##############################################################################
-def reprog_msp430bsl5_common(imagefile, slotnr, port, prog_toggle_num=1, progstate=0, speed=38400):
-    usleep = 0.00005
 
-    #rst = simpleGPIO.SimpleGPIO(pin_rst)
-    #prog = simpleGPIO.SimpleGPIO(pin_prog)
-    flocklab.tg_press_gpio(pin_rst, 0)
-    flocklab.tg_press_gpio(pin_prog, 1)
-    
-    #rst.write(0)
-    #prog.write(1)
+##############################################################################
+#
+# MSP430 via serial port / bootloader
+#
+##############################################################################
+def prog_msp430(imagefile, port, prog_toggle_num=1, progstate=0, speed=38400):
+    global debug
+    usleep = 0.001
+
+    flocklab.gpio_clr(flocklab.gpio_tg_nrst)
+    flocklab.gpio_set(flocklab.gpio_tg_prog)
 
     time.sleep(usleep)
     
     for i in range(0, prog_toggle_num):
         #prog.write(0)
-        flocklab.tg_press_gpio(pin_prog, 0)
+        flocklab.gpio_clr(flocklab.gpio_tg_prog, 0)
         time.sleep(usleep)
     
         #prog.write(1)
-        flocklab.tg_press_gpio(pin_prog, 1)
+        flocklab.gpio_set(flocklab.gpio_tg_prog, 1)
         time.sleep(usleep)
     
-    #rst.write(1)
-    flocklab.tg_press_gpio(pin_rst, 1)
+    flocklab.gpio_set(flocklab.gpio_tg_nrst)  # release reset
     time.sleep(usleep)
-
-    #prog.write(0)
-    flocklab.tg_press_gpio(pin_prog, 0)
+    flocklab.gpio_clr(flocklab.gpio_tg_prog)
     
     if progstate == 1:
         time.sleep(usleep)
-        #prog.write(1)
-        flocklab.tg_press_gpio(pin_prog, 1)
-
-    import msp430.bsl5.uart
+        flocklab.gpio_set(flocklab.gpio_tg_prog)
     
-    #cmd = ["-p", port, "-e", "-S", "-V", "--speed=%d" %speed, "-i", "ihex", "-P", imagefile]
     cmd = ["python","-m","msp430.bsl5.uart","-p", port, "-e", "-S", "-V", "--speed=%d" %speed, "-i", "ihex", "-P", imagefile, "-v", "--debug"]
     
     if debug:
-        cmd.append("-vvvvvvvvv")
+        cmd.append("-vvv")
         cmd.append("--debug")
-    #bsl =  msp430.bsl5.uart.SerialBSL5Target()
     try:
-        #bsl.main(cmd)
         subprocess.call(cmd)
-        print("TEST2")
     except Exception:
-        flocklab.tg_reset(usleep)
+        flocklab.tg_reset()
         return 3
     
     # Revert back all config changes:
     subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
-    #set_pin(pin_prog, 0)
-    #prog.write(0)
-    flocklab.tg_press_gpio(pin_prog, 0)
-    
-    # Reset if not forbidden by caller: 
-    if noreset:
-        flocklab.tg_reset_keep()
-    else:
-        flocklab.tg_reset(usleep)
+    flocklab.gpio_clr(flocklab.gpio_tg_prog)
 
-    return 0
+    return flocklab.SUCCESS
 ### END reprog_cc430()
 
 
 ##############################################################################
 #
-# reprog_dpp
+# MSP432 via serial port / bootloader
 #
 ##############################################################################
-def reprog_dpp(imagefile, slotnr, core):
-    port   = '/dev/ttyO2'
+def prog_msp432(imagefile, port, speed):
+    global debug
+    usleep = 0.001
+
+    flocklab.set_pin(flocklab.gpio_tg_nrst, 0)
+    flocklab.set_pin(flocklab.gpio_tg_prog, 1)
+    time.sleep(usleep)
+
+    flocklab.set_pin(flocklab.gpio_tg_nrst, 1)
+    time.sleep(5)
+
+    cmd = ["python","-m","msp430.bsl5.uart","-p", port, "-e", "-S", "-V","--speed=%d" % speed, "-i", "ihex", "-P", imagefile, "-v", "--debug"]
+    if debug:
+        cmd.append("-vvv")
+        cmd.append("--debug")
+    try:
+        subprocess.call(cmd)
+    except Exception:
+        flocklab.tg_reset()
+        return 3
+    
+    flocklab.set_pin(flocklab.gpio_tg_prog, 0)
+    
+    # Revert back all config changes:
+    #subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
+
+    return flocklab.SUCCESS
+### END prog_msp432()
+
+
+##############################################################################
+#
+# STM32L4 via serial port / bootloader
+#
+##############################################################################
+def prog_stm32l4(imagefile, port, speed=115200):
+    global debug
+    usleep = 0.001
+
+    # stm32loader expects a binary file
+    if "hex" in os.path.splitext(imagefile)[1]:
+        hex2bin(imagefile, imagefile + ".binary")
+        imagefile = imagefile + ".binary"
+
+    # BSL entry sequence
+    flocklab.set_pin(flocklab.gpio_tg_prog, 0)
+    flocklab.set_pin(flocklab.gpio_tg_nrst, 0)
+    flocklab.set_pin(flocklab.gpio_tg_prog, 1)
+    time.sleep(usleep)
+    flocklab.set_pin(flocklab.gpio_tg_nrst, 1)
+
+    # call the bootloader script
+    loader = stm32loader.Stm32Loader()
+    loader.configuration['data_file'] = imagefile
+    loader.configuration['port'] = port
+    loader.configuration['baud'] = 115200
+    loader.configuration['parity'] = serial.PARITY_EVEN
+    loader.configuration['erase'] = True
+    loader.configuration['write'] = True
+    loader.configuration['verify'] = True
+    if debug:
+        stm32loader.VERBOSITY = 10
+    else:
+        stm32loader.VERBOSITY = 0
+    loader.connect()
+    if loader.read_device_details() != 0x435:
+        flocklab.tg_reset()
+        return 2
+    loader.perform_commands()
+    
+    flocklab.tg_reset()
+    
+    # Revert back all config changes:
+    #subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
+
+    return flocklab.SUCCESS
+### END prog_stm32l4()
+
+
+##############################################################################
+#
+# Dual Processor Platform v1
+#
+##############################################################################
+def prog_dpp(imagefile, core):
     core2sig = ((0,0),(1,0),(0,1),(1,1)) # (sig1,sig2)
 
     # select core
-    #sig1 = simpleGPIO.SimpleGPIO(pin_sig1)
-    #sig2 = simpleGPIO.SimpleGPIO(pin_sig2)
-
-    #sig1.write(core2sig[core][0])
-    #sig2.write(core2sig[core][1])
-    flocklab.tg_press_gpio(pin_sig1, core2sig[core][0])
-    flocklab.tg_press_gpio(pin_sig2, core2sig[core][1])
+    flocklab.set_pin(flocklab.gpio_tg_sig1, core2sig[core][0])
+    flocklab.set_pin(flocklab.gpio_tg_sig2, core2sig[core][1])
     
     # program
     ret = 1
     if core == 0: # COMM
-        ret = reprog_msp430bsl5_common(imagefile, slotnr, port, progstate = 1, speed=115200)
+        ret = prog_msp430(imagefile, flocklab.tg_serial_port, progstate = 1, speed=115200)
     elif core == 1: # BOLT
-        ret = reprog_msp430bsl5_common(imagefile, slotnr, port, speed=115200)
+        ret = prog_msp430(imagefile, flocklab.tg_serial_port, speed=115200)
     elif core == 2: # APP
-        ret = reprog_msp432(imagefile, slotnr, port, 57600)
+        ret = prog_msp432(imagefile, flocklab.tg_serial_port, 57600)
     elif core == 3: # SENSOR
-        ret = reprog_msp430bsl5_common(imagefile, slotnr, port, progstate = 1, speed=115200)
-        
-    #sig1.write(0)
-    #sig2.write(0)
-    flocklab.tg_press_gpio(pin_sig1, 0)
-    flocklab.tg_press_gpio(pin_sig2, 0)
+        ret = prog_msp430(imagefile, flocklab.tg_serial_port, progstate = 1, speed=115200)
+
+    flocklab.set_pin(flocklab.gpio_tg_sig1, 0)
+    flocklab.set_pin(flocklab.gpio_tg_sig2, 0)
 
     return ret
-### END reprog_dpp()
+### END prog_dpp()
 
-def reprog_msp432(imagefile, slotnr, port, speed):
-    usleep = 0.0005
-    import msp430.bsl5.uart
-    
-    #TODO: For FlockBoard the reset has to be inverted.
-    #rst = simpleGPIO.SimpleGPIO(pin_rst)
-    #prog = simpleGPIO.SimpleGPIO(pin_prog)
 
-    #rst.write(0)
-    flocklab.tg_press_gpio(pin_rst, 0)
-    #prog.write(1)
-    flocklab.tg_press_gpio(pin_prog, 1)
-    time.sleep(usleep)
+##############################################################################
+#
+# Program via SWD / J-Link
+#
+##############################################################################
+def prog_swd(imagefile, device):
+    cmd = 'loadfile %s\nr\nq\n' % imagefile
+    # JRunExe -device STM32L433CC -if SWD -speed 4000 imagefile
+    p = subprocess.Popen(['JLinkExe', '-device', device, '-if', 'SWD', '-speed', 'auto', '-autoconnect', '1'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    out, err = p.communicate(input=cmd)
+    if "Core found" not in out:
+        print("Failed to program target via SWD. Message: %s" % out)
+        return -1
+    return flocklab.SUCCESS
 
-    #rst.write(1)
-    flocklab.tg_press_gpio(pin_rst, 1)
-    time.sleep(5)
-
-    #cmd = ["-p", port, "-e", "-S", "-V","--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
-    cmd = ["python","-m","msp430.bsl5.uart","-p", port, "-e", "-S", "-V","--speed=%d" % speed, "-i", "ihex", "-P", imagefile, "-v", "--debug"]
-    if debug:
-        cmd.append("-vvvvvvvvv")
-        cmd.append("--debug")
-    #bsl = msp430.bsl5.uart.SerialBSL5Target()
-    try:
-    #    bsl.main(cmd)
-        subprocess.call(cmd)
-    except Exception:
-        flocklab.tg_reset(usleep)
-        return 3
-    
-    #prog.write(0)
-    flocklab.tg_press_gpio(pin_prog, 0)
-    
-    # Revert back all config changes:
-    subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
-    
-    # Reset if not forbidden by caller: 
-    if noreset:
-        flocklab.tg_reset_keep()
-    else:
-        flocklab.tg_reset(usleep)
-
-    return 0
-### END reprog_msp432()
 
 ##############################################################################
 #
@@ -209,149 +227,88 @@ def reprog_msp432(imagefile, slotnr, port, speed):
 #
 ##############################################################################
 def main(argv):
-    
-    ### Get global variables ###
-    global imagefile
-    global porttype
-    global noreset
     global debug
+    
+    porttype  = "serial"
+    imagefile = None
+    target    = None
+    core      = 0
     
     # Get logger:
     logger = flocklab.get_logger("tg_prog.py")
     
-    core = 0
-    
     # Get command line parameters.
     try:
-        opts, args = getopt.getopt(argv, "dhni:t:p:c:", ["debug", "help", "noreset", "image=", "target=", "port=", "core="])
+        opts, args = getopt.getopt(argv, "dhi:t:p:c:", ["debug", "help", "image=", "target=", "port=", "core="])
     except getopt.GetoptError  as err:
         logger.error(str(err))
         usage()
         sys.exit(errno.EINVAL)
-    for opt, arg in opts:      
+    for opt, arg in opts:
         if opt in ("-h", "--help"):
             usage()
             sys.exit(flocklab.SUCCESS)
-            
         elif opt in ("-d", "--debug"):
             debug = True
-            
-        elif opt in ("-n", "--noreset"):
-            noreset = True
-            
         elif opt in ("-i", "--image"):
             imagefile = arg
             if not (os.path.exists(imagefile)):
                 err = "Error: file %s does not exist" %(str(imagefile))
                 logger.error(str(err))
                 sys.exit(errno.EINVAL)
-                
         elif opt in ("-t", "--target"):
             target = arg
-            if not (target in targetlist):
-                err = "Error: illegal target %s" %(str(target))
-                logger.error(str(err))
-                sys.exit(errno.EINVAL)
-                
         elif opt in ("-p", "--port"):
             porttype = arg
-            if not (porttype in porttypelist):
-                err = "Error: illegal port %s" %(str(porttype))
-                logger.error(str(err))
-                sys.exit(errno.EINVAL)
-        
         elif opt in ("-c", "--core"):
             core = int(arg)
-                
         else:
-            logger.error("Wrong API usage")
-            usage()
+            logger.error("Unknown argument %s" % opt)
             sys.exit(errno.EINVAL)
-            
+    
+    # Check mandatory parameters
     if (imagefile == None) or (target == None):
-        logger.error("Wrong API usage")
+        logger.error("No image file or target specified.")
         usage()
         sys.exit(errno.EINVAL)
     
-    # Set default porttypes:
-    if not porttype:
-        if (target in ('tmote')):
-            porttype = 'usb'
-        elif (target in ('dpp')):
-            porttype = 'serial' 
+    # Check if file exists
+    if not os.path.isfile(imagefile):
+        logger.error("Image file '%s' not found." % imagefile)
+        sys.exit(errno.EINVAL)
     
-    # Check port type restrictions for targets:
-    if (target in ('tmote')) and (porttype != 'usb'):
-        err = "Error: port type for target %s has to be usb." %target
-        logger.error(str(err))
-        sys.exit(errno.EINVAL)
-    elif (target in ('dpp')) and (porttype != 'serial'):
-        err = "Error: port type for target %s has to be serial." %target
-        logger.error(str(err))
-        sys.exit(errno.EINVAL)
-        
     # Set environment variable needed for programmer: 
-    os.environ["PYTHONPATH"] = os.environ.get("PYTHONPATH", "") + "/usr/local/lib/python2.7/"
+    #os.environ["PYTHONPATH"] = os.environ.get("PYTHONPATH", "") + "/usr/local/lib/python2.7/"
     
-    # Prepare the target for reprogramming:
-    slotnr = flocklab.tg_interface_get()
-    if not slotnr:
-        err = "No interface active. Please activate one first."
-        logger.error(err)
-        sys.exit(errno.EINVAL)
-    logger.debug("Active interface is target %d"%slotnr)
-    # Turn on power
-    flocklab.tg_pwr_set(slotnr, 1)
-    # Find out voltage setting of target:
-    tg_volt_state_old = flocklab.tg_volt_get()
-    if (tg_volt_state_old < 0):
-        tg_volt_state_old = 33
-        logger.info("Currently set voltage could not be determined. Defaulting to %1.1f V"%(tg_volt_state_old/10.0))
-    else:
-        logger.info("Voltage is currently set to: %1.1f V"%(tg_volt_state_old/10.0))
-    # set voltage to maximum:
-    try:
-        flocklab.tg_volt_set(33)
-    except IOError:
-        logger.error("Could not set voltage to 3.3V")
-    # Turn on USB power if needed, otherwise turn it off.
-    if porttype == 'usb':
-        #TODO
-        #flocklab.tg_usbpwr_set(slotnr, 1)
-        logger.info("Turned on USB power")
-        time.sleep(2)
-    else:
-        #TODO
-        #flocklab.tg_usbpwr_set(slotnr, 0)
-        time.sleep(2)
+    # Set target voltage to 3.3V and make sure power & actuation is enabled
+    flocklab.tg_set_vcc(3.3)
+    flocklab.tg_pwr_en()
+    flocklab.set_pin(flocklab.gpio_tg_prog, 0)
+    flocklab.set_pin(flocklab.gpio_tg_act_nen, 0)
     
     # Flash the target:
-    print("Reprogramming %s..."%target)
-    if target == 'tmote':
-        rs = reprog_tmote_usb(imagefile, slotnr)
-    elif target == 'dpp':
-        logger.info("reprog dpp with image %s, slot %d, core %d." % (imagefile, slotnr, core))
-        rs = reprog_dpp(imagefile, slotnr, core)
+    print("Programming target %s with image %s..." % (target, imagefile))
+    if target == 'dpp':
+        rs = prog_dpp(imagefile, core)
+    elif target == 'dpp2lora' or target == 'dpp2lorahg':
+        if porttype in ("SWD", "swd"):
+            rs = prog_swd(imagefile, "STM32L433CC")
+        else:
+            rs = prog_stm32l4(imagefile, flocklab.tg_serial_port)
+    elif target == 'nrf5':
+        rs = prog_swd(imagefile, "nRF52840_xxAA")
+    else:
+        print("Unknown target '%s'" % target)
     
-    # Turn off USB power if needed:
-    if porttype == 'usb':
-        flocklab.tg_usbpwr_set(slotnr, 0)
-        
-    # Restore old status of target voltage:
-    if tg_volt_state_old != 33:
-        try:
-            flocklab.tg_volt_set(tg_volt_state_old)
-        except IOError:
-            logger.error("Could not set voltage to %1.1f V"%(tg_volt_state_old/10.0))
-
     # Return an error if there was one while flashing:
     if (rs != 0):
-        logger.error("Image could not be flashed to target. Error %d occurred."%rs)
+        logger.error("Image could not be flashed to target. Error %d occurred." % rs)
         sys.exit(errno.EIO)
     else:
         logger.info("Target node flashed successfully.")
         sys.exit(flocklab.SUCCESS)
 ### END main()
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])

@@ -5,11 +5,7 @@
 ##############################################################################
 
 # Needed imports:
-import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil
-from syslog import *
-from os import listdir
-from os.path import isfile, join
-import smbus
+import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil, smbus
 
 ### Global variables ###
 gpio_tg_nrst    = 76
@@ -23,6 +19,8 @@ gpio_tg_pwr_en  = 26
 gpio_jlink_nrst = 44
 gpio_tg_act_nen = 65
 
+tg_serial_port  = '/dev/ttyS5'
+
 # Error code to return if there was no error:
 SUCCESS = 0
 
@@ -32,7 +30,7 @@ SUCCESS = 0
 #
 ##############################################################################
 def get_config():
-    configpath = '/home/debian/flocklab/config.ini'
+    configpath = '/home/flocklab/observer/testmanagement/config.ini'
     config = configparser.SafeConfigParser()
     config.read(configpath)
     return config
@@ -45,13 +43,13 @@ def get_config():
 #
 ##############################################################################
 def get_logger(loggername=""):
-    configpath = '/home/debian/flocklab/logging.conf'
+    configpath = '/home/flocklab/observer/testmanagement/logging.conf'
     try:
         logging.config.fileConfig(configpath)
         logger = logging.getLogger(loggername)
         logger.setLevel(logging.DEBUG)
     except:
-        syslog(LOG_ERR, "%s: Could not open logger because: %s: %s" %(str(loggername), str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+        syslog.syslog(syslog.LOG_ERR, "%s: Could not open logger because: %s: %s" %(str(loggername), str(sys.exc_info()[0]), str(sys.exc_info()[1])))
         logger = None
 
     return logger
@@ -106,6 +104,19 @@ def gpio_get(pin):
 
 ##############################################################################
 #
+# set_pin - set a pin to high or low
+#
+##############################################################################
+def set_pin(pin, level):
+    if level:
+      return gpio_set(pin)
+    else:
+      return gpio_clr(pin)
+### END set_pin()
+
+
+##############################################################################
+#
 # tg_pwr_get - get power state of a target slot
 #
 ##############################################################################
@@ -126,6 +137,20 @@ def tg_pwr_en(enable=True):
         gpio_clr(gpio_tg_pwr_en)
     return SUCCESS
 ### END tg_pwr_en()
+
+
+##############################################################################
+#
+# tg_pwr_set - set power state of a target slot
+#
+##############################################################################
+def tg_en(enable=True):
+    if enable:
+        gpio_clr(gpio_tg_nen)
+    else:
+        gpio_set(gpio_tg_nen)
+    return SUCCESS
+### END tg_en()
 
 
 ##############################################################################
@@ -182,9 +207,10 @@ def tg_select(slotnr):
 #
 ##############################################################################
 def tg_reset(release=True):
+    gpio_clr(gpio_tg_prog)    # ensure prog pin is low
     gpio_clr(gpio_tg_nrst)
     if release:
-        time.sleep(1)
+        time.sleep(0.1)
         gpio_set(gpio_tg_nrst)
     return SUCCESS
 ### END tg_reset()
@@ -432,7 +458,7 @@ def start_pwr_measurement():
     file = open("/home/debian/flocklab/pwr_measurement.txt","w")
     file.write("start")
     file.close()
-    syslog(LOG_INFO, "Started power measurement.")
+    syslog.syslog(syslog.LOG_INFO, "Started power measurement.")
 
 ##############################################################################
 #
@@ -443,7 +469,7 @@ def stop_pwr_measurement():
     file = open("/home/debian/flocklab/pwr_measurement.txt","w")
     file.write("stop")
     file.close()
-    syslog(LOG_INFO, "Stopped power measurement.")
+    syslog.syslog(syslog.LOG_INFO, "Stopped power measurement.")
 
 ##############################################################################
 #
@@ -456,7 +482,7 @@ def start_gpio_tracing(xml, log_file_dir):
     cmd = "flocklab_gpio_tracing.py --xml=%s --file=%s" % (xml, log_file)
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     p.wait()
-    syslog(LOG_INFO, "Started gpio tracing.")
+    syslog.syslog(syslog.LOG_INFO, "Started gpio tracing.")
 
 ##############################################################################
 #
@@ -471,7 +497,7 @@ def stop_gpio_tracing():
     if pid:
         print(pid)
         os.kill(int(pid), signal.SIGKILL)
-    syslog(LOG_INFO, "Stopped gpio tracing.")
+    syslog.syslog(syslog.LOG_INFO, "Stopped gpio tracing.")
 
 ##############################################################################
 #
@@ -501,13 +527,13 @@ def collect_pwr_measurement_data(test_id):
             os.remove(str(f))
 
     try:
-        data_files = [f for f in listdir(data_file_path) if isfile(join(data_file_path, f))]
+        data_files = [f for f in os.listdir(data_file_path) if os.path.isfile(os.path.join(data_file_path, f))]
         for df in data_files:
             src = "%s%s" % (data_file_path, df)
             dst = "/home/debian/flocklab/db/%d/%s" %(int(test_id), df)
             shutil.move(src, dst)
     except (Exception) as e:
-        syslog(LOG_INFO, traceback.format_exc())
+        syslog.syslog(syslog.LOG_INFO, traceback.format_exc())
 
 ##############################################################################
 #

@@ -553,8 +553,8 @@ class Stm32Loader:
         })
         try:
             self.bootloader.reset_from_system_memory()
-        except Exception:
-            debug(0, "Can't init. Ensure that BOOT0 is enabled and reset device")
+        except Exception as err:
+            debug(0, "Can't init. Ensure that BOOT0 is enabled and reset device. %s" % err)
             self.bootloader.reset_from_flash()
             sys.exit(1)
 
