@@ -12,12 +12,12 @@
 #define USE_32B_BUFFER  0           /* use alternative main loop with 32 byte register buffer (5MHz max. sampling freq.) */
 #define CONFIG_ADDR     0x0         /* base address where the config is stored (in local data memory) */
 #ifndef CONFIG_ADDR
- #define BUFFER_SIZE    8          /* must be a power of 2 */
+ #define BUFFER_SIZE    8           /* must be a power of 2 */
  #define BUFFER_ADDR    0x1000
 #else
  #define BUFFER_SIZE    0
 #endif
-#define SAMPLING_FREQ   1000        /* in Hz (1 - 10000000) */
+#define SAMPLING_FREQ   1000000     /* in Hz (1 - 10000000) */
 
 /* parameter check */
 #ifndef CONFIG_ADDR

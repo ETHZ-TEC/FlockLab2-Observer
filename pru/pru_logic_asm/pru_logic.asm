@@ -171,7 +171,7 @@ main_loop:
         AND     CVAL, GPI, 0x1F           ; tracing pins
         AND     TMP, GPO, 0x60            ; actuation pins (TODO include pin 0x80 when debug pin not used!)
         OR      CVAL, TMP, CVAL
-
+v
         ; value changed?
         QBNE    update_val, CVAL, PVAL
         LDI32   TMP, 0xFFFFFF             ; pseudo instruction, takes 2 cycles?
