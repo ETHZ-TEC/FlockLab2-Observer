@@ -263,7 +263,7 @@ void parse_tracing_data(const char* filename)
 #endif /* INTERACTIVE_MODE */
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
   char filename[SPRINTF_BUFFER_LENGTH];
   int  ret;
@@ -295,8 +295,16 @@ int main(void)
   prussdrv_pruintc_init(&pruss_intc_initdata);
   
   // create/open file
-  mkdir(OUTPUT_DIR, 0777);   // create directory
-  sprintf(filename, OUTPUT_DIR "%s_%lu.dat", DATA_FILENAME_PREFIX, time(NULL));
+  // if an argument is supplied, it is supposed to be the path of the output file
+  if (argc > 1) {
+    strncpy(filename, argv[1], SPRINTF_BUFFER_LENGTH);
+    char* tmp = strrchr(argv[1], '/');
+    if (tmp) tmp[0] = 0;
+    mkdir(argv[1], 0777);
+  } else {
+    mkdir(OUTPUT_DIR, 0777);   // create directory
+    sprintf(filename, OUTPUT_DIR "%s_%lu.dat", DATA_FILENAME_PREFIX, time(NULL));
+  }
   FILE* data_file = fopen(filename, "wb");
   if (NULL == data_file) {
     printf("failed to open file %s\n", filename);

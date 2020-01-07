@@ -5,7 +5,7 @@
 ##############################################################################
 
 # Needed imports:
-import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil, smbus
+import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil, smbus, syslog
 
 ### Global variables ###
 gpio_tg_nrst    = 76
@@ -18,11 +18,19 @@ gpio_tg_nen     = 46
 gpio_tg_pwr_en  = 26
 gpio_jlink_nrst = 44
 gpio_tg_act_nen = 65
+gpio_led_status = 69
+gpio_led_error  = 45
 
+tg_vcc_min      = 1.1
+tg_vcc_max      = 3.6
+tg_platforms    = ['dpp', 'tmote', 'dpp2lora', 'nrf5']
 tg_serial_port  = '/dev/ttyS5'
 
-# Error code to return if there was no error:
-SUCCESS = 0
+config_path     = '/home/flocklab/observer/testmanagement/config.ini'
+logconf_path    = '/home/flocklab/observer/testmanagement/logging.conf'
+
+SUCCESS         = 0
+
 
 ##############################################################################
 #
@@ -30,9 +38,9 @@ SUCCESS = 0
 #
 ##############################################################################
 def get_config():
-    configpath = '/home/flocklab/observer/testmanagement/config.ini'
+    global config_path
     config = configparser.SafeConfigParser()
-    config.read(configpath)
+    config.read(config_path)
     return config
 ### END get_config()
 
@@ -43,15 +51,14 @@ def get_config():
 #
 ##############################################################################
 def get_logger(loggername=""):
-    configpath = '/home/flocklab/observer/testmanagement/logging.conf'
+    global logconf_path
     try:
-        logging.config.fileConfig(configpath)
+        logging.config.fileConfig(logconf_path)
         logger = logging.getLogger(loggername)
         logger.setLevel(logging.DEBUG)
     except:
         syslog.syslog(syslog.LOG_ERR, "%s: Could not open logger because: %s: %s" %(str(loggername), str(sys.exc_info()[0]), str(sys.exc_info()[1])))
         logger = None
-
     return logger
 ### END get_logger()
 
@@ -340,7 +347,7 @@ def gpiomon_mode_str2abbr(modestr=""):
 # tg_set_vcc - set voltage on the active interface
 #
 ##############################################################################
-def tg_set_vcc(v=3.0):
+def tg_set_vcc(v=3.3):
     if v is None or v < 1.1 or v > 3.6:
         return -1
       
@@ -384,7 +391,7 @@ def is_sdcard_mounted():
 
 ##############################################################################
 #
-# timeformat_xml2service -    Convert between different timeformats of 
+# timeformat_xml2service -   Convert between different timeformats of 
 #                            XML config file and FlockLab services
 #
 ##############################################################################
@@ -404,7 +411,7 @@ def timeformat_xml2service(config=None, timestring=""):
 
 ##############################################################################
 #
-# timeformat_xml2timestamp -    Convert between different timeformats of 
+# timeformat_xml2timestamp - Convert between different timeformats of 
 #                            XML config file and FlockLab services
 #
 ##############################################################################
@@ -423,85 +430,59 @@ def timeformat_xml2timestamp(config=None, timestring=""):
 
 ##############################################################################
 #
-# start_services -    
+# start_pwr_measurement
 #
 ##############################################################################
-def start_services(services, logger, debug):
-    errors = []
-    for key in services.keys():
-        # Start service:
-        cmd = [key, '-start']
-        if not debug:
-            cmd.append('--quiet')
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = p.communicate()
-        if (p.returncode not in (SUCCESS, errno.EEXIST)):
-            msg = "Error %d when trying to start %s service: %s"%(p.returncode, services[key][3], str(err))
-            errors.append(msg)
-            if debug:
-                logger.error(msg)
-                logger.error("Tried to start with: %s"%(str(cmd)))
-        else:
-            if debug:
-                if p.returncode == SUCCESS:
-                    logger.debug("Started %s service."%(services[key][3]))
-                elif p.returncode == errno.EEXIST:
-                    logger.debug("%s service was already running."%(services[key][3]))
-    return errors
+def start_pwr_measurement(log_file_dir):
+    my_time = time.strftime("%Y%m%d%H%M%S", time.gmtime())
+    log_file = "%s/power_%s.rld" % (log_file_dir, my_time)
+    cmd = "rocketlogger start -o %s" % (log_file)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    p.wait()
+    syslog.syslog(syslog.LOG_INFO, "Started power measurement (output file: %s)." % log_file)
 
 ##############################################################################
 #
-# start_pwr_measurement -    
-#
-##############################################################################
-def start_pwr_measurement():
-    file = open("/home/debian/flocklab/pwr_measurement.txt","w")
-    file.write("start")
-    file.close()
-    syslog.syslog(syslog.LOG_INFO, "Started power measurement.")
-
-##############################################################################
-#
-# stop_pwr_measurement -    
+# stop_pwr_measurement
 #
 ##############################################################################
 def stop_pwr_measurement():
-    file = open("/home/debian/flocklab/pwr_measurement.txt","w")
-    file.write("stop")
-    file.close()
+    cmd = "rocketlogger stop"
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    p.wait()
     syslog.syslog(syslog.LOG_INFO, "Stopped power measurement.")
 
 ##############################################################################
 #
-# start_gpio_tracing -    
+# start_gpio_tracing
 #
 ##############################################################################
 def start_gpio_tracing(xml, log_file_dir):
     my_time = time.strftime("%Y%m%d%H%M%S", time.gmtime())
-    log_file = "%sgpio_monitor_%s.db" % (log_file_dir, my_time)
-    cmd = "flocklab_gpio_tracing.py --xml=%s --file=%s" % (xml, log_file)
+    log_file = "%s/gpiotracing_%s.dat" % (log_file_dir, my_time)
+    # for now, ignore the XML config -> trace all pins by default
+    cmd = "fl_logic %s &" % (log_file)
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     p.wait()
-    syslog.syslog(syslog.LOG_INFO, "Started gpio tracing.")
+    syslog.syslog(syslog.LOG_INFO, "Started GPIO tracing (output file: %s)." % log_file)
 
 ##############################################################################
 #
-# stop_gpio_tracing -    
+# stop_gpio_tracing
 #
 ##############################################################################
 def stop_gpio_tracing():
-    proc = subprocess.Popen(['pgrep', '-f', '/usr/bin/flocklab_gpio_tracing'], stdout=subprocess.PIPE)
+    proc = subprocess.Popen(['pgrep', '-f', 'fl_logic'], stdout=subprocess.PIPE)
     pid, err = proc.communicate()
-    print("PID %s" % pid)
-    print("ERR %s" % err)
     if pid:
-        print(pid)
-        os.kill(int(pid), signal.SIGKILL)
-    syslog.syslog(syslog.LOG_INFO, "Stopped gpio tracing.")
+        os.kill(int(pid), signal.SIGTERM)
+    else:
+        pid = -1
+    syslog.syslog(syslog.LOG_INFO, "Stopped GPIO tracing (PID %d)." % int(pid))
 
 ##############################################################################
 #
-# collect_pwr_measurement_data -    
+# collect_pwr_measurement_data
 #
 ##############################################################################
 def collect_pwr_measurement_data(test_id):
@@ -534,64 +515,3 @@ def collect_pwr_measurement_data(test_id):
             shutil.move(src, dst)
     except (Exception) as e:
         syslog.syslog(syslog.LOG_INFO, traceback.format_exc())
-
-##############################################################################
-#
-# stop_services -    
-#
-##############################################################################
-def stop_services(services, logger, testid, debug):
-    errors = []
-    # Remove all pending jobs:
-    for key in services.iterkeys():
-        cmd = [key, '-removeall']
-        if not debug:
-            cmd.append('--quiet')
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = p.communicate()
-        rs = p.returncode
-        if (rs not in (SUCCESS, errno.ENOPKG)):
-            msg = "Error %d when trying to run command '-removeall' for %s service."%(rs, services[key][1])
-            errors.append(msg)
-            logger.error(msg)
-            if debug:
-                logger.error("Tried to run command '-removeall' for %s service with: %s"%(services[key][1], str(cmd)))
-        else:
-            if debug:
-                logger.debug("Successfully ran command '-removeall' for %s service."%(services[key][1]))
-    # Flush all output fifo's:
-    for key in services.keys():
-        cmd = [key, '-flush']
-        if not debug:
-            cmd.append('--quiet')
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = p.communicate()
-        rs = p.returncode
-        if (rs not in (SUCCESS, errno.ENOPKG)):
-            msg = "Error %d when trying to run command '-flush' for %s service."%(rs, services[key][1])
-            errors.append(msg)
-            logger.error(msg)
-            if debug:
-                logger.error("Tried to run command '-flush' for %s service with: %s"%(services[key][1], str(cmd)))
-        else:
-            if debug:
-                logger.debug("Successfully ran command '-flush' for %s service."%(services[key][1]))
-    # Stop database daemons:
-    for key in services.keys():
-        cmd = ['flocklab_dbd', '-stop', '--testid=%d' % testid, '--service=%s'%(services[key][0])]
-        p = subprocess.Popen(cmd, stdout=open('/dev/null', 'w'), stderr=subprocess.STDOUT)
-        (out, err) = p.communicate()
-        rs = p.returncode
-        if (rs not in (SUCCESS,)):
-            msg = "Error %d when trying to stop database daemon for %s service."%(rs, services[key][1])
-            errors.append(msg)
-            logger.error(msg)
-            if debug:
-                logger.error("Tried to start with: %s"%(str(cmd)))
-        else:
-            if debug:
-                if rs == SUCCESS:
-                    logger.debug("Stopped database daemon for %s service."%(services[key][1]))
-    return errors
-
-### END stop_services()
