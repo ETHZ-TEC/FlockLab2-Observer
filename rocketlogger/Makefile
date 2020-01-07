@@ -192,7 +192,7 @@ $(OBJ_DIR)/%.o: $(SENSOR_DIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
 
 $(SRC_DIR)/version.c: $(filter-out $(OBJ_DIR)/version.o, $(OBJ))
-	echo "generating version.c"
+	@echo "generating version.c"
 	@echo "#include \"version.h\"" > $@
 	@echo "char const *const PROJECT_VERSION = \"$(PROJECT_VERSION)\";" >> $@
 	@echo "char const *const GIT_DESCRIPTION = \"$(GIT_DESCRIPTION)\";" >> $@
