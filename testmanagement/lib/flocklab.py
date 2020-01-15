@@ -8,10 +8,10 @@
 import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil, smbus, syslog
 
 ### Global variables ###
-gpio_tg_nrst    = 76
+gpio_tg_nrst    = 77
 gpio_tg_prog    = 81
-gpio_tg_sig1    = 88
-gpio_tg_sig2    = 77
+gpio_tg_sig1    = 75
+gpio_tg_sig2    = 76
 gpio_tg_sel0    = 47
 gpio_tg_sel1    = 27
 gpio_tg_nen     = 46
@@ -272,7 +272,7 @@ def pin_num2abbr(pinnum=""):
     except KeyError:
         return errno.EFAULT
     
-    return abbr    
+    return abbr
 ### END pin_num2abbr()
 
 
@@ -351,14 +351,18 @@ def tg_set_vcc(v=3.3):
     if v is None or v < 1.1 or v > 3.6:
         return -1
       
-    bus = smbus.SMBus(2)    # I2C2
+    bus = smbus.SMBus(2)  # I2C2
     
     DEVICE_ADDR = 0x60
     DEVICE_REG  = 0x0
-    VREF        = 800  # mV
-    VDD         = 3375  # mV
-    R11R12      = 1.04
-    R11R13      = 3.55
+    VREF        = 800     # mV
+    VDD         = 3375    # mV
+    R11         = 12      # kOhm
+    R12         = 11.5    # kOhm
+    R13         = 4.7     # kOhm
+    
+    R11R12      = R11 / R12
+    R11R13      = (R11 + R13) / R13
     
     v_dac  = VREF - (R11R12 * (v * 1000 - VREF * R11R13))
     cfgval = int(v_dac * 255 / VDD)
@@ -406,8 +410,9 @@ def timeformat_xml2service(config=None, timestring=""):
     except:
         return errno.EFAULT
     
-    return servicetimestring    
+    return servicetimestring
 ### END timeformat_xml2service()
+
 
 ##############################################################################
 #
@@ -428,6 +433,7 @@ def timeformat_xml2timestamp(config=None, timestring=""):
     return time.mktime(xmltime)
 ### END timeformat_xml2service()
 
+
 ##############################################################################
 #
 # start_pwr_measurement
@@ -440,6 +446,8 @@ def start_pwr_measurement(log_file_dir):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     p.wait()
     syslog.syslog(syslog.LOG_INFO, "Started power measurement (output file: %s)." % log_file)
+### END start_pwr_measurement()
+
 
 ##############################################################################
 #
@@ -451,6 +459,8 @@ def stop_pwr_measurement():
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     p.wait()
     syslog.syslog(syslog.LOG_INFO, "Stopped power measurement.")
+### END stop_pwr_measurement()
+
 
 ##############################################################################
 #
@@ -465,6 +475,8 @@ def start_gpio_tracing(xml, log_file_dir):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     p.wait()
     syslog.syslog(syslog.LOG_INFO, "Started GPIO tracing (output file: %s)." % log_file)
+### END start_gpio_tracing()
+
 
 ##############################################################################
 #
@@ -479,6 +491,8 @@ def stop_gpio_tracing():
     else:
         pid = -1
     syslog.syslog(syslog.LOG_INFO, "Stopped GPIO tracing (PID %d)." % int(pid))
+### END stop_gpio_tracing()
+
 
 ##############################################################################
 #
@@ -515,3 +529,4 @@ def collect_pwr_measurement_data(test_id):
             shutil.move(src, dst)
     except (Exception) as e:
         syslog.syslog(syslog.LOG_INFO, traceback.format_exc())
+### END collect_pwr_measurement_data()

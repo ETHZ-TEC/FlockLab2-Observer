@@ -139,6 +139,15 @@ def prog_stm32l4(imagefile, port, speed=115200):
     if "hex" in os.path.splitext(imagefile)[1]:
         hex2bin(imagefile, imagefile + ".binary")
         imagefile = imagefile + ".binary"
+    elif "elf" in os.path.splitext(imagefile)[1]:
+        ret = os.system("objcopy -O binary " + imagefile + " " + imagefile + ".binary")
+        if ret != 0:
+            logger.debug("Failed to convert elf file to binary.")
+        else:
+            imagefile = imagefile + ".binary"
+    if not "bin" in os.path.splitext(imagefile)[1]:
+        logger.error("stm32loader expects a binary file")
+        return errno.EINVAL
 
     # BSL entry sequence
     flocklab.set_pin(flocklab.gpio_tg_prog, 0)

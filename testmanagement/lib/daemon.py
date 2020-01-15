@@ -1,16 +1,6 @@
-__author__      = "Christoph Walser <walser@tik.ee.ethz.ch>"
-__copyright__   = "Copyright 2010, ETH Zurich, Switzerland, Christoph Walser"
-__license__     = "GPL"
-__version__     = "$Revision$"
-__date__        = "$Date$"
-__id__          = "$Id$"
-__source__      = "$URL$"
+#!/usr/bin/env python3
 
-"""
-!!!IMPORTANT!!! This file belongs to /usr/lib/flocklab/python/ on the observer AND server
-"""
-
-import os, sys
+import os, sys, shutil
 
 # Default daemon parameters.
 # File mode creation mask of the daemon.
@@ -48,8 +38,8 @@ def daemonize(pidfile, closedesc):
         if pid > 0:
             # exit first parent
             sys.exit(0)
-    except (OSError) as err:
-        print(sys.stderr, "fork #1 failed: %d (%s)" % (err.errno, err.strerror))
+    except OSError as err:
+        print("fork #1 failed: %d (%s)" % (err.errno, err.strerror), file=sys.stderr)
         sys.exit(1)
 
     # decouple from parent environment
@@ -63,10 +53,15 @@ def daemonize(pidfile, closedesc):
         if pid > 0:
             # exit from second parent, print eventual PID before
             #print "Daemon PID %d" % pid
-            open(pidfile,'w').write("%d"%pid)
+            if pidfile != None:
+                if not os.path.isdir(os.path.dirname(pidfile)):
+                    shutil.rmtree(pidfile, ignore_errors=True)
+                if not os.path.exists(os.path.dirname(pidfile)):
+                    os.makedirs(os.path.dirname(pidfile))
+            	open(pidfile,'w').write("%d"%pid)
             sys.exit(0)
-    except (OSError) as err:
-        print(sys.stderr, "fork #2 failed: %d (%s)" % (err.errno, err.strerror))
+    except OSError as err:
+        print("fork #2 failed: %d (%s)" % (err.errno, err.strerror), file=sys.stderr)
         sys.exit(1)
 
     if closedesc:

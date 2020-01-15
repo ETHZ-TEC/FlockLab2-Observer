@@ -1,4 +1,4 @@
-#! /usr/bin/env python2
+#! /usr/bin/env python3
 
 __author__		= "Dario Leuchtmann <ldario@student.ethz.ch>"
 __copyright__	= "Copyright 2019, ETH Zurich, Switzerland, Dario Leuchtmann"

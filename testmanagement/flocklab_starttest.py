@@ -264,10 +264,10 @@ def main(argv):
         if debug:
             logger.debug("No config for serial service found.")
 
-    # Powerprofiling ---
+    # Power profiling ---
     if (tree.find('obsPowerprofConf') != None and False):
         if debug:
-            logger.debug("Found config for powerprofiling.")
+            logger.debug("Found config for power profiling.")
         # Cycle trough all configurations and write them to a file which is then fed to the service.
         # Create temporary file:
         (fd, batchfile) = tempfile.mkstemp() 
