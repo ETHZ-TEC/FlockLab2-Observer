@@ -135,7 +135,9 @@ apt-get --assume-yes install gpsd gpsd-clients linuxptp chrony pps-tools > /dev/
 check_retval "Failed to install packages." "Packages installed."
 
 # add a udev rules for PPS device to allow access by the user 'flocklab' and 'gpsd'
-[ -e /etc/udev/rules.d/99-pps-noroot.rules ] || echo 'KERNEL=="pps0", OWNER="root", GROUP="dialout", MODE="0660"' > /etc/udev/rules.d/99-pps-noroot.rules
+[ -e /etc/udev/rules.d/99-pps-noroot.rules ] || echo "KERNEL==\"pps0\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"
+KERNEL==\"pps1\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"
+KERNEL==\"pps2\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"" > /etc/udev/rules.d/99-pps-noroot.rules
 
 # set config for gpsd
 echo 'DEVICES="/dev/pps0 /dev/ttyS4"
@@ -164,6 +166,15 @@ check_retval "Failed to configure chrony." "Chrony configured."
 
 # enable gpsd service and make sure gpsd is started after reboot
 ln -sf /lib/systemd/system/gpsd.service /etc/systemd/system/multi-user.target.wants/gpsd.service
+
+# compile and install kernel module for gmtimer pps:
+cd ${HOMEDIR}/observer/various/pps-gmtimer && make install
+echo "pps-gmtimer" > /etc/modules-load.d/pps_gmtimer.conf
+depmod
+# after reboot, check if module loaded: lsmod | grep pps-gmtimer
+# to test the module: 
+#cd /sys/devices/platform/ocp/ocp:pps_gmtimer && ~/observer/various/pps-gmtimer/watch-pps
+
 
 ##########################################################
 # add startup script
