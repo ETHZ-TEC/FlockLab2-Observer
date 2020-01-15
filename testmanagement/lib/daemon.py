@@ -58,7 +58,8 @@ def daemonize(pidfile, closedesc):
                     shutil.rmtree(pidfile, ignore_errors=True)
                 if not os.path.exists(os.path.dirname(pidfile)):
                     os.makedirs(os.path.dirname(pidfile))
-            	open(pidfile,'w').write("%d"%pid)
+                with open(pidfile,'w') as f:
+                    f.write("%d" % pid)
             sys.exit(0)
     except OSError as err:
         print("fork #2 failed: %d (%s)" % (err.errno, err.strerror), file=sys.stderr)
