@@ -244,7 +244,7 @@ def main(argv):
     core      = 0
     
     # Get logger:
-    logger = flocklab.get_logger("tg_prog.py")
+    logger = flocklab.get_logger(os.path.basename(__file__))
     
     # Get command line parameters.
     try:

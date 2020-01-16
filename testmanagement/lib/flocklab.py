@@ -25,6 +25,10 @@ tg_vcc_min      = 1.1
 tg_vcc_max      = 3.6
 tg_platforms    = ['dpp', 'tmote', 'dpp2lora', 'nrf5']
 tg_serial_port  = '/dev/ttyS5'
+rl_max_rate     = 64000
+rl_default_rate = 1000
+rl_samp_rates   = [1, 10, 100, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
+rl_max_samples  = 100000000
 
 config_path     = '/home/flocklab/observer/testmanagement/config.ini'
 logconf_path    = '/home/flocklab/observer/testmanagement/logging.conf'
@@ -38,7 +42,6 @@ SUCCESS         = 0
 #
 ##############################################################################
 def get_config():
-    global config_path
     config = configparser.SafeConfigParser()
     config.read(config_path)
     return config
@@ -51,7 +54,6 @@ def get_config():
 #
 ##############################################################################
 def get_logger(loggername=""):
-    global logconf_path
     try:
         logging.config.fileConfig(logconf_path)
         logger = logging.getLogger(loggername)
@@ -439,13 +441,20 @@ def timeformat_xml2timestamp(config=None, timestring=""):
 # start_pwr_measurement
 #
 ##############################################################################
-def start_pwr_measurement(log_file_dir):
+def start_pwr_measurement(log_file_dir, sampling_rate=rl_default_rate, num_samples=rl_max_samples):
+    if sampling_rate not in rl_samp_rates:
+        syslog.syslog(syslog.LOG_ERROR, "Invalid sampling rate for power measurement.")
+        return errno.EINVAL
     my_time = time.strftime("%Y%m%d%H%M%S", time.gmtime())
     log_file = "%s/power_%s.rld" % (log_file_dir, my_time)
-    cmd = "rocketlogger start -o %s" % (log_file)
+    cmd = "rocketlogger start -o %s --rate=%s" % (log_file, str(sampling_rate))
+    if num_samples:
+        if num_samples > rl_max_samples:
+            num_samples = rl_max_samples
+        cmd.append('--samples=' + str(num_samples))
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     p.wait()
-    syslog.syslog(syslog.LOG_INFO, "Started power measurement (output file: %s)." % log_file)
+    return SUCCESS
 ### END start_pwr_measurement()
 
 
@@ -458,7 +467,6 @@ def stop_pwr_measurement():
     cmd = "rocketlogger stop"
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     p.wait()
-    syslog.syslog(syslog.LOG_INFO, "Stopped power measurement.")
 ### END stop_pwr_measurement()
 
 
@@ -467,14 +475,14 @@ def stop_pwr_measurement():
 # start_gpio_tracing
 #
 ##############################################################################
-def start_gpio_tracing(xml, log_file_dir):
-    my_time = time.strftime("%Y%m%d%H%M%S", time.gmtime())
-    log_file = "%s/gpiotracing_%s.dat" % (log_file_dir, my_time)
+def start_gpio_tracing(out_file=None, xml=None):
+    if not out_file:
+        my_time = time.strftime("%Y%m%d%H%M%S", time.gmtime())
+        out_file = "%s/gpiotracing_%s.dat" % (config.get("observer", "testresultfolder"), my_time)
     # for now, ignore the XML config -> trace all pins by default
-    cmd = "fl_logic %s &" % (log_file)
+    cmd = "fl_logic %s &" % (out_file)
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     p.wait()
-    syslog.syslog(syslog.LOG_INFO, "Started GPIO tracing (output file: %s)." % log_file)
 ### END start_gpio_tracing()
 
 
@@ -488,9 +496,6 @@ def stop_gpio_tracing():
     pid, err = proc.communicate()
     if pid:
         os.kill(int(pid), signal.SIGTERM)
-    else:
-        pid = -1
-    syslog.syslog(syslog.LOG_INFO, "Stopped GPIO tracing (PID %d)." % int(pid))
 ### END stop_gpio_tracing()
 
 

@@ -415,7 +415,7 @@ def ProcDbBuf(msgQueueDbBuf, stopLock, testid):
     _num_elements         = 0
     _dbfile               = None
     _dbfile_creation_time = 0
-    _dbflushinterval      = config.getint("serial", "dbflushinterval")
+    _dbflushinterval      = 300
     _obsdbfolder          = "%s/%d" % (os.path.realpath(config.get("observer", 'testresultfolder')), testid)
 
     def _get_db_file_name():
@@ -647,7 +647,7 @@ def main(argv):
     testid      = None
     socketport  = None
     stop        = False
-    logger      = flocklab.get_logger("flocklab_serial.py")
+    logger      = flocklab.get_logger(os.path.basename(__file__))
 
     # Open the syslog:
     syslog.openlog('flocklab_serial', syslog.LOG_CONS | syslog.LOG_PID | syslog.LOG_PERROR, syslog.LOG_USER)

@@ -26,20 +26,6 @@ def usage():
 
 ##############################################################################
 #
-# log error message and terminate process
-#
-##############################################################################
-def log_error_and_exit(msg, err = errno.EPERM):
-    global logger
-    flocklab.gpio_set(flocklab.gpio_led_error)
-    flocklab.gpio_clr(flocklab.gpio_led_status)
-    logger.error("Process finished with errors:\r\n%s" % msg)
-    sys.exit(err)     # actual error code doesn't matter
-### END log_error_and_exit()
-
-
-##############################################################################
-#
 # Main
 #
 ##############################################################################
@@ -48,7 +34,7 @@ def main(argv):
     global debug, logger
     
     testid = None
-    logger = flocklab.get_logger("flocklab_stoptest.py")
+    logger = flocklab.get_logger(os.path.basename(__file__))
     if not logger:
         print("Failed to get logger.")
         sys.exit(errno.EPERM)
@@ -56,7 +42,8 @@ def main(argv):
     # Get config:
     config = flocklab.get_config()
     if not config:
-        log_error_and_exit("Could not read configuration file. Exiting...")
+        logger.error("Could not read configuration file.")
+        sys.exit(errno.EPERM)
     if debug:
         logger.info("Read configuration file.")
     
@@ -77,25 +64,25 @@ def main(argv):
             sys.exit(flocklab.SUCCESS)
         else:
             usage()
-            log_error_and_exit("Wrong API usage", errno.EINVAL)
+            logger.error("Wrong API usage", errno.EINVAL)
+            sys.exit(errno.EINVAL)
     
     # Check for mandatory arguments:
     if not testid:
-        usage()
-        log_error_and_exit("Wrong API usage", errno.EINVAL)
+        logger.error("No test ID supplied")
+        sys.exit(errno.EINVAL)
     
     errors = []
     
     # Check if SD card is mounted ---
     if not flocklab.is_sdcard_mounted():
-        log_error_and_exit("SD card is not mounted.")
+        errors.append("SD card is not mounted.")
     
     # Get info from XML ---
     # Get xml file for current test, find out slot number, platform and image location:
     slotnr = None
     platform = None
     imagepath = []
-    operatingsystem = None
     xmlfilename = "%s%d/config.xml" % (config.get("observer", "testconfigfolder"), testid)
     try:
         tree = ElementTree()
@@ -109,16 +96,10 @@ def main(argv):
             imagefiles_to_process = rs.findall('image')
             for img in imagefiles_to_process:
                 imagepath.append(img.text)
-            operatingsystem = rs.find('os')
-            if operatingsystem != None:
-                operatingsystem = operatingsystem.text.lower()
         else:
-            msg = "Could not find element <obsTargetConf> in %s" % xmlfilename
-            errors.append(msg)
-            logger.error(msg)
+            errors.append("Could not find element <obsTargetConf> in %s" % xmlfilename)
     except (IOError) as err:
-        msg = "Could not find or open XML file."
-        logger.error(msg)
+        errors.append("Could not find or open XML file.")
     
     # Activate interface ---
     if slotnr:
@@ -128,8 +109,7 @@ def main(argv):
     else:
         # Assume that the interface is still activated.
         slotnr = flocklab.tg_get_selected()
-        msg = "Could not activate interface because slot number could not be determined. Working on currently active interface %d." % slotnr
-        logger.error(msg)
+        errors.append("Could not activate interface because slot number could not be determined. Working on currently active interface %d." % slotnr)
     
     # Stop serial service ---
     # This has to be done before turning off power since otherwise the service will encounter errors due to disappearing devices.
@@ -140,17 +120,18 @@ def main(argv):
     (out, err) = p.communicate()
     rs = p.returncode
     if (rs not in (flocklab.SUCCESS, errno.ENOPKG)):
-        msg = "Error %d when trying to stop serial service." % rs
-        errors.append(msg)
-        logger.error(msg)
-    else:
-        if debug:
-            logger.debug("Stopped serial service.")
+        errors.append("Error %d when trying to stop serial service." % rs)
+    elif debug:
+        logger.debug("Stopped serial service.")
     
     # Reset all remaining services, regardless of previous errors ---
     flocklab.stop_gpio_tracing()
+    if debug:
+        logger.debug("Stopped GPIO tracing.")
     flocklab.stop_pwr_measurement()
-    flocklab.collect_pwr_measurement_data(str(testid))
+    if debug:
+        logger.debug("Stopped power measurement.")
+    #flocklab.collect_pwr_measurement_data(str(testid))   TODO
     
     # Flash target with default image ---
     if platform:
@@ -170,30 +151,23 @@ def main(argv):
             (out, err) = p.communicate()
             rs = p.returncode
             if (rs != flocklab.SUCCESS):
-                msg = "Could not flash target with default image because error %d occurred." % rs
                 if not optional_reprogramming:
-                    errors.append(msg)
-                logger.error(msg)
-                if debug:
-                    logger.error("Tried reprogramming with %s" % (str(cmd)))
-            else:
-                if debug:
-                    logger.debug("Reprogrammed target with default image.")
+                    errors.append("Could not flash target with default image because error %d occurred." % rs)
+            elif debug:
+                logger.debug("Reprogrammed target with default image.")
             core = core + 1
     elif len(imagepath) > 0:
-        msg = "Could not flash target with default image because slot number and/or platform could not be determined."
-        if debug:
-            logger.warn(msg)
+        logger.warn("Could not flash target with default image because slot number and/or platform could not be determined.")
     
     # Set voltage to 3.3V, turn target off ---
     flocklab.tg_set_vcc()
-    # Turn target off
     flocklab.tg_pwr_en(False)
     flocklab.tg_en(False)
     
     # Remove config directory ---
-    if os.path.exists("%s%d" % (config.get("observer", "testconfigfolder"), testid)):
-        shutil.rmtree("%s%d" % (config.get("observer", "testconfigfolder"), testid))
+    testresultspath = "%s/%d" % (config.get("observer", "testconfigfolder"), testid)
+    if os.path.exists(testresultspath):
+        shutil.rmtree(testresultspath)
     
     # Disable status LED
     flocklab.gpio_clr(flocklab.gpio_led_status)
@@ -201,13 +175,12 @@ def main(argv):
     # Error checking ---
     if errors:
         flocklab.gpio_set(flocklab.gpio_led_error)
-        logger.error("Process finished with %s errors." %str(len(errors)))
+        logger.error("\r\n".join(errors))
+        logger.error("Process finished with %s errors." % str(len(errors)))
         sys.exit(errno.EPERM)
-    else:
-        if debug:
-            logger.debug("Exiting program with return code %d: %s" %(rs, os.strerror(rs)))
-        logger.info("Successfully stopped test.")
-        flocklab.gpio_clr(flocklab.gpio_led_error)
+    # Successful
+    logger.info("Successfully stopped test.")
+    flocklab.gpio_clr(flocklab.gpio_led_error)
     sys.exit(flocklab.SUCCESS)
 ### END main()
 
