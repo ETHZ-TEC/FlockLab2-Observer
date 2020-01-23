@@ -5,7 +5,7 @@
 ##############################################################################
 
 # Needed imports:
-import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil, smbus, syslog
+import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil, smbus
 
 ### Global variables ###
 gpio_tg_nrst    = 77
@@ -24,16 +24,36 @@ gpio_led_error  = 45
 tg_vcc_min      = 1.1
 tg_vcc_max      = 3.6
 tg_platforms    = ['dpp', 'tmote', 'dpp2lora', 'nrf5']
+tg_port_types   = ['usb', 'serial']
 tg_serial_port  = '/dev/ttyS5'
+tg_baud_rates   = [9600, 19200, 38400, 57600, 115200]
 rl_max_rate     = 64000
 rl_default_rate = 1000
 rl_samp_rates   = [1, 10, 100, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
 rl_max_samples  = 100000000
 
-config_path     = '/home/flocklab/observer/testmanagement/config.ini'
-logconf_path    = '/home/flocklab/observer/testmanagement/logging.conf'
 
-SUCCESS         = 0
+configfile = '/home/flocklab/observer/testmanagement/config.ini'
+loggerconf = '/home/flocklab/observer/testmanagement/logging.conf'
+scriptname = os.path.basename(os.path.abspath(sys.argv[0]))   # name of caller script
+
+SUCCESS = 0
+FAILED  = -1
+
+logger = None
+config = None
+
+
+##############################################################################
+#
+# log_fallback - a way to log errors if the regular log file is unavailable
+#
+##############################################################################
+def log_fallback(msg):
+    #syslog.syslog(syslog.LOG_ERR, msg)    # -> requires 'import syslog'
+    #print(msg, file=sys.stderr)
+    print(msg)
+### END log_fallback()
 
 
 ##############################################################################
@@ -42,8 +62,16 @@ SUCCESS         = 0
 #
 ##############################################################################
 def get_config():
-    config = configparser.SafeConfigParser()
-    config.read(config_path)
+    global config
+    # if config already exists, return it
+    if config:
+        return config
+    try:
+        config = configparser.SafeConfigParser()
+        config.read(configfile)
+    except:
+        logger = get_logger()
+        logger.error("Failed to load config file '%s'." % configfile)
     return config
 ### END get_config()
 
@@ -53,16 +81,68 @@ def get_config():
 # get_logger - Open a logger for the caller.
 #
 ##############################################################################
-def get_logger(loggername=""):
+def get_logger(loggername=scriptname, debug=False):
+    global logger
+    # if it already exists, return logger
+    if logger:
+        return logger
     try:
-        logging.config.fileConfig(logconf_path)
+        logging.config.fileConfig(loggerconf)
         logger = logging.getLogger(loggername)
-        logger.setLevel(logging.DEBUG)
+        if debug:
+            logger.setLevel(logging.DEBUG)
     except:
-        syslog.syslog(syslog.LOG_ERR, "%s: Could not open logger because: %s: %s" %(str(loggername), str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+        log_fallback("[FlockLab %s] Could not open logger because: %s, %s" % (str(loggername), str(sys.exc_info()[0]), str(sys.exc_info()[1])))
         logger = None
     return logger
 ### END get_logger()
+
+
+##############################################################################
+#
+# logging helpers
+#
+##############################################################################
+def log_info(msg=""):
+    global logger
+    logger.info(msg)
+### END log_info()
+
+def log_error(msg=""):
+    global logger
+    logger.error(msg)
+### END log_error()
+
+def log_warning(msg=""):
+    global logger
+    logger.warn(msg)
+### END log_warning()
+
+def log_debug(msg=""):
+    global logger
+    logger.debug(msg)
+### END log_debug()
+
+
+##############################################################################
+#
+# error_logandexit - log error message and terminate process
+#
+##############################################################################
+def error_logandexit(msg=None, err=FAILED):
+    # clear status LED, turn on error LED
+    gpio_clr(gpio_led_status)
+    gpio_set(gpio_led_error)
+    logger = get_logger()
+    if logger:
+        logger.error(msg)
+        logger.debug("Exiting with error code %u." % err)
+    else:
+        log_fallback(msg)
+        log_fallback("Exiting with error code %u." % err)
+    #print(msg, file=sys.stderr)
+    sys.exit(err)
+### END error_logandexit()
 
 
 ##############################################################################

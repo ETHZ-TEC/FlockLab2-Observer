@@ -14,17 +14,6 @@ debug = False
 
 ##############################################################################
 #
-# Error classes
-#
-##############################################################################
-class Error(Exception):
-    """Base class for exceptions in this module."""
-    pass
-### END Error classes
-
-
-##############################################################################
-#
 # Usage
 #
 ##############################################################################
@@ -142,11 +131,11 @@ def prog_stm32l4(imagefile, port, speed=115200):
     elif "elf" in os.path.splitext(imagefile)[1]:
         ret = os.system("objcopy -O binary " + imagefile + " " + imagefile + ".binary")
         if ret != 0:
-            logger.debug("Failed to convert elf file to binary.")
+            flocklab.log_warning("Failed to convert elf file to binary.")
         else:
             imagefile = imagefile + ".binary"
     if not "bin" in os.path.splitext(imagefile)[1]:
-        logger.error("stm32loader expects a binary file")
+        flocklab.log_error("stm32loader expects a binary file")
         return errno.EINVAL
 
     # BSL entry sequence
@@ -225,7 +214,7 @@ def prog_swd(imagefile, device):
     p = subprocess.Popen(['JLinkExe', '-device', device, '-if', 'SWD', '-speed', 'auto', '-autoconnect', '1'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     out, err = p.communicate(input=cmd)
     if "Core found" not in out:
-        print("Failed to program target via SWD. Message: %s" % out)
+        flocklab.log_error("Failed to program target via SWD. Message: %s" % out)
         return -1
     return flocklab.SUCCESS
 
@@ -243,28 +232,23 @@ def main(argv):
     target    = None
     core      = 0
     
-    # Get logger:
-    logger = flocklab.get_logger(os.path.basename(__file__))
+    # Get logger
+    logger = flocklab.get_logger(debug=debug)
     
     # Get command line parameters.
     try:
         opts, args = getopt.getopt(argv, "dhi:t:p:c:", ["debug", "help", "image=", "target=", "port=", "core="])
     except getopt.GetoptError  as err:
-        logger.error(str(err))
-        usage()
-        sys.exit(errno.EINVAL)
+        flocklab.error_logandexit(str(err), errno.EINVAL)
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             usage()
             sys.exit(flocklab.SUCCESS)
         elif opt in ("-d", "--debug"):
             debug = True
+            logger.setLevel(logging.DEBUG)
         elif opt in ("-i", "--image"):
             imagefile = arg
-            if not (os.path.exists(imagefile)):
-                err = "Error: file %s does not exist" %(str(imagefile))
-                logger.error(str(err))
-                sys.exit(errno.EINVAL)
         elif opt in ("-t", "--target"):
             target = arg
         elif opt in ("-p", "--port"):
@@ -272,19 +256,15 @@ def main(argv):
         elif opt in ("-c", "--core"):
             core = int(arg)
         else:
-            logger.error("Unknown argument %s" % opt)
-            sys.exit(errno.EINVAL)
+            flocklab.error_logandexit("Unknown argument %s" % opt, errno.EINVAL)
     
     # Check mandatory parameters
     if (imagefile == None) or (target == None):
-        logger.error("No image file or target specified.")
-        usage()
-        sys.exit(errno.EINVAL)
+        flocklab.error_logandexit("No image file or target specified.", errno.EINVAL)
     
     # Check if file exists
     if not os.path.isfile(imagefile):
-        logger.error("Image file '%s' not found." % imagefile)
-        sys.exit(errno.EINVAL)
+        flocklab.error_logandexit("Image file '%s' not found." % imagefile, errno.ENOENT)
     
     # Set environment variable needed for programmer: 
     #os.environ["PYTHONPATH"] = os.environ.get("PYTHONPATH", "") + "/usr/local/lib/python2.7/"
@@ -296,7 +276,7 @@ def main(argv):
     flocklab.set_pin(flocklab.gpio_tg_act_nen, 0)
     
     # Flash the target:
-    print("Programming target %s with image %s..." % (target, imagefile))
+    logger.info("Programming target %s with image %s..." % (target, imagefile))
     if target == 'dpp':
         rs = prog_dpp(imagefile, core)
     elif target == 'dpp2lora' or target == 'dpp2lorahg':
@@ -307,17 +287,19 @@ def main(argv):
     elif target == 'nrf5':
         rs = prog_swd(imagefile, "nRF52840_xxAA")
     else:
-        print("Unknown target '%s'" % target)
+        logger.error("Unknown target '%s'" % target)
     
     # Return an error if there was one while flashing:
     if (rs != 0):
-        logger.error("Image could not be flashed to target. Error %d occurred." % rs)
-        sys.exit(errno.EIO)
-    else:
-        logger.info("Target node flashed successfully.")
-        sys.exit(flocklab.SUCCESS)
+        flocklab.error_logandexit("Image could not be flashed to target. Error %d occurred." % rs, errno.EIO)
+    
+    logger.info("Target node flashed successfully.")
+    sys.exit(flocklab.SUCCESS)
 ### END main()
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    try:
+        main(sys.argv[1:])
+    except Exception:
+        flocklab.error_logandexit("Encountered error: %s\n%s\nCommandline was: %s" % (str(sys.exc_info()[1]), traceback.format_exc(), str(sys.argv)))

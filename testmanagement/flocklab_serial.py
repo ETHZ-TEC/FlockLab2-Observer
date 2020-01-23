@@ -1,40 +1,39 @@
 #! /usr/bin/env python3
 
-import os, sys, getopt, signal, socket, time, subprocess, errno, queue, serial, select, multiprocessing, threading, traceback, syslog, struct
+import os, sys, getopt, signal, socket, time, subprocess, errno, queue, serial, select, multiprocessing, threading, traceback, struct
 import lib.daemon as daemon
 import lib.flocklab as flocklab
 
 
 ### Global variables ###
-pidfile                = None
-config                 = None
-logger                 = None
-isdaemon               = False
-debug                  = False
-port_list              = ('usb', 'serial')                                 # List of possible ports to receive serial data from
-baudrate_list          = (9600, 19200, 38400, 57600, 115200)               # List of allowed baud rates for general targets
-proc_list              = []                                                # List with all running processes
-dbbuf_proc             = []                                                # Dbbuf process
-msgQueueDbBuf          = None                                              # Queue used to send data to the DB buffer
+pidfile       = None
+config        = None
+isdaemon      = False
+proc_list     = []                  # List with all running processes
+dbbuf_proc    = []                  # Dbbuf process
+msgQueueDbBuf = None                # Queue used to send data to the DB buffer
 
 
 ##############################################################################
 #
-# Error classes
+# Usage
 #
 ##############################################################################
-class Error(Exception):
-    """Base class for exceptions in this module."""
-    pass
-
-class SerialError(Error):
-    """Exception raised for errors in the serial communication."""
-    def __init__(self, value):
-        self.value = value
-    def __str__(self):
-        return repr(self.value)
-### END Error classes
-
+def usage():
+    print("Usage: %s --testid=<int> [--port=<string>] [--baudrate=<int>] [--socketport=<int>] [--stop] [--daemon] [--debug] [--help]" %sys.argv[0])
+    print("Options:")
+    print("  --testid=<int>\t\tID of the test.")
+    print("  --port=<string>\t\tOptional. Port over which serial communication is done. Default is serial.")
+    print("\t\t\t\tPossible values are: %s" % (str(flocklab.tg_port_types)))
+    print("  --baudrate=<int>\t\tOptional. Baudrate of serial device. Default is 115200.")
+    print("\t\t\t\tPossible values are: %s" % (" ".join(flocklab.tg_baud_rates)))
+    print("  --socketport=<int>\t\tOptional. If set, a server socket will be created on the specified port.")
+    print("  --stop\t\t\tOptional. Causes the program to stop a possibly running instance of the serial reader service.")
+    print("  --daemon\t\t\tOptional. If set, program will run as a daemon. If not specified, all output will be written to STDOUT and STDERR.")
+    print("  --debug\t\t\tOptional. Print debug messages to log.")
+    print("  --help\t\t\tOptional. Print this help.")
+    return(0)
+### END usage()
 
 
 ##############################################################################
@@ -46,12 +45,11 @@ def sigterm_handler(signum, frame):
     """If the program is terminated by sending it the signal SIGTERM
     (e.g. by executing 'kill') or SIGINT (pressing ctrl-c),
     this signal handler is invoked for cleanup."""
-    syslog.syslog(syslog.LOG_INFO, "Main process received SIGTERM signal")
+    flocklab.log_info("Main process received SIGTERM signal")
     # Close serial forwarder object:
     retval = stop_on_sig(flocklab.SUCCESS)
     sys.exit(retval)
 ### END sigterm_handler()
-
 
 
 ##############################################################################
@@ -76,19 +74,19 @@ class ServerSockets():
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.sock.bind((self.sock_host, self.sock_port))
             self.sock.settimeout(self.sock_listen_timeout)
-            syslog.syslog(syslog.LOG_INFO, "Started socket %s:%d" % (self.sock_host, self.sock_port))
+            flocklab.log_info("Started socket %s:%d" % (self.sock_host, self.sock_port))
         except:
             self.sock = None
-            syslog.syslog(syslog.LOG_INFO, "Encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+            flocklab.log_error("Encountered error: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
 
     def stop(self):
         if self.sock != None:
             try:
                 self.sock.shutdown(socket.SHUT_RDWR)
                 self.sock.close()
-                syslog.syslog(syslog.LOG_INFO, "Stopped socket %s:%d" % (self.sock_host, self.sock_port))
+                flocklab.log_info("Stopped socket %s:%d" % (self.sock_host, self.sock_port))
             except:
-                syslog.syslog(syslog.LOG_INFO, "Could not stop socket %s:%d due to error: %s: %s" % (self.sock_host, self.sock_port, str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+                flocklab.log_error("Could not stop socket %s:%d due to error: %s, %s" % (self.sock_host, self.sock_port, str(sys.exc_info()[0]), str(sys.exc_info()[1])))
             finally:
                 self.connection = None
                 self.address = None
@@ -96,13 +94,13 @@ class ServerSockets():
 
     def waitForClient(self):
         if self.sock != None:
-            # syslog.syslog(syslog.LOG_INFO, "Waiting for clients on socket %s:%d" % (self.sock_host, self.sock_port))
+            # flocklab.log_info("Waiting for clients on socket %s:%d" % (self.sock_host, self.sock_port))
             try:
                 self.sock.listen(1)
                 self.connection, self.address = self.sock.accept()
                 self.connection.setblocking(0)
                 self.connection.settimeout(self.sock_rx_waittime)
-                syslog.syslog(syslog.LOG_INFO, "Client %s:%d connected to socket %s:%d" % (self.address[0], self.address[1], self.sock_host, self.sock_port))
+                flocklab.log_info("Client %s:%d connected to socket %s:%d" % (self.address[0], self.address[1], self.sock_host, self.sock_port))
             except socket.timeout:
                 self.connection = None
             return self.connection
@@ -111,7 +109,7 @@ class ServerSockets():
 
     def disconnectClient(self):
         if self.connection != None:
-            syslog.syslog(syslog.LOG_INFO, "Disconnect client %s:%d from socket %s:%d" % (self.address[0], self.address[1], self.sock_host, self.sock_port))
+            flocklab.log_info("Disconnect client %s:%d from socket %s:%d" % (self.address[0], self.address[1], self.sock_host, self.sock_port))
             self.connection.close()
             self.connection = None
             self.address = None
@@ -178,15 +176,15 @@ class SerialForwarder():
     def open(self):
         try:
             self.ser.open()
-            syslog.syslog(syslog.LOG_INFO, "SerialForwarder started for device %s with baudrate %d" % (self.ser.port, self.ser.baudrate))
+            flocklab.log_info("SerialForwarder started for device %s with baudrate %d" % (self.ser.port, self.ser.baudrate))
         except(Exception) as err:
-            syslog.syslog(syslog.LOG_ERR, "SerialForwarder could not start because: %s" % (str(sys.exc_info()[1])))
+            flocklab.log_error("SerialForwarder could not start because: %s" % (str(sys.exc_info()[1])))
             return None
-        syslog.syslog(syslog.LOG_INFO, "SerialForwarder opened.")
+        flocklab.log_info("SerialForwarder opened.")
 
     def close(self):
         self.ser.close()
-        syslog.syslog(syslog.LOG_INFO, "SerialForwarder stopped")
+        flocklab.log_info("SerialForwarder stopped")
         
     def isRunning(self):
         if self.ser.is_open:
@@ -205,25 +203,24 @@ class SerialForwarder():
                 ret = [data, timestamp]
         except(select.error) as err:
             if (err.errno == 4):
-                syslog.syslog(syslog.LOG_INFO, "SerialForwarder interrupted due to caught stop signal.")
+                flocklab.log_info("SerialForwarder interrupted due to caught stop signal.")
         except:
-            syslog.syslog(syslog.LOG_ERR, "SerialForwarder encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+            flocklab.log_error("SerialForwarder encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
         return ret
 
     def write(self, data):
         try:
             rs = self.ser.write(data)
             if rs != len(data):
-                syslog.syslog(syslog.LOG_ERR, "SerialForwarder error while writing: no of bytes written (%d) != no of bytes in data (%d)." %str(rs, len(data)))
+                flocklab.log_error("SerialForwarder error while writing: no of bytes written (%d) != no of bytes in data (%d)." %str(rs, len(data)))
             self.num_elements_snd = self.num_elements_snd + 1
         except(socket.error) as err:
-            syslog.syslog(syslog.LOG_ERR, "SerialForwarder error while writing to serial forwarder: %s" %str(err))
+            flocklab.log_error("SerialForwarder error while writing to serial forwarder: %s" %str(err))
             self.close()
         except:
-            syslog.syslog(syslog.LOG_ERR, "SerialForwarder encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+            flocklab.log_error("SerialForwarder encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
         return None
 ### END SerialForwarder
-
 
 
 ##############################################################################
@@ -239,7 +236,7 @@ def ThreadSerialReader(sf, msgQueueDbBuf, msgQueueSockBuf, stopLock):
     sf_err_back_max  = 5.0        # Maximum backoff time to wait after error on opening serial port
     sf_err_backoff   = sf_err_back_init # Time to wait after error on opening serial port
 
-    syslog.syslog(syslog.LOG_ERR, "ThreadSerialReader started.")
+    flocklab.log_error("ThreadSerialReader started.")
     while stopLock.acquire(False):
         stopLock.release()
         if not sf.isRunning():
@@ -267,22 +264,21 @@ def ThreadSerialReader(sf, msgQueueDbBuf, msgQueueSockBuf, stopLock):
                             msgQueueSockBuf.put(data, False)
                             # Data is wirtten directly into the DB bufferr queue:
                             msgQueueDbBuf.put([0,data,timestamp], False)
-                            syslog.syslog(syslog.LOG_INFO, "[0,%s,%s]" %(str(data), str(timestamp)))
+                            flocklab.log_info("[0,%s,%s]" %(str(data), str(timestamp)))
                         except Queue.Full:
-                            syslog.syslog(syslog.LOG_ERR, "Queue msgQueueSockBuf full in ThreadSerialReader, dropping data.")
+                            flocklab.log_error("Queue msgQueueSockBuf full in ThreadSerialReader, dropping data.")
                         except:
-                            syslog.syslog(syslog.LOG_ERR, "ThreadSerialReader could not insert data into queues because: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+                            flocklab.log_error("ThreadSerialReader could not insert data into queues because: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
                         data = ''
                         timestamp = lastTimestamp = 0
             except:
-                syslog.syslog(syslog.LOG_ERR, "ThreadSerialReader encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+                flocklab.log_error("ThreadSerialReader encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
                 sf.close()
     # Stop thread:
-    syslog.syslog(syslog.LOG_ERR, "ThreadSerialReader stopping...")
+    flocklab.log_error("ThreadSerialReader stopping...")
     if sf.isRunning():
         sf.close()
-    syslog.syslog(syslog.LOG_ERR, "ThreadSerialReader stopped.")
-
+    flocklab.log_error("ThreadSerialReader stopped.")
 ### END ThreadSerialReader()
 
 
@@ -300,7 +296,7 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
     fd_to_socket   = {}
 
     try:
-        syslog.syslog(syslog.LOG_INFO, "ThreadSocketProxy started")
+        flocklab.log_info("ThreadSocketProxy started")
 
         # Initialize poller:
         poller = select.poll()
@@ -330,8 +326,7 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
                         if s is connection:
                             data = ServerSock.recv()
                             timestamp = time.time()
-                            #if debug:
-                            #    syslog.syslog(syslog.LOG_INFO, "---> Received data from socket: %s: >%s<" % (str(timestamp), str(data)))
+                            #flocklab.log_debug("---> Received data from socket: %s: >%s<" % (str(timestamp), str(data)))
                             if data == '':
                                 # That can only mean that the socket has been closed.
                                 poller.unregister(s)
@@ -344,8 +339,7 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
                                 sf.open()
                             if sf.isRunning():
                                 sf.write(data)
-                                #if debug:
-                                #    syslog.syslog(syslog.LOG_INFO, "<--- Wrote data to SF: >%s<" % (str(data)))
+                                #flocklab.log_debug("<--- Wrote data to SF: >%s<" % (str(data)))
                                 # Signal with 1, that data is from writer (use 0 for reader):
                                 try:
                                     dataSanList = data.replace(b'\r', b'').split('\n')
@@ -354,9 +348,9 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
                                         if(len(dataSan) > 0):
                                             msgQueueDbBuf.put([1, dataSan, ts], False)
                                 except Queue.Full:
-                                    syslog.syslog(syslog.LOG_ERR, "Queue msgQueueDbBuf full in ThreadSocketProxy, dropping data.")
+                                    flocklab.log_error("Queue msgQueueDbBuf full in ThreadSocketProxy, dropping data.")
                                 except Exception:
-                                    syslog.syslog(syslog.LOG_ERR, "Serial data could not be sanitized, dropping data.")
+                                    flocklab.log_error("Serial data could not be sanitized, dropping data.")
                         elif s is msgQueueSockBuf:
                             # Retrieve element from queue:
                             item = msgQueueSockBuf.get()
@@ -364,12 +358,11 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
                             if ((ServerSock.isRunning()) and (ServerSock.clientConnected())):
                                 try:
                                     rs = ServerSock.send(item)
-                                    #if debug:
-                                    #    syslog.syslog(syslog.LOG_INFO, "<--- Sent data to socket (rs: %s, len: %d)" % (str(rs), len(item)))
+                                    #flocklab.log_debug("<--- Sent data to socket (rs: %s, len: %d)" % (str(rs), len(item)))
                                     if rs != len(item):
                                         raise socket.error
                                 except(socket.error) as err:
-                                    syslog.syslog(syslog.LOG_WARNING, "ThreadSocketProxy could not send data to socket because of encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+                                    flocklab.log_warning("ThreadSocketProxy could not send data to socket because of encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
                                     poller.unregister(connection)
                                     if ServerSock.clientConnected():
                                         ServerSock.disconnectClient()
@@ -388,9 +381,9 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
                             ServerSock.stop()
                             continue
             except:
-                syslog.syslog(syslog.LOG_ERR, "ThreadSocketProxy encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+                flocklab.log_error("ThreadSocketProxy encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
         # Stop the thread
-        syslog.syslog(syslog.LOG_INFO, "ThreadSocketProxy stopping...")
+        flocklab.log_info("ThreadSocketProxy stopping...")
         try:
             if ServerSock.isRunning():
                 ServerSock.disconnectClient()
@@ -399,11 +392,10 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
             pass
 
     except:
-        syslog.syslog(syslog.LOG_ERR, "ThreadSocketProxy encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+        flocklab.log_error("ThreadSocketProxy encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
 
-    syslog.syslog(syslog.LOG_INFO, "ThreadSocketProxy stopped.")
+    flocklab.log_info("ThreadSocketProxy stopped.")
 ### END ThreadSocketProxy()
-
 
 
 ##############################################################################
@@ -416,13 +408,13 @@ def ProcDbBuf(msgQueueDbBuf, stopLock, testid):
     _dbfile               = None
     _dbfile_creation_time = 0
     _dbflushinterval      = 300
-    _obsdbfolder          = "%s/%d" % (os.path.realpath(config.get("observer", 'testresultfolder')), testid)
+    _obsresfolder         = "%s/%d" % (os.path.realpath(config.get("observer", 'testresultfolder')), testid)
 
     def _get_db_file_name():
-        return "%s/serial_%s.db" % (_obsdbfolder, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+        return "%s/serial_%s.db" % (_obsresfolder, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
 
     try:
-        syslog.syslog(syslog.LOG_INFO, "ProcDbBuf started")
+        flocklab.log_info("ProcDbBuf started")
         # set lower priority
         os.nice(1)
 
@@ -435,12 +427,12 @@ def ProcDbBuf(msgQueueDbBuf, stopLock, testid):
                 if _waittime <= 0:
                     if _dbfile is not None:
                         _dbfile.close()
-                        syslog.syslog(syslog.LOG_INFO, "ProcDbBuf closed dbfile %s" % _dbfilename)
+                        flocklab.log_info("ProcDbBuf closed dbfile %s" % _dbfilename)
                     _dbfilename = _get_db_file_name()
                     _dbfile = open(_dbfilename, "wb+")
                     _dbfile_creation_time = time.time()
                     _waittime = _dbflushinterval
-                    syslog.syslog(syslog.LOG_INFO, "ProcDbBuf opened dbfile %s" % _dbfilename)
+                    flocklab.log_info("ProcDbBuf opened dbfile %s" % _dbfilename)
                 _service, _data, _ts = msgQueueDbBuf.get(True, _waittime)
                 try:
                     _len = len(_data)
@@ -453,9 +445,9 @@ def ProcDbBuf(msgQueueDbBuf, stopLock, testid):
                         _dbfilename = _get_db_file_name()
                         _dbfile = open(_dbfilename, "wb+")
                         _dbfile_creation_time = time.time()
-                        syslog.syslog(syslog.LOG_INFO, "ProcDbBuf opened dbfile %s" % _dbfilename)
+                        flocklab.log_info("ProcDbBuf opened dbfile %s" % _dbfilename)
                     #why Illl and why _len + 12, in decode iii is used..?
-                    syslog.syslog(syslog.LOG_INFO, "SERVICE: %s - DATA: %s" % (str(_service), str(_data)))
+                    flocklab.log_info("SERVICE: %s - DATA: %s" % (str(_service), str(_data)))
                     packet = struct.pack("<Illl%ds" % _len,_len + 12, _service, _ts_sec, int((_ts - _ts_sec) * 1e6), _data)
                     _dbfile.write(packet)
                     _num_elements = _num_elements + 1
@@ -463,29 +455,27 @@ def ProcDbBuf(msgQueueDbBuf, stopLock, testid):
                 continue
             except(IOError) as err:
                 if (err.errno == 4):
-                    syslog.syslog(syslog.LOG_INFO, "ProcDbBuf interrupted due to caught stop signal.")
+                    flocklab.log_info("ProcDbBuf interrupted due to caught stop signal.")
                     continue
                 else:
                     raise
 
         # Stop the process
-        syslog.syslog(syslog.LOG_INFO, "ProcDbBuf stopping... %d elements received " % _num_elements)
+        flocklab.log_info("ProcDbBuf stopping... %d elements received " % _num_elements)
     except KeyboardInterrupt:
         pass
     except:
-        syslog.syslog(syslog.LOG_ERR, "ProcDbBuf encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+        flocklab.log_error("ProcDbBuf encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
 
     # flush dbfile and errorfile
     try:
         if _dbfile is not None:
             _dbfile.close()
-            syslog.syslog(syslog.LOG_INFO, "ProcDbBuf closed dbfile %s" % _dbfilename)
-        syslog.syslog(syslog.LOG_INFO, "ProcDbBuf stopped.")
+            flocklab.log_info("ProcDbBuf closed dbfile %s" % _dbfilename)
+        flocklab.log_info("ProcDbBuf stopped.")
     except:
-        syslog.syslog(syslog.LOG_ERR, "ProcDbBuf encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
-
+        flocklab.log_error("ProcDbBuf encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
 ### END ProcDbBuf
-
 
 
 ##############################################################################
@@ -502,47 +492,45 @@ def stop_on_sig(ret_val=flocklab.SUCCESS):
     global proc_list
 
     # Close all threads:
-    syslog.syslog(syslog.LOG_INFO, "Closing %d processes/threads..." %  len(proc_list))
+    flocklab.log_info("Closing %d processes/threads..." %  len(proc_list))
     for (proc,stopLock) in proc_list:
         try:
             stopLock.acquire()
         except:
-            syslog.syslog(syslog.LOG_ERR, "Could not acquire stop lock for process/thread.")
-    syslog.syslog(syslog.LOG_INFO, "Joining %d processes/threads..." %  len(proc_list))
+            flocklab.log_error("Could not acquire stop lock for process/thread.")
+    flocklab.log_info("Joining %d processes/threads..." %  len(proc_list))
     for (proc,stopLock) in proc_list:
         try:
             proc.join(10)
         except:
-            syslog.syslog(syslog.LOG_ERR, "Could not stop process/thread.")
+            flocklab.log_error("Could not stop process/thread.")
         if proc.is_alive():
-            syslog.syslog(syslog.LOG_ERR, "Could not stop process/thread.")
+            flocklab.log_error("Could not stop process/thread.")
 
     # Stop dbbuf process:
-    syslog.syslog(syslog.LOG_INFO, "Closing ProcDbBuf process...")
+    flocklab.log_info("Closing ProcDbBuf process...")
     try:
         dbbuf_proc[1].acquire()
     except:
-        syslog.syslog(syslog.LOG_ERR, "Could not acquire stoplock for ProcDbBuf process.")
+        flocklab.log_error("Could not acquire stoplock for ProcDbBuf process.")
     # Send some dummy data to the queue of the DB buffer to wake it up:
     msgQueueDbBuf.put([None, None, None])
-    syslog.syslog(syslog.LOG_INFO, "Joining ProcDbBuf process...")
+    flocklab.log_info("Joining ProcDbBuf process...")
     try:
         dbbuf_proc[0].join(30)
     except:
-        syslog.syslog(syslog.LOG_ERR, "Could not stop ProcDbBuf process.")
+        flocklab.log_error("Could not stop ProcDbBuf process.")
     if dbbuf_proc and dbbuf_proc[0].is_alive():
-        syslog.syslog(syslog.LOG_ERR, "Could not stop ProcDbBuf process.")
+        flocklab.log_error("Could not stop ProcDbBuf process.")
 
     # Remove the PID file if it exists:
     if os.path.exists(pidfile):
         try:
             os.remove(pidfile)
         except:
-            syslog.syslog(syslog.LOG_WARN, "Could not remove pid file.")
+            flocklab.log_warning("Could not remove pid file.")
 
-    syslog.syslog(syslog.LOG_INFO, "FlockLab serial service stopped.")
-    # Close the syslog and terminate the program
-    syslog.closelog()
+    flocklab.log_info("FlockLab serial service stopped.")
     return ret_val
 ### END stop_on_sig()
 
@@ -557,10 +545,10 @@ def stop_on_api():
     """
     # Get PID of running serial reader (if any) from pidfile and send it the terminate signal.
     try:
-        pid = int(open(pidfile,'r').read())
+        pid = int(open(pidfile, 'r').read())
         # Signal the process to stop:
         if (pid > 0):
-            syslog.syslog(syslog.LOG_INFO, "Main process: sending SIGTERM signal to process %d" %pid)
+            flocklab.log_info("Sending SIGTERM signal to process %d" %pid)
             try:
                 os.kill(pid, signal.SIGTERM)
             except OSError:
@@ -578,51 +566,22 @@ def stop_on_api():
         # As consequence, try to kill all remaining serial reader servce threads (handles 1)) and if that
         # was not successful (meaning cause 2) takes effect), return ENOPKG.
         try:
-            patterns = ['flocklab_serial.py',]
+            patterns = [os.path.basename(__file__),]
             ownpid = str(os.getpid())
-            suc = False
             for pattern in patterns:
-                p = subprocess.Popen(['pgrep', '-f', pattern], stdout=subprocess.PIPE)
+                p = subprocess.Popen(['pgrep', '-f', pattern], stdout=subprocess.PIPE, universal_newlines=True)
                 out, err = p.communicate(None)
                 if (out != None):
                     for pid in out.split('\n'):
                         if ((pid != '') and (pid != ownpid)):
-                            syslog.syslog(syslog.LOG_INFO, "Main process: Trying to kill process %s" %pid)
+                            flocklab.log_info("Trying to kill process %s" %pid)
                             os.kill(int(pid), signal.SIGKILL)
-                    suc = True
-            if (suc == True):
-                return flocklab.SUCCESS
-            else:
-                return errno.ENOPKG
+                    return flocklab.SUCCESS
+            return errno.ENOPKG
         except (OSError, ValueError):
-            syslog.syslog(syslog.LOG_ERR, "Main process: Error while trying to kill old zombie threads: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+            flocklab.log_error("Error while trying to kill serial service threads: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
             return errno.EINVAL
 ### END stop_on_api()
-
-
-
-
-##############################################################################
-#
-# Usage
-#
-##############################################################################
-def usage():
-    print("Usage: %s --testid=<int> [--port=<string>] [--baudrate=<int>] [--socketport=<int>] [--stop] [--daemon] [--debug] [--help]" %sys.argv[0])
-    print("Options:")
-    print("  --testid=<int>\t\tID of the test.")
-    print("  --port=<string>\t\tOptional. Port over which serial communication is done. Default is serial.")
-    print("\t\t\t\tPossible values are: %s" %(str(port_list)))
-    print("  --baudrate=<int>\t\tOptional. Baudrate of serial device. Default is 115200.")
-    print("\t\t\t\tPossible values are: %s" %(str(baudrate_list)))
-    print("  --socketport=<int>\t\tOptional. If set, a server socket will be created on the specified port.")
-    print("  --stop\t\t\tOptional. Causes the program to stop a possibly running instance of the serial reader service.")
-    print("  --daemon\t\t\tOptional. If set, program will run as a daemon. If not specified, all output will be written to STDOUT and STDERR.")
-    print("  --debug\t\t\tOptional. Print debug messages to log.")
-    print("  --help\t\t\tOptional. Print this help.")
-    return(0)
-### END usage()
-
 
 
 ##############################################################################
@@ -637,34 +596,27 @@ def main(argv):
     global dbbuf_proc
     global pidfile
     global config
-    global debug
     global msgQueueDbBuf
 
-    port        = 'serial'      # Standard port. Can be overwritten by the user.
-    serialdev   = None
-    baudrate    = 115200        # Standard baudrate. Can be overwritten by the user.
-    slotnr      = None
-    testid      = None
-    socketport  = None
-    stop        = False
-    logger      = flocklab.get_logger(os.path.basename(__file__))
-
-    # Open the syslog:
-    syslog.openlog('flocklab_serial', syslog.LOG_CONS | syslog.LOG_PID | syslog.LOG_PERROR, syslog.LOG_USER)
+    debug      = False
+    port       = 'serial'      # Standard port. Can be overwritten by the user.
+    serialdev  = None
+    baudrate   = 115200        # Standard baudrate. Can be overwritten by the user.
+    slotnr     = None
+    testid     = None
+    socketport = None
+    stop       = False
 
     # Get config:
     config = flocklab.get_config()
     if not config:
-        logger.warn("Could not read configuration file. Exiting...")
-        sys.exit(errno.EAGAIN)
+        flocklab.error_logandexit("Could not read configuration file.")
 
     # Get command line parameters.
     try:
         opts, args = getopt.getopt(argv, "ehqdt:p:m:b:i:l:", ["stop", "help", "daemon", "debug", "port=", "baudrate=", "testid=", "socketport="])
     except(getopt.GetoptError) as err:
-        syslog.syslog(syslog.LOG_ERR, str(err))
-        usage()
-        sys.exit(errno.EINVAL)
+        flocklab.error_logandexit(str(err), errno.EINVAL)
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             usage()
@@ -676,17 +628,13 @@ def main(argv):
         elif opt in ("-e", "--stop"):
             stop = True
         elif opt in ("-b", "--baudrate"):
-            if int(arg) not in baudrate_list:
-                err = "Wrong API usage: baudrate not valid. Check help for possible baud rates."
-                syslog.syslog(syslog.LOG_ERR, str(err))
-                sys.exit(errno.EINVAL)
+            if int(arg) not in flocklab.tg_baud_rates:
+                flocklab.error_logandexit("Baudrate not valid. Check help for possible baud rates.", errno.EINVAL)
             else:
                 baudrate = int(arg)
         elif opt in ("-p", "--port"):
-            if arg not in port_list:
-                err = "Wrong API usage: port not valid. Possible values are: %s" %(str(port_list))
-                syslog.syslog(syslog.LOG_ERR, str(err))
-                sys.exit(errno.EINVAL)
+            if arg not in flocklab.tg_port_types:
+                flocklab.error_logandexit("Port not valid. Possible values are: %s" % (str(flocklab.tg_port_types)), errno.EINVAL)
             else:
                 port = arg
         elif opt in ("-i", "--testid"):
@@ -694,41 +642,35 @@ def main(argv):
         elif opt in ("-l", "--socketport"):
             socketport = int(arg)
         else:
-            syslog.syslog(syslog.LOG_ERR, "Wrong API usage")
-            usage()
-            sys.exit(errno.EINVAL)
+            flocklab.error_logandexit("Unknown option '%s'." % (opt), errno.EINVAL)
 
     # Check if the mandatory parameter --testid is set:
-    if testid==None:
-        syslog.syslog(syslog.LOG_ERR, "Wrong API usage")
-        usage()
-        sys.exit(errno.EINVAL)
+    if not testid and not stop:
+        flocklab.error_logandexit("No test ID specified.", errno.EINVAL)
 
-    pidfile = "%s/%s" %(config.get("observer", "pidfolder"), "flocklab_serial_%d.pid" % testid)
+    # init logger
+    logger = flocklab.get_logger(debug=debug)
+    if not logger:
+        flocklab.error_logandexit("Could not get logger.")
+
+    pidfile = "%s/flocklab_serial.pid" % (config.get("observer", "pidfolder"))
 
     if stop:
         rs = stop_on_api()
         sys.exit(rs)
 
-    """ Check if daemon option is on. If on, reopen the syslog without the ability to write to the console.
-        If the daemon option is on, later on the process will also be daemonized.
-    """
+    # If the daemon option is on, later on the process will be daemonized.
     if isdaemon:
-        syslog.closelog()
-        syslog.openlog('flocklab_serial', syslog.LOG_CONS | syslog.LOG_PID, syslog.LOG_USER)
         daemon.daemonize(pidfile=pidfile, closedesc=True)
-        syslog.syslog(syslog.LOG_INFO, "Daemonized process")
+        logger.debug("Daemonized process")
     else:
-        open(pidfile,'w').write("%d" % (os.getpid()))
-
+        open(pidfile, 'w').write("%d" % (os.getpid()))
 
     # Find out which target interface is currently activated.
     slotnr = flocklab.tg_get_selected()
     if not slotnr:
-        err = "No interface active. Please activate one first."
-        syslog.syslog(syslog.LOG_ERR, err)
-        sys.exit(errno.EINVAL)
-    syslog.syslog(syslog.LOG_INFO, "Active target interface detected as %d" % slotnr)
+        flocklab.error_logandexit("Could not determine slot number.")
+    logger.debug("Selected slot number is %d." % slotnr)
     # Set the serial path:
     serialdev = flocklab.tg_serial_port
 
@@ -752,17 +694,12 @@ def main(argv):
         time.sleep(1)
         if p.is_alive():
             dbbuf_proc = [p, stopLock]
-            if debug:
-                syslog.syslog(syslog.LOG_INFO, "DB buffer process running.")
+            logger.debug("DB buffer process running.")
         else:
-            syslog.syslog(syslog.LOG_INFO, "DB buffer process is not running anymore.")
-            raise Error
+            flocklab.error_logandexit("DB buffer process is not running.", errno.ESRCH)
     except:
-        msg = "Error when starting DB buffer process: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1]))
-        syslog.syslog(syslog.LOG_ERR, msg)
-        print(msg)
         stop_on_sig(flocklab.SUCCESS)
-        sys.exit(errno.ECONNABORTED)
+        flocklab.error_logandexit("Error when starting DB buffer process: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])), errno.ECONNABORTED)
 
     # Start thread for serial reader ---
     stopLock = multiprocessing.Lock()
@@ -773,15 +710,12 @@ def main(argv):
         time.sleep(1)
         if p.is_alive():
             proc_list.append((p, stopLock))
-            if debug:
-                syslog.syslog(syslog.LOG_INFO, "Serial reader thread running.")
+            logger.debug("Serial reader thread running.")
         else:
-            syslog.syslog(syslog.LOG_INFO, "Serial reader thread is not running anymore.")
-            raise Error
+            flocklab.error_logandexit("Serial reader thread is not running.", errno.ESRCH)
     except:
-        syslog.syslog(syslog.LOG_ERR, "Error when starting serial reader thread: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
         stop_on_sig(flocklab.SUCCESS)
-        sys.exit(errno.ECONNABORTED)
+        flocklab.error_logandexit("Error when starting serial reader thread: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])), errno.ECONNABORTED)
 
     # Start thread for socket proxy ---
     if not socketport is None:
@@ -794,29 +728,26 @@ def main(argv):
             time.sleep(1)
             if p.is_alive():
                 proc_list.append((p, stopLock))
-                if debug:
-                    syslog.syslog(syslog.LOG_INFO, "Socket proxy thread running.")
+                logger.debug("Socket proxy thread running.")
             else:
-                syslog.syslog(syslog.LOG_INFO, "Socket proxy thread is not running anymore.")
-                raise Error
+                flocklab.error_logandexit("Socket proxy thread is not running.", errno.ESRCH)
         except:
-            syslog.syslog(syslog.LOG_ERR, "Error when starting socket proxy thread: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
             stop_on_sig(flocklab.SUCCESS)
-            sys.exit(errno.ECONNABORTED)
+            error_logandexit("Error when starting socket proxy thread: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])), errno.ECONNABORTED)
 
     # Catch kill signal and ctrl-c
     signal.signal(signal.SIGTERM, sigterm_handler)
     signal.signal(signal.SIGINT, sigterm_handler)
-    syslog.syslog(syslog.LOG_INFO, "Signal handler registered")
+    logger.debug("Signal handler registered.")
 
-    syslog.syslog(syslog.LOG_INFO, "FlockLab serial service started.")
+    logger.info("FlockLab serial service started.")
 
     """ Enter an infinite loop which hinders the program from exiting.
         This is needed as otherwise the thread list would get lost which would make it
         impossible to stop all threads when the service is stopped.
         The loop is stopped as soon as the program receives a stop signal.
     """
-    while 1:
+    while True:
         # Wake up once every now and then:
         time.sleep(10)
 
@@ -827,8 +758,5 @@ def main(argv):
 if __name__ == "__main__":
     try:
         main(sys.argv[1:])
-    except SystemExit:
-        pass
-    except:
-        syslog.syslog(syslog.LOG_ERR, "Encountered error: %s: %s: %s\n\n--- traceback ---\n%s--- end traceback ---\n\nCommandline was: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1]), str(traceback.print_tb(sys.exc_info()[2])), traceback.format_exc(), str(sys.argv)))
-        sys.exit(errno.EAGAIN)
+    except Exception:
+        flocklab.error_logandexit("Encountered error: %s\n%s\nCommandline was: %s" % (str(sys.exc_info()[1]), traceback.format_exc(), str(sys.argv)))

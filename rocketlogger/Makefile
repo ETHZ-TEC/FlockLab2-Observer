@@ -75,7 +75,6 @@ OBJ = $(addprefix $(OBJ_DIR)/, $(notdir $(addsuffix .o, $(basename $(SRC)))))
 ## target binary
 TARGET_BINARY = $(BIN_DIR)/$(BINARY_NAME)
 TARGET_DAEMON = $(BIN_DIR)/$(DEAMON_NAME)
-TARGET_SERVER = $(BIN_DIR)/$(SERVER_NAME)
 TARGET_FIRMWARE = $(BIN_DIR)/$(FIRMWARE_NAME)
 
 
@@ -140,12 +139,11 @@ LDFLAGS = $(LIBS)
 #####  TARGETS  #####
 
 ## build targets
-all:  $(BIN_DIR) $(TARGET_BINARY) $(TARGET_DAEMON) $(TARGET_SERVER) $(TARGET_FIRMWARE)
+all:  $(BIN_DIR) $(TARGET_BINARY) $(TARGET_DAEMON) $(TARGET_FIRMWARE)
 
 install: all
 	$(COPY) $(TARGET_BINARY) $(INSTALL_BIN_DIR)
 	$(COPY) $(TARGET_DAEMON) $(INSTALL_BIN_DIR)
-	$(COPY) $(TARGET_SERVER) $(INSTALL_BIN_DIR)
 	$(COPY) $(TARGET_FIRMWARE) $(INSTALL_FIRMWARE_DIR)
 	chmod 4755 $(INSTALL_BIN_DIR)/$(BINARY_NAME) $(INSTALL_BIN_DIR)/$(DEAMON_NAME) $(INSTALL_BIN_DIR)/$(SERVER_NAME)
 	$(COPY) $(SERVICE_CONFIG) $(INSTALL_SERVICE_DIR)
@@ -164,10 +162,6 @@ $(TARGET_BINARY): $(filter-out $(OBJ_DIR)/rocketloggerd.o $(OBJ_DIR)/rl_server.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 $(TARGET_DAEMON): $(filter-out $(OBJ_DIR)/rocketlogger.o $(OBJ_DIR)/rl_server.o, $(OBJ))
-	@$(MAKEDIR) $(@D)
-	$(CXX) $(LDFLAGS) -o $@ $^
-
-$(TARGET_SERVER): $(filter-out $(OBJ_DIR)/rocketlogger.o $(OBJ_DIR)/rocketloggerd.o, $(OBJ))
 	@$(MAKEDIR) $(@D)
 	$(CXX) $(LDFLAGS) -o $@ $^
 
@@ -214,7 +208,7 @@ $(BIN_DIR):
 .PHONY: clean code-format
 
 clean:
-	$(REMOVE) $(OBJ_DIR)/*.o $(DEP_DIR)/*.d $(TARGET_BINARY) $(TARGET_DAEMON) $(TARGET_FIRMWARE) $(TARGET_SERVER)
+	$(REMOVE) $(OBJ_DIR)/*.o $(DEP_DIR)/*.d $(TARGET_BINARY) $(TARGET_DAEMON) $(TARGET_FIRMWARE)
 
 code-format:
 	find . -type f \( -iname "*.c" -o -iname "*.h" -o -iname "*.cpp" \) -exec clang-format -style=file -i {} \;
