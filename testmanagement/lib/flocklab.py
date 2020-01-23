@@ -4,10 +4,10 @@
 # FlockLab library, runs on the observer
 ##############################################################################
 
-# Needed imports:
+# needed imports:
 import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil, smbus
 
-### Global variables ###
+# pin numbers
 gpio_tg_nrst    = 77
 gpio_tg_prog    = 81
 gpio_tg_sig1    = 75
@@ -16,11 +16,47 @@ gpio_tg_sel0    = 47
 gpio_tg_sel1    = 27
 gpio_tg_nen     = 46
 gpio_tg_pwr_en  = 26
-gpio_jlink_nrst = 44
 gpio_tg_act_nen = 65
+gpio_tg_mux_nen = 22
 gpio_led_status = 69
 gpio_led_error  = 45
+gpio_jlink_nrst = 44
+gpio_usb_nrst   = 68
+gpio_gnss_nrst  = 67
 
+# list of all output GPIOs and their default state
+out_pin_list    = [gpio_tg_nrst,
+                   gpio_tg_prog,
+                   gpio_tg_sig1,
+                   gpio_tg_sig2,
+                   gpio_tg_sel0,
+                   gpio_tg_sel1,
+                   gpio_tg_nen,
+                   gpio_tg_pwr_en,
+                   gpio_tg_act_nen,
+                   gpio_tg_mux_nen,
+                   gpio_led_status,
+                   gpio_led_error,
+                   gpio_jlink_nrst,
+                   gpio_usb_nrst,
+                   gpio_gnss_nrst]
+out_pin_states  = [1,             # don't keep target in reset state
+                   0,             # PROG pin low
+                   0,             # SIG pins low
+                   0,             # -
+                   1,             # select target 1
+                   1,             # -
+                   1,             # disable target
+                   0,             # power off
+                   1,             # disable actuation
+                   0,             # enable MUX
+                   0,             # LED off
+                   0,             # LED off
+                   1,             # enable JLink debugger
+                   1,             # turn on USB
+                   1 ]            # turn on GNSS receiver
+
+# allowed values
 tg_vcc_min      = 1.1
 tg_vcc_max      = 3.6
 tg_platforms    = ['dpp', 'tmote', 'dpp2lora', 'nrf5']
@@ -32,14 +68,16 @@ rl_default_rate = 1000
 rl_samp_rates   = [1, 10, 100, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
 rl_max_samples  = 100000000
 
-
+# paths
 configfile = '/home/flocklab/observer/testmanagement/config.ini'
 loggerconf = '/home/flocklab/observer/testmanagement/logging.conf'
 scriptname = os.path.basename(os.path.abspath(sys.argv[0]))   # name of caller script
 
+# constants
 SUCCESS = 0
-FAILED  = -1
+FAILED  = -2       # note: must be negative, and -1 (= 255) is reserved for SSH error
 
+# global variables
 logger = None
 config = None
 
@@ -147,6 +185,25 @@ def error_logandexit(msg=None, err=FAILED):
 
 ##############################################################################
 #
+# init_gpio - initialize all used GPIOs (output pins) to their default value
+#
+##############################################################################
+def init_gpio():
+    try:
+        for pin, state in zip(out_pin_list, out_pin_states):
+            os.system("echo out > /sys/class/gpio/gpio%d/direction" % (pin))
+            os.system("echo %d > /sys/class/gpio/gpio%d/value" % (state, pin))
+      
+    except IOError:
+        print("Failed to configure GPIO.")
+        return 
+  
+  
+### END init_gpio()
+
+
+##############################################################################
+#
 # gpio_set - set an output pin high
 #
 ##############################################################################
@@ -155,7 +212,7 @@ def gpio_set(pin):
         os.system("echo 1 > /sys/class/gpio/gpio%s/value" % (pin))
     except IOError:
         print("Failed to set GPIO state.")
-        return -1
+        return FAILED
     return SUCCESS
 ### END gpio_set()
 
@@ -170,7 +227,7 @@ def gpio_clr(pin):
         os.system("echo 0 > /sys/class/gpio/gpio%s/value" % (pin))
     except IOError:
         print("Failed to set GPIO state.")
-        return -1
+        return FAILED
     return SUCCESS
 ### END gpio_clr()
 
@@ -186,7 +243,7 @@ def gpio_get(pin):
         out = p.communicate()[0]
     except IOError:
         print("Failed to get GPIO state.")
-        return -1
+        return FAILED
     return int(out)
 ### END gpio_get()
 
@@ -431,7 +488,7 @@ def gpiomon_mode_str2abbr(modestr=""):
 ##############################################################################
 def tg_set_vcc(v=3.3):
     if v is None or v < 1.1 or v > 3.6:
-        return -1
+        return FAILED
       
     bus = smbus.SMBus(2)  # I2C2
     
@@ -451,7 +508,7 @@ def tg_set_vcc(v=3.3):
     try:
         bus.write_word_data(DEVICE_ADDR, DEVICE_REG, (cfgval * 256) & 0xffff)
     except (IOError) as e:
-        return -1
+        return FAILED
     
     return SUCCESS
 ### END tg_set_vcc()

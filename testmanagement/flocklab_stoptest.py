@@ -69,7 +69,7 @@ def main(argv):
     slotnr = None
     platform = None
     imagepath = []
-    xmlfilename = "%s%d/config.xml" % (config.get("observer", "testconfigfolder"), testid)
+    xmlfilename = "%s/%d/config.xml" % (config.get("observer", "testconfigfolder"), testid)
     try:
         tree = xml.etree.ElementTree.ElementTree()
         tree.parse(xmlfilename)
@@ -89,7 +89,7 @@ def main(argv):
     
     # Activate interface ---
     if slotnr:
-        flocklab.tg_interface_set(slotnr)
+        flocklab.tg_select(slotnr)
         logger.debug("Activated interface %d." % slotnr)
     else:
         # Assume that the interface is still activated.
@@ -148,10 +148,10 @@ def main(argv):
     flocklab.tg_en(False)
     
     # Remove config directory ---
-    testresultspath = "%s/%d" % (config.get("observer", "testconfigfolder"), testid)
-    if os.path.exists(testresultspath):
-        #shutil.rmtree(testresultspath)
-        pass  # TODO
+    testconfigpath = "%s/%d" % (config.get("observer", "testconfigfolder"), testid)
+    if os.path.exists(testconfigpath):
+        shutil.rmtree(testconfigpath)
+        logger.debug("Test config '%s' removed." % (testconfigpath))
     
     # Disable status LED
     flocklab.gpio_clr(flocklab.gpio_led_status)
@@ -159,7 +159,6 @@ def main(argv):
     # Error checking ---
     if errors:
         flocklab.error_logandexit("Process finished with %d errors:\n%s" % (len(errors), "\n".join(errors)))
-        sys.exit(errno.EPERM)
     
     # Successful
     logger.info("Successfully stopped test.")

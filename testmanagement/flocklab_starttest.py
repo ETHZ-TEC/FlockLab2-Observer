@@ -72,7 +72,13 @@ def main(argv):
     
     # Indicate start of the script by enabling status LED
     flocklab.gpio_set(flocklab.gpio_led_status)
-    logger.debug("status LED set")
+    
+    # Rename XML ---
+    try:
+        os.rename(xmlfile, "%s/config.xml" % os.path.dirname(xmlfile))
+        xmlfile = "%s/config.xml" % os.path.dirname(xmlfile)
+    except (OSError) as err:
+        flocklab.error_logandexit("Could not rename XML config file.")
     
     # Process XML ---
     # Open and parse XML:
@@ -120,6 +126,9 @@ def main(argv):
     else:
         flocklab.error_logandexit("Slot number could not be determined.")
     
+    # Ensure MUX is enabled
+    flocklab.gpio_clr(flocklab.gpio_tg_mux_nen)
+    
     # Make sure no serial service scripts are running ---
     p = subprocess.Popen([config.get("observer", "serialservice"), '--stop'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     (out, err) = p.communicate()
@@ -130,11 +139,11 @@ def main(argv):
     if flocklab.gpio_clr(flocklab.gpio_tg_sig1) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2) != flocklab.SUCCESS:
         flocklab.error_logandexit("Failed to set GPIO lines")
     
-    # Flash target ---
+    # Flash target (will set target voltage to 3.3V) ---
     if not noimage:
         for core, image in imagefile.items():
             if (platform in (flocklab.tg_platforms)):
-                cmd = [config.get("observer", "progscript"), '--image=%s' % image, '--target=%s' % (platform), '--core=%d' % core, '--noreset']
+                cmd = [config.get("observer", "progscript"), '--image=%s' % image, '--target=%s' % (platform), '--core=%d' % core]
             else:
                 cmd = None
                 flocklab.error_logandexit("Unknown platform %s. Not known how to program this platform." % platform)
@@ -143,9 +152,9 @@ def main(argv):
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                 (out, err) = p.communicate()
                 if (p.returncode != flocklab.SUCCESS):
-                    flocklab.error_logandexit("Error %s when programming target image: %s" % (errno.errorcode[p.returncode], str(err)))
-                else:
-                    logger.debug("Programmed target with image with command: %s" % (str(cmd)))
+                    flocklab.error_logandexit("Error %d when programming target image: %s" % (p.returncode, str(out)))
+                logger.debug("Programmed target with image %s" % (image))
+                flocklab.tg_reset(False)    # hold target in reset state
     
     # Set voltage ---
     msg = None
@@ -218,6 +227,10 @@ def main(argv):
         logger.debug("No config for powerprofiling service found.")
     
     # GPIO actuation ---
+    #TODO
+    # for now, just release the reset pin
+    flocklab.tg_reset()
+    flocklab.gpio_clr(flocklab.gpio_tg_act_nen)   # make sure actuation is enabled
     '''
     if (tree.find('obsGpioSettingConf') != None):
         logger.debug("Found config for GPIO setting.")
@@ -286,12 +299,6 @@ def main(argv):
         logger.debug("Started GPIO tracing (output file: %s)." % out_file)
     else:
         logger.debug("No config for GPIO monitoring service found.")
-    
-    # Rename XML ---
-    try:
-        os.rename(xmlfile, "%s/config.xml" % os.path.dirname(xmlfile))
-    except (OSError) as err:
-        flocklab.error_logandexit("Could not rename XML config file.")
     
     flocklab.gpio_clr(flocklab.gpio_led_error)
     logger.info("Test successfully started.")
