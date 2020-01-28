@@ -22,6 +22,10 @@
 # along with stm32loader; see the file COPYING3.  If not see
 # <http://www.gnu.org/licenses/>.
 
+#-------------------------------------------------------------------------------
+# modified version of the stm32loader by florisla:
+# https://github.com/florisla/stm32loader
+#-------------------------------------------------------------------------------
 
 from __future__ import print_function
 
