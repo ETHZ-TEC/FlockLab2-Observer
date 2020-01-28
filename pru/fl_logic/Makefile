@@ -9,6 +9,7 @@ INSTALL_FIRMWARE_DIR = /lib/firmware
 
 all: pru
 	@gcc -Werror -Wall -Wextra -lprussdrv -o $(TARGET_BINARY) fl_logic.c
+	@gcc -Werror -Wall -Wextra -lprussdrv -o $(TARGET_BINARY)_interactive -DINTERACTIVE_MODE fl_logic.c
 
 pru:
 	@hexpru $(PRU_FW_INFILE) -b -o $(PRU_FW_OUTFILE) > /dev/null

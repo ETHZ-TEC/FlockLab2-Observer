@@ -159,6 +159,10 @@ main:
         LDI     GPI, 0                    ; clear events
         LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
 
+        ; wait for the next rising edge of the PPS signal (P8.27 -> R31.8)
+        WBC     GPI, 8
+        WBS     GPI, 8
+
     .if USE_32B_BUFFER
         JMP     main_loop_alt
     .endif
