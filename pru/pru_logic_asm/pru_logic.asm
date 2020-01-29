@@ -23,8 +23,11 @@ PRU1_CTRL               .set    0x00024000
 PRUSS_SYSCFG_OFS        .set    0x4
 PRUSS_CYCLECNT_OFS      .set    0xC
 PRUSS_STALLCNT_OFS      .set    0x10
+TRACING_PINS            .set    0x7F           ; trace all pins incl. actuation
+ACTUATION_PINS          .set    0x60           ; TODO: add 0x80
 DBG_GPIO1               .set    7              ; 0x80     (P8.40)
 DBG_GPIO2               .set    10             ; 0x400    (P8.28)
+PPS_PIN                 .set    8              ; 0x100    (P8.27)
 SYSEVT_GEN_VALID_BIT    .set    0x20
 PRU_EVTOUT_2            .set    0x04
 BUFFER_ADDR_OFS         .set    0x0
@@ -122,7 +125,7 @@ main:
         ; init
         LDI     CVAL, 0
         LDI     PVAL, 0xFF                ; choose a value that is unlikely to be the initial GPIO state
-        LDI     SCNT, 0
+        LDI     SCNT, 1
         LDI     OFS, 0
         LDI32   CTRL, PRU1_CTRL           ; address of CFG register
         LDI     IPTR0, copy_val_alt
@@ -159,9 +162,9 @@ main:
         LDI     GPI, 0                    ; clear events
         LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
 
-        ; wait for the next rising edge of the PPS signal (P8.27 -> R31.8)
-        WBC     GPI, 8
-        WBS     GPI, 8
+        ; wait for the next rising edge of the PPS signal
+        WBC     GPI, PPS_PIN
+        WBS     GPI, PPS_PIN
 
     .if USE_32B_BUFFER
         JMP     main_loop_alt
@@ -172,10 +175,10 @@ main_loop:
         START_CCNT
 
         ; sample pins (3 cycles)
-        AND     CVAL, GPI, 0x1F           ; tracing pins
-        AND     TMP, GPO, 0x60            ; actuation pins (TODO include pin 0x80 when debug pin not used!)
+        AND     CVAL, GPI, TRACING_PINS
+        AND     TMP, GPO, ACTUATION_PINS  ; TODO
         OR      CVAL, TMP, CVAL
-v
+
         ; value changed?
         QBNE    update_val, CVAL, PVAL
         LDI32   TMP, 0xFFFFFF             ; pseudo instruction, takes 2 cycles?
@@ -200,7 +203,7 @@ update_val2:
         LSL     SCNT, SCNT, 8
         OR      TMP2, CVAL, SCNT
         MOV     PVAL, CVAL                ; previous = current
-        LDI     SCNT, 0                   ; reset sample counter
+        LDI     SCNT, 1                   ; reset sample counter
         ; 11
         ; copy into the large RAM buffer, takes 1 cycle for 4 bytes in the best/average case
         SBBO    &TMP2, ADDR, OFS, 4
@@ -230,9 +233,9 @@ done:
 dbg_loop_begin:
         XOR     GPO, GPO, TMP2
         XOR     GPO, GPO, TMP2
-        SUB     TMP, TMP, 0x01
+        SUB     TMP, TMP, 1
 dbg_loop_end:
-        QBNE    dbg_loop_begin, TMP, 0x00
+        QBNE    dbg_loop_begin, TMP, 0
         XOR     GPO, GPO, TMP2
         ; clear counter value (also clear STALL counter)
         CNTR_OFF
@@ -257,15 +260,15 @@ main_loop_alt:
         PIN_XOR DBG_GPIO1
 
         ; sample pins (3 cycles)
-        AND     CVAL, GPI, 0x1F           ; tracing pins
-        AND     TMP, GPO, 0xE0            ; actuation pins
+        AND     CVAL, GPI, TRACING_PINS
+        AND     TMP, GPO, ACTUATION_PINS  ; TODO
         OR      CVAL, TMP, CVAL
 
         ; value changed?
         QBNE    update_val_alt, CVAL, PVAL
         LDI32   TMP, 0xFFFFFF             ; pseudo instruction, takes 2 cycles
         QBEQ    update_val2_alt, SCNT, TMP
-        ADD     SCNT, SCNT, 0x01
+        ADD     SCNT, SCNT, 1
         NOP
         NOP
         NOP

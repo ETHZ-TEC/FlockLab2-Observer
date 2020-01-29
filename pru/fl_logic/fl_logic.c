@@ -71,8 +71,6 @@
 #define DATA_FILENAME_PREFIX  "tracing_data"
 #define OUTPUT_DIR            "/home/flocklab/data/"                // with last slash
 #define SPRINTF_BUFFER_LENGTH 256
-#define CSV_FILE_HDR          "# timestamp,observer_id,node_id,pin_name,value\r\n"
-#define OBSERVER_ID           1
 #define PIN_NAMES             "LED1", "LED2", "LED3", "INT1", "INT2", "SIG1", "SIG2", "nRST"
 
 
@@ -205,6 +203,8 @@ int pru1_init(uint8_t** out_buffer_addr)
       printf("failed to get virtual address");
       return 3;
     }
+    // clear buffer
+    memset(*out_buffer_addr, 0, BUFFER_SIZE);
   }
 
   // write configuration to PRU data memory
@@ -308,11 +308,18 @@ int pru1_sample(uint8_t* pru_buffer, FILE* data_file)
 #endif /* INTERACTIVE_MODE */
     
     // write to file
-    if (data_file) {
-      fwrite(curr_buffer, (BUFFER_SIZE / 2), 1, data_file);
-    }
+    fwrite(curr_buffer, (BUFFER_SIZE / 2), 1, data_file);
+
+    // clear buffer
+    memset(curr_buffer, 0, (BUFFER_SIZE / 2));
     
     readout_count++;
+  }
+  // copy the remaining data
+  if (readout_count & 1) {
+    fwrite(&pru_buffer[BUFFER_SIZE / 2], (BUFFER_SIZE / 2), 1, data_file);
+  } else {
+    fwrite(pru_buffer, (BUFFER_SIZE / 2), 1, data_file);
   }
   
 #if INTERACTIVE_MODE
@@ -326,48 +333,58 @@ int pru1_sample(uint8_t* pru_buffer, FILE* data_file)
 // convert binary tracing data to a csv file
 void parse_tracing_data(const char* filename, unsigned long starttime)
 {
-  char  buffer[SPRINTF_BUFFER_LENGTH];
-  FILE* data_file = NULL;
-  FILE* csv_file  = NULL;
-  uint32_t sample = 0;
+  char     buffer[SPRINTF_BUFFER_LENGTH];
+  FILE*    data_file   = NULL;
+  FILE*    csv_file    = NULL;
+  uint32_t sample      = 0;
   uint32_t prev_sample = 0xffffffff;
-  uint32_t line_cnt = 0;
-  uint32_t sample_cnt = 0;
-  uint64_t timestamp = 0.0;
+  uint32_t line_cnt    = 0;
+  uint32_t sample_cnt  = 0;
+  uint64_t timestamp   = 0;
   
   data_file = fopen(filename, "rb");      // binary mode
-  sprintf(buffer, "%s.xml", filename);
+  sprintf(buffer, "%s.csv", filename);
   csv_file = fopen(buffer, "w");          // text mode
   if (NULL == data_file || NULL == csv_file) {
     printf("failed to open files\n");
     return;
   }
-  // write header
-  fwrite(CSV_FILE_HDR, sizeof(CSV_FILE_HDR), 1, csv_file);
   // parse and write data
   while (fread(&sample, 4, 1, data_file)) {
     if (prev_sample == 0xffffffff) {
       prev_sample = ~sample & 0xff;
     }
+    // data valid? -> at least the cycle counter must be > 0
+    if (sample == 0) {
+#if INTERACTIVE_MODE
+      long int pos = ftell(data_file);
+      fseek(data_file, 0, SEEK_END);
+      long int size = ftell(data_file);
+      printf("invalid sample detected, aborting conversion (current position: %ld/%ld)", pos, size);
+#endif /* INTERACTIVE_MODE */
+      break;
+    }
+    // update the timestamp
+    timestamp += (sample >> 8);
+    double currtime = (double)starttime + (double)timestamp / SAMPLING_RATE;
     // go through all pins and check whether there has been a change
     uint32_t i = 0;
     while (i < 8) {
       if ((prev_sample & (1 << i)) != (sample & (1 << i))) {
         // format: timestamp,obs_id,node_id,pin,state(0/1)
-        sprintf(buffer, "%.7f,%u,%u,%s,%u\r\n", (double)starttime + (double)timestamp / SAMPLING_RATE, OBSERVER_ID, OBSERVER_ID, pin_mapping[i], (sample & (1 << i)) > 0);
+        sprintf(buffer, "%.7f,%s,%u\r\n", currtime, pin_mapping[i], (sample & (1 << i)) > 0);
         fwrite(buffer, strlen(buffer), 1, csv_file);
         line_cnt++;
       }
       i++;
     }
     prev_sample = sample;
-    timestamp += (sample >> 8);
     sample_cnt++;
   }
   fclose(data_file);
   fclose(csv_file);
 #if INTERACTIVE_MODE
-  printf("tracing data parsed and stored in %s.xml (%u samples, %u lines)\n", filename, sample_cnt, line_cnt);
+  printf("tracing data parsed and stored in %s.csv (%u samples, %u lines)\n", filename, sample_cnt, line_cnt);
 #endif /* INTERACTIVE_MODE */
 }
 
