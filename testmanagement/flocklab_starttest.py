@@ -28,9 +28,10 @@ def usage():
 ##############################################################################
 def main(argv):
     
-    xmlfile = None
-    testid  = None
-    debug   = False
+    xmlfile    = None
+    testid     = None
+    serialport = None
+    debug      = False
     
     # Get config:
     config = flocklab.get_config()
@@ -62,8 +63,8 @@ def main(argv):
             flocklab.error_logandexit("Invalid option '%s'." % (opt), errno.EINVAL)
     
     # Check for mandatory arguments:
-    if not xmlfile or not testid:
-        flocklab.error_logandexit("A test ID and an XML file is required.", errno.EINVAL)
+    if not xmlfile or not testid or not serialport:
+        flocklab.error_logandexit("Test ID, XML or serial port missing.", errno.EINVAL)
     
     # init logger
     logger = flocklab.get_logger(debug=debug)
@@ -86,9 +87,10 @@ def main(argv):
         tree = xml.etree.ElementTree.ElementTree()
         tree.parse(xmlfile)
         logger.debug("Parsed XML.")
+        #logger.debug("XML config:\n%s" % (xml.etree.ElementTree.tostring(tree.getroot(), encoding='utf8', method='xml').decode()))
     except:
         flocklab.error_logandexit("Could not find or open XML file '%s'." % str(xmlfile))
-
+    
     # Get basic information from <obsTargetConf> ---
     voltage         = None
     imagefile       = None
@@ -96,6 +98,7 @@ def main(argv):
     platform        = None
     operatingsystem = None
     noimage         = False
+    teststarttime   = 0
 
     imagefiles_to_process = tree.findall('obsTargetConf/image')
     imagefile = {}
@@ -127,7 +130,7 @@ def main(argv):
         flocklab.error_logandexit("Slot number could not be determined.")
     
     # Ensure MUX is enabled
-    flocklab.gpio_clr(flocklab.gpio_tg_mux_nen)
+    flocklab.tg_mux_en()
     
     # Make sure no serial service scripts are running ---
     p = subprocess.Popen([config.get("observer", "serialservice"), '--stop'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -176,22 +179,22 @@ def main(argv):
         logger.debug("Found config for serial service.")
         cmd = [config.get("observer", "serialservice"), '--testid=%d' % testid]
         if slotnr:
-            logger.debug("Set Socketport to: %d" % serialport)
-            cmd.append('--socketport=%d' % (serialport)) # + slotnr - 1))
+            logger.debug("Serial socket port: %d" % serialport)
+            cmd.append('--socketport=%d' % (serialport))
         if (tree.find('obsSerialConf/baudrate') != None):
-            cmd.append('--baudrate=%s'%(tree.find('obsSerialConf/baudrate').text))
+            logger.debug("Baudrate: %s" % (tree.find('obsSerialConf/baudrate').text))
+            cmd.append('--baudrate=%s' % (tree.find('obsSerialConf/baudrate').text))
         cmd.append('--daemon')
         if debug:
             cmd.append('--debug')
         p = subprocess.Popen(cmd)
-        logger.debug("Started serial output with: %s" % cmd)
         rs = p.wait()
         if (rs != flocklab.SUCCESS):
             flocklab.error_logandexit("Error %d when trying to start serial service." % (rs))
         else:
             # Wait some time to let all threads start
             time.sleep(3)
-            logger.debug("Started and configured serial service using command: %s" %(str(cmd)))
+            logger.debug("Started and configured serial service.")
     else:
         logger.debug("No config for serial service found.")
 
@@ -215,11 +218,11 @@ def main(argv):
                 logger.error("Sampling divider is not an integer value.")
                 nthsample = 0
         if nthsample:
-            sampling_rate = flocklab.rl_max_rate / sampling_divider
+            sampling_rate = flocklab.rl_max_rate / nthsample
         else:
             sampling_rate = flocklab.rl_default_rate
         # Start profiling
-        out_file = "%s/%d/powerprofiling" % (config.get("observer", "testresultfolder"), testid)
+        out_file = "%s/%d/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         if flocklab.start_pwr_measurement(out_file, sampling_rate) != flocklab.SUCCESS:
             flocklab.error_logandexit("Failed to start power measurement.")
         logger.debug("Started power measurement (output file: %s)." % out_file)
@@ -227,17 +230,13 @@ def main(argv):
         logger.debug("No config for powerprofiling service found.")
     
     # GPIO actuation ---
-    #TODO
-    # for now, just release the reset pin
-    flocklab.tg_reset()
-    flocklab.gpio_clr(flocklab.gpio_tg_act_nen)   # make sure actuation is enabled
-    '''
+    flocklab.tg_act_en()  # make sure actuation is enabled
     if (tree.find('obsGpioSettingConf') != None):
         logger.debug("Found config for GPIO setting.")
         # Cycle trough all configurations and write them to a file which is then fed to the service.
         # Create temporary file:
         (fd, batchfile) = tempfile.mkstemp() 
-        f = os.fdopen(fd, 'w+b')
+        f = os.fdopen(fd, 'w')
         # Cycle through all configs and insert them into file:
         subtree = tree.find('obsGpioSettingConf')
         pinconfs = list(subtree.getiterator("pinConf"))
@@ -272,19 +271,19 @@ def main(argv):
             # Remove batch file:
             os.remove(batchfile)
             logger.debug("Configured GPIO setting service.")
-        if len(resets) == 2 and settingcount == 2 and (max(resets) - min(resets) > 30): # only reset setting, register test switch at end of test
-            # switchtime = max(resets) - 30
-            xml_file = "%s/%d/config.xml" % (config.get("observer","testconfigfolder"), testid)
-            log_file = "%s/%d/" % (config.get("observer","testresultfolder"), testid)
-            flocklab.start_pwr_measurement()
-            flocklab.tg_reset()
-            logger.debug("Target reset.")
+        # determine test start
+        try:
+            teststarttime = int(resets[0])   # 1st reset actuation is the reset release = start of test
+            logger.debug("Test start time is %s." % (teststarttime))
+        except:
+            logger.error("Could not determine test start time.")
     else:
         logger.debug("No config for GPIO setting service found.")
-    '''
+    # for now, just release the reset pin
+    #flocklab.tg_reset()   # TODO
     
     # GPIO tracing ---
-    if (tree.find('obsGpioMonitorConf') != None and False):
+    if (tree.find('obsGpioMonitorConf') != None):
         logger.debug("Found config for GPIO monitoring.")
         # Cycle trough all configurations and write them to a file which is then fed to the service.
         # Cycle through all configs and insert them into file:
@@ -294,9 +293,12 @@ def main(argv):
         for pinconf in pinconfs:
             pins.append(flocklab.pin_abbr2num(pinconf.find('pin').text))
         # TODO use pins config
-        out_file = "%s/%d/gpiotracing" % (config.get("observer", "testresultfolder"), testid)
-        flocklab.start_gpio_tracing(out_file)
-        logger.debug("Started GPIO tracing (output file: %s)." % out_file)
+        tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+        if flocklab.start_gpio_tracing(tracingfile, teststarttime) != flocklab.SUCCESS:
+            logger.error
+        # touch the file
+        open(tracingfile + ".csv", 'a').close()
+        logger.debug("Started GPIO tracing (output file: %s)." % tracingfile)
     else:
         logger.debug("No config for GPIO monitoring service found.")
     

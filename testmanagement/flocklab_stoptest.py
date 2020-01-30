@@ -110,11 +110,14 @@ def main(argv):
         logger.debug("Stopped serial service.")
     
     # Reset all remaining services, regardless of previous errors ---
-    flocklab.stop_gpio_tracing()
-    logger.debug("Stopped GPIO tracing.")
-    flocklab.stop_pwr_measurement()
-    logger.debug("Stopped power measurement.")
-    #flocklab.collect_pwr_measurement_data(str(testid))   TODO
+    if flocklab.stop_gpio_tracing() != flocklab.SUCCESS:
+        errors.append("Failed to stop GPIO tracing service.")
+    else:
+        logger.debug("Stopped GPIO tracing.")
+    if flocklab.stop_pwr_measurement() != flocklab.SUCCESS:
+        errors.append("Failed to stop power measurement.")
+    else:
+        logger.debug("Stopped power measurement.")
     
     # Flash target with default image ---
     if platform:
@@ -129,7 +132,7 @@ def main(argv):
                     optional_reprogramming = True
                 except configparser.NoOptionError:
                     break
-            cmd = [config.get("observer", "progscript"), '--image=%s%s'%(config.get("observer", "defaultimgfolder"), imgfile), '--target=%s'%(platform), '--core=%d' % core]
+            cmd = [config.get("observer", "progscript"), '--image=%s/%s' % (config.get("observer", "defaultimgfolder"), imgfile), '--target=%s'%(platform), '--core=%d' % core]
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             (out, err) = p.communicate()
             rs = p.returncode

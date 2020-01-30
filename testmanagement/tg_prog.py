@@ -2,7 +2,7 @@
 
 import os, sys, getopt, subprocess, errno, time, serial
 import lib.flocklab as flocklab
-import stm32loader.stm32loader as stm32loader
+import lib.stm32loader as stm32loader
 from intelhex import hex2bin
 
 # bootstrap loader scripts
@@ -139,11 +139,12 @@ def prog_stm32l4(imagefile, port, speed=115200):
         return errno.EINVAL
 
     # BSL entry sequence
-    flocklab.set_pin(flocklab.gpio_tg_prog, 0)
-    flocklab.set_pin(flocklab.gpio_tg_nrst, 0)
-    flocklab.set_pin(flocklab.gpio_tg_prog, 1)
+    flocklab.set_pin(flocklab.gpio_tg_nrst, 1)    # reset high
+    flocklab.set_pin(flocklab.gpio_tg_prog, 0)    # prog low
+    flocklab.set_pin(flocklab.gpio_tg_nrst, 0)    # reset low
+    flocklab.set_pin(flocklab.gpio_tg_prog, 1)    # prog high
     time.sleep(usleep)
-    flocklab.set_pin(flocklab.gpio_tg_nrst, 1)
+    flocklab.set_pin(flocklab.gpio_tg_nrst, 1)    # reset high
 
     # call the bootloader script
     loader = stm32loader.Stm32Loader()
@@ -269,11 +270,15 @@ def main(argv):
     # Set environment variable needed for programmer: 
     #os.environ["PYTHONPATH"] = os.environ.get("PYTHONPATH", "") + "/usr/local/lib/python2.7/"
     
-    # Set target voltage to 3.3V and make sure power & actuation is enabled
-    flocklab.tg_set_vcc(3.3)
+    # Set target voltage to default value and make sure power, MUX and actuation are enabled
+    flocklab.tg_set_vcc()
     flocklab.tg_pwr_en()
-    flocklab.set_pin(flocklab.gpio_tg_prog, 0)
-    flocklab.set_pin(flocklab.gpio_tg_act_nen, 0)
+    flocklab.tg_mux_en()
+    flocklab.tg_act_en()
+    
+    # Enable and reset the target (also ensures the PROG pin is low)
+    flocklab.tg_en()
+    flocklab.tg_reset()
     
     # Flash the target:
     logger.info("Programming target %s with image %s..." % (target, imagefile))
@@ -288,6 +293,9 @@ def main(argv):
         rs = prog_swd(imagefile, "nRF52840_xxAA")
     else:
         logger.error("Unknown target '%s'" % target)
+    
+    # Make sure the PROG pin is low
+    flocklab.pin_clr(flocklab.gpio_tg_prog)
     
     # Return an error if there was one while flashing:
     if (rs != 0):

@@ -53,12 +53,13 @@ out_pin_states  = [1,             # don't keep target in reset state
                    0,             # LED off
                    0,             # LED off
                    1,             # enable JLink debugger
-                   1,             # turn on USB
-                   1 ]            # turn on GNSS receiver
+                   1,             # turn on USB hub (required for SWD and target USB)
+                   1 ]            # turn on GNSS receiver (required for time sync)
 
 # allowed values
 tg_vcc_min      = 1.1
 tg_vcc_max      = 3.6
+tg_vcc_default  = 3.3             # e.g. used for target programming
 tg_platforms    = ['dpp', 'tmote', 'dpp2lora', 'nrf5']
 tg_port_types   = ['usb', 'serial']
 tg_serial_port  = '/dev/ttyS5'
@@ -129,6 +130,8 @@ def get_logger(loggername=scriptname, debug=False):
         logger = logging.getLogger(loggername)
         if debug:
             logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.INFO)
     except:
         log_fallback("[FlockLab %s] Could not open logger because: %s, %s" % (str(loggername), str(sys.exc_info()[0]), str(sys.exc_info()[1])))
         logger = None
@@ -193,12 +196,9 @@ def init_gpio():
         for pin, state in zip(out_pin_list, out_pin_states):
             os.system("echo out > /sys/class/gpio/gpio%d/direction" % (pin))
             os.system("echo %d > /sys/class/gpio/gpio%d/value" % (state, pin))
-      
     except IOError:
         print("Failed to configure GPIO.")
-        return 
-  
-  
+        return
 ### END init_gpio()
 
 
@@ -287,7 +287,7 @@ def tg_pwr_en(enable=True):
 
 ##############################################################################
 #
-# tg_pwr_set - set power state of a target slot
+# tg_en - set power state of a target slot
 #
 ##############################################################################
 def tg_en(enable=True):
@@ -297,6 +297,34 @@ def tg_en(enable=True):
         gpio_set(gpio_tg_nen)
     return SUCCESS
 ### END tg_en()
+
+
+##############################################################################
+#
+# tg_mux_en - enable multiplexer (activates SWD, serial ID and USB for target)
+#
+##############################################################################
+def tg_mux_en(enable=True):
+    if enable:
+        gpio_clr(gpio_tg_mux_nen)
+    else:
+        gpio_set(gpio_tg_mux_nen)
+    return SUCCESS
+### END tg_mux_en()
+
+
+##############################################################################
+#
+# tg_act_en - enable target actuation
+#
+##############################################################################
+def tg_act_en(enable=True):
+    if enable:
+        gpio_clr(gpio_tg_act_nen)
+    else:
+        gpio_set(gpio_tg_act_nen)
+    return SUCCESS
+### END tg_mux_en()
 
 
 ##############################################################################
@@ -383,7 +411,7 @@ def pin_abbr2num(abbr=""):
     try:
         pinnum = abbrdict[abbr.upper()]
     except KeyError:
-        return errno.EFAULT
+        return ""
     
     return pinnum    
 ### END pin_abbr2num()
@@ -409,7 +437,7 @@ def pin_num2abbr(pinnum=""):
     try:
         abbr = pindict[pinnum.upper()]
     except KeyError:
-        return errno.EFAULT
+        return ""
     
     return abbr
 ### END pin_num2abbr()
@@ -431,9 +459,9 @@ def level_str2abbr(levelstr=""):
     try:
         abbr = strdict[levelstr.upper()]
     except KeyError:
-        return errno.EFAULT
+        return ""
     
-    return abbr    
+    return abbr
 ### END level_str2abbr()
 
 
@@ -454,9 +482,9 @@ def edge_str2abbr(edgestr=""):
     try:
         abbr = strdict[edgestr.upper()]
     except KeyError:
-        return errno.EFAULT
+        return ""
     
-    return abbr    
+    return abbr
 ### END edge_str2abbr()
 
 
@@ -475,9 +503,9 @@ def gpiomon_mode_str2abbr(modestr=""):
     try:
         abbr = strdict[modestr.upper()]
     except KeyError:
-        return errno.EFAULT
+        return ""
     
-    return abbr    
+    return abbr
 ### END gpiomon_mode_str2abbr()
 
 
@@ -486,7 +514,7 @@ def gpiomon_mode_str2abbr(modestr=""):
 # tg_set_vcc - set voltage on the active interface
 #
 ##############################################################################
-def tg_set_vcc(v=3.3):
+def tg_set_vcc(v=tg_vcc_default):
     if v is None or v < 1.1 or v > 3.6:
         return FAILED
       
@@ -547,7 +575,7 @@ def timeformat_xml2service(config=None, timestring=""):
         # Now convert to service time-string:
         servicetimestring = time.strftime(config.get("observer", "timeformat_services"), xmltime)
     except:
-        return errno.EFAULT
+        return ""
     
     return servicetimestring
 ### END timeformat_xml2service()
@@ -567,7 +595,7 @@ def timeformat_xml2timestamp(config=None, timestring=""):
         #xmltime = time.strptime(timestring, config.get("xml", "timeformat_xml"))
         xmltime = time.strptime(timestring, "%Y-%m-%dT%H:%M:%S")
     except:
-        return errno.EFAULT
+        return ""
     
     return time.mktime(xmltime)
 ### END timeformat_xml2service()
@@ -578,19 +606,17 @@ def timeformat_xml2timestamp(config=None, timestring=""):
 # start_pwr_measurement
 #
 ##############################################################################
-def start_pwr_measurement(log_file_dir, sampling_rate=rl_default_rate, num_samples=rl_max_samples):
+def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samples=0):
     if sampling_rate not in rl_samp_rates:
-        syslog.syslog(syslog.LOG_ERROR, "Invalid sampling rate for power measurement.")
         return errno.EINVAL
-    my_time = time.strftime("%Y%m%d%H%M%S", time.gmtime())
-    log_file = "%s/power_%s.rld" % (log_file_dir, my_time)
-    cmd = "rocketlogger start -o %s --rate=%s" % (log_file, str(sampling_rate))
+    if not out_file:
+        out_file = "%s/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+    cmd = ["rocketlogger", "start", "-o", out_file, "--rate=%s" % str(sampling_rate)]
     if num_samples:
         if num_samples > rl_max_samples:
             num_samples = rl_max_samples
         cmd.append('--samples=' + str(num_samples))
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    p.wait()
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return SUCCESS
 ### END start_pwr_measurement()
 
@@ -601,9 +627,9 @@ def start_pwr_measurement(log_file_dir, sampling_rate=rl_default_rate, num_sampl
 #
 ##############################################################################
 def stop_pwr_measurement():
-    cmd = "rocketlogger stop"
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    p.wait()
+    cmd = ["rocketlogger", "stop"]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return SUCCESS
 ### END stop_pwr_measurement()
 
 
@@ -612,14 +638,16 @@ def stop_pwr_measurement():
 # start_gpio_tracing
 #
 ##############################################################################
-def start_gpio_tracing(out_file=None, xml=None):
+def start_gpio_tracing(out_file=None, start_time=0):
     if not out_file:
-        my_time = time.strftime("%Y%m%d%H%M%S", time.gmtime())
-        out_file = "%s/gpiotracing_%s.dat" % (config.get("observer", "testresultfolder"), my_time)
+        out_file = "%s/gpiotracing_%s.dat" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     # for now, ignore the XML config -> trace all pins by default
-    cmd = "fl_logic %s &" % (out_file)
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    p.wait()
+    cmd = ["fl_logic", out_file]
+    if start_time > 0:
+        cmd.append("%d" % start_time)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # do not call communicate(), it will block
+    return SUCCESS
 ### END start_gpio_tracing()
 
 
@@ -629,46 +657,18 @@ def start_gpio_tracing(out_file=None, xml=None):
 #
 ##############################################################################
 def stop_gpio_tracing():
-    proc = subprocess.Popen(['pgrep', '-f', 'fl_logic'], stdout=subprocess.PIPE)
-    pid, err = proc.communicate()
-    if pid:
-        os.kill(int(pid), signal.SIGTERM)
-### END stop_gpio_tracing()
-
-
-##############################################################################
-#
-# collect_pwr_measurement_data
-#
-##############################################################################
-def collect_pwr_measurement_data(test_id):
-    data_file_path = "/home/debian/flocklab/pwr/"
-
-    read_files = glob.glob("%s*.rld" % data_file_path)
-    while len(read_files) == 0:
-        read_files = glob.glob("%s*.rld" % data_file_path)
-    
-    for f in read_files:
-        size = os.stat(str(f)).st_size
-        while size == 0:
-            size = os.stat(str(f)).st_size
-
-    my_time = time.strftime("%Y%m%d%H%M%S", time.gmtime())
-    
-    output_file = "%spowerprofiling_%s.db" % (data_file_path, my_time)
-    with open(output_file, "a+") as outfile:
-        for f in read_files:
-            with open(f) as infile:
-                for line in infile:
-                    outfile.write(line)
-            os.remove(str(f))
-
+    p = subprocess.Popen(['pgrep', '-f', 'fl_logic'], stdout=subprocess.PIPE)
+    pid, err = p.communicate()
     try:
-        data_files = [f for f in os.listdir(data_file_path) if os.path.isfile(os.path.join(data_file_path, f))]
-        for df in data_files:
-            src = "%s%s" % (data_file_path, df)
-            dst = "/home/debian/flocklab/db/%d/%s" %(int(test_id), df)
-            shutil.move(src, dst)
-    except (Exception) as e:
-        syslog.syslog(syslog.LOG_INFO, traceback.format_exc())
-### END collect_pwr_measurement_data()
+        if p.returncode != 0:
+            return SUCCESS      # process does probably not exist
+        if pid:
+            os.kill(int(pid), signal.SIGTERM)
+            logger.debug("Waiting for gpio tracing service to stop...")
+            (p, rs) = os.waitpid(int(pid))
+            if rs == 0:
+                return SUCCESS
+    except:
+        pass
+    return FAILED
+### END stop_gpio_tracing()
