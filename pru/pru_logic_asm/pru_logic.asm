@@ -23,11 +23,12 @@ PRU1_CTRL               .set    0x00024000
 PRUSS_SYSCFG_OFS        .set    0x4
 PRUSS_CYCLECNT_OFS      .set    0xC
 PRUSS_STALLCNT_OFS      .set    0x10
+PRUSS_SICR_OFS          .set    0x24
 TRACING_PINS            .set    0x7F           ; trace all pins incl. actuation
-ACTUATION_PINS          .set    0x60           ; TODO: add 0x80
-DBG_GPIO1               .set    7              ; 0x80     (P8.40)
-DBG_GPIO2               .set    10             ; 0x400    (P8.28)
+ACTUATION_PINS          .set    0xe0
+DBG_GPIO                .set    10             ; 0x400    (P8.28)
 PPS_PIN                 .set    8              ; 0x100    (P8.27)
+PRUSYNC_PIN             .set    9              ;          (P8.29)
 SYSEVT_GEN_VALID_BIT    .set    0x20
 PRU_EVTOUT_2            .set    0x04
 BUFFER_ADDR_OFS         .set    0x0
@@ -80,26 +81,24 @@ $M?:    NOP
         QBEQ    $M?, exp, 0
         .endm
 
-CNTR_ON .macro          ; enable cycle counter
+START_COUNTER   .macro  ; enable the cycle counter
         LDI     TMP, PRU_CRTL_CTR_ON
         SBBO    &TMP, CTRL, 0, 1
         .endm
 
-CNTR_OFF    .macro      ; disable cycle counter
+STOP_COUNTER    .macro  ; disable the cycle counter and reset its value to 0
         LDI     TMP, PRU_CRTL_CTR_OFF
         SBBO    &TMP, CTRL, 0, 1
+        LDI     TMP, 0
+        SBBO    &TMP, CTRL, PRUSS_CYCLECNT_OFS, 4
         .endm
 
-START_CCNT  .macro      ; start cycle count (capture the current value)
-        .if DEBUG
+CAPTURE_CCNT  .macro    ; get the current cycle counter value and store it in CCNT
         LBBO    &CCNT, CTRL, PRUSS_CYCLECNT_OFS, 4
-        .endif
         .endm
 
-STOP_CCNT   .macro      ; stop cycle count (capture the current value)
-        .if DEBUG
+CAPTURE_CCNT2 .macro    ; get the current cycle counter value and store it in CCNT2
         LBBO    &CCNT2, CTRL, PRUSS_CYCLECNT_OFS, 4
-        .endif
         .endm
 
 PIN_XOR .macro  pin_bit
@@ -153,18 +152,20 @@ main:
         CLR     TMP, TMP, 4               ; clear bit 4 (STANDBY_INIT)
         SBCO    &TMP, PRUSS_CFG, PRUSS_SYSCFG_OFS, 4
 
-    .if DEBUG
-        CNTR_ON                           ; enable cycle counter
-    .endif
-
         ; wait for status bit (host event), then signal to host processor that PRU is ready by generating an event
         WBS     GPI, 31                   ; wait until bit set
-        LDI     GPI, 0                    ; clear events
         LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
+
+        ; clear event status bit (R31.t31)
+        LDI     TMP, 22
+        SBCO    &TMP, PRUSS_INTC, PRUSS_SICR_OFS, 4
 
         ; wait for the next rising edge of the PPS signal
         WBC     GPI, PPS_PIN
         WBS     GPI, PPS_PIN
+
+        ; release target reset (P8.40)
+        SET     GPO.t7
 
     .if USE_32B_BUFFER
         JMP     main_loop_alt
@@ -172,7 +173,6 @@ main:
 
         ; sampling loop
 main_loop:
-        START_CCNT
 
         ; sample pins (3 cycles)
         AND     CVAL, GPI, TRACING_PINS
@@ -181,9 +181,9 @@ main_loop:
 
         ; value changed?
         QBNE    update_val, CVAL, PVAL
-        LDI32   TMP, 0xFFFFFF             ; pseudo instruction, takes 2 cycles?
+        LDI32   TMP, 0xFFFFFF             ; pseudo instruction, takes 2 cycles
         QBEQ    update_val2, SCNT, TMP
-        ADD     SCNT, SCNT, 0x01
+        ADD     SCNT, SCNT, 1
         NOP
         NOP
         NOP
@@ -203,7 +203,7 @@ update_val2:
         LSL     SCNT, SCNT, 8
         OR      TMP2, CVAL, SCNT
         MOV     PVAL, CVAL                ; previous = current
-        LDI     SCNT, 1                   ; reset sample counter
+        LDI     SCNT, 1                   ; reset sample counter to value 1
         ; 11
         ; copy into the large RAM buffer, takes 1 cycle for 4 bytes in the best/average case
         SBBO    &TMP2, ADDR, OFS, 4
@@ -219,45 +219,52 @@ notify_host:
 notify_host2:
         LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
 done:
-        ; 18 cycles
-        NOP                             ; make it 19 cycles (+1 cycle for jump below)
+        ; check if it is time to stop
+        QBBS    exit, GPI, 31             ; jump to exit if PRU1 status bit set
 
-        STOP_CCNT
-
-    .if DEBUG
-        ; read cycle counter
-        SUB     TMP, CCNT2, CCNT
-        SUB     TMP, TMP, 4               ; subtract 4 cycles
-        LDI32   TMP2, 1<<DBG_GPIO2
-        JMP     dbg_loop_end
-dbg_loop_begin:
-        XOR     GPO, GPO, TMP2
-        XOR     GPO, GPO, TMP2
-        SUB     TMP, TMP, 1
-dbg_loop_end:
-        QBNE    dbg_loop_begin, TMP, 0
-        XOR     GPO, GPO, TMP2
-        ; clear counter value (also clear STALL counter)
-        CNTR_OFF
-        LDI     TMP, 0
-        SBBO    &TMP, CTRL, PRUSS_CYCLECNT_OFS, 4
-        CNTR_ON
-    .endif
+        ; 19 cycles
+        ;NOP                              ; add nops here to get exactly 19 cycles (1 cycle is for the jump below)
 
         ; stall the loop to achieve the desired sampling frequency
-    .if SAMPLING_FREQ < 10000000                    ; max is ~10MHz
         DELAYI  (200000000/SAMPLING_FREQ - 20)      ; one loop pass takes ~20 cycles
-        ; note: there is also a LOOP instruction!
-    .endif
         JMP     main_loop
 
+exit:
+        ; wait for next rising edge of PPS signal
+        ; note: WBC/WBS won't work here, since we need to count the number of cycles
+wait_for_pps_low:
+        DELAYI  (200000000/SAMPLING_FREQ - 20)
+        ADD     SCNT, SCNT, 1
+        QBBS    wait_for_pps_low, GPI, PPS_PIN
+wait_for_pps_high:
+        DELAYI  (200000000/SAMPLING_FREQ - 20)
+        ADD     SCNT, SCNT, 1
+        QBBC    wait_for_pps_high, GPI, PPS_PIN
+
+        ; TODO: handle SCNT overflow
+
+        ; actuate the target reset pin
+        CLR     GPO.t7
+
+        ; copy the final GPIO state into the RAM buffer
+        CLR     CVAL.t7
+        LSL     SCNT, SCNT, 8
+        OR      TMP, CVAL, SCNT
+        SBBO    &TMP, ADDR, OFS, 4
+
+        ; send event to host processor to indicate successful program termination
+        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
+
+        ; halt the PRU
+        HALT
 
 
 ; -----------------------------------------------------------------------
 
         ; alternative sampling loop, writes 32 bytes at once into the RAM
 main_loop_alt:
-        PIN_XOR DBG_GPIO1
+        ;PIN_XOR DBG_GPIO
+        NOP
 
         ; sample pins (3 cycles)
         AND     CVAL, GPI, TRACING_PINS
@@ -357,16 +364,14 @@ done_alt:
         NOP
         NOP
 done_alt2:
-        QBBS    exit, GPI, 31       ; jump to exit if PRU1 status bit set
+        QBBS    exit_alt, GPI, 31       ; jump to exit if PRU1 status bit set
 
         ; 19 cycles
 
-    .if SAMPLING_FREQ < 10000000
         DELAYI  (200000000/SAMPLING_FREQ - 20)  ; one loop pass takes 20 cycles
-    .endif
         JMP     main_loop_alt
 
-exit:
+exit_alt:
         ; find out how many bytes have not yet been transferred
         QBEQ    exit_halt, IPTR, IPTR0          ; no bytes to transfer?
         LDI     TMP, 0

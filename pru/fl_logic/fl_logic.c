@@ -61,6 +61,7 @@
 #ifndef INTERACTIVE_MODE
  #define INTERACTIVE_MODE     0
 #endif /* INTERACTIVE_MODE */
+#define RECONFIG_TG_RST       1                     // reconfigure target reset pin such that PRU1 can control it
 #if INTERACTIVE_MODE
  #define BUFFER_SIZE          8                     // in bytes (must be a power of 2, minimum is 8 bytes)
 #else
@@ -72,6 +73,7 @@
 #define OUTPUT_DIR            "/home/flocklab/data/"                // with last slash
 #define SPRINTF_BUFFER_LENGTH 256
 #define PIN_NAMES             "LED1", "LED2", "LED3", "INT1", "INT2", "SIG1", "SIG2", "nRST"
+#define TG_RST_PIN            "P840"                // GPIO77
 
 
 // PARAMETER CHECK
@@ -156,8 +158,26 @@ void wait_for_start(unsigned long starttime)
   while (currtime && (currtime < starttime)) {
     // alternatively, use clock_gettime(CLOCK_REALTIME, &currtime)
     currtime = time(NULL);
-    usleep(100000);
+    usleep(100000);         // must be < ~0.5s
   }
+}
+
+
+int config_pins(bool start)
+{
+#if RECONFIG_TG_RST
+  if (start) {
+    int status = system("config-pin -a " TG_RST_PIN " pruout");
+    if (status != 0) {
+      printf("failed to reconfigure reset pin\n");
+      return 1;
+    }
+  } else {
+    // restore the regular config (MODE GPIO, output direction)
+    system("config-pin -a " TG_RST_PIN " out");
+  }
+#endif /* RECONFIG_TG_RST */
+  return 0;
 }
 
 
@@ -238,34 +258,37 @@ void pru1_deinit(void)
 
 int pru1_handshake(void)
 {
-  // signal PRU by setting the status bit (R31.t31)
-  prussdrv_pru_send_event(ARM_PRU1_INTERRUPT);
+  // signal PRU to start by setting the status bit (R31.t31)
+  prussdrv_pru_send_event(ARM_PRU1_INTERRUPT);   // event #22
   
   // wait for PRU event (returns 0 on timeout, -1 on error with errno)
-  int res = prussdrv_pru_wait_event_timeout(PRU_EVTOUT_1, 2000000);   /* 2s */
+  int res = prussdrv_pru_wait_event_timeout(PRU_EVTOUT_1, 2000000); // needs to be > 1s
   if (res < 0) {
     // error checking interrupt occurred
-    printf("failed waiting for PRU interrupt\n");
+    printf("an error occurred while waiting for the PRU event\n");
     return 1;
   } else if (res == 0) {
-    printf("failed to start PRU (not responding)\n");
+    printf("failed to synchronize with PRU (not responding)\n");
     return 2;
   }
-
-  // clear event
+  
+  // clear system (event #20)
   prussdrv_pru_clear_event(PRU_EVTOUT_1, PRU1_ARM_INTERRUPT);
   
   return 0;
 }
 
 
-int pru1_sample(uint8_t* pru_buffer, FILE* data_file)
+int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
 {
   uint32_t readout_count = 0;
-  int res;
   
   if (!pru_buffer || !data_file) {
     return 1;
+  }
+  
+  if (pru1_handshake() != 0) {
+    return 2;
   }
 
   // start sampling
@@ -276,15 +299,18 @@ int pru1_sample(uint8_t* pru_buffer, FILE* data_file)
   
   // continuous sampling loop
   while (running) {
-    // wait for PRU event indicating new data (repeat wait on interrupts)
-    do {
-      // wait for PRU event (returns 0 on timeout, -1 on error with errno)
-      res = prussdrv_pru_wait_event_timeout(PRU_EVTOUT_1, 1000000);
-    } while (res < 0 && errno == EINTR);
+    // check whether it is time to stop
+    if (stoptime) {
+      if (time(NULL) >= stoptime) {
+        running = false;
+      }
+    }
+    // wait for PRU event (returns 0 on timeout, -1 on error with errno)
+    int res = prussdrv_pru_wait_event_timeout(PRU_EVTOUT_1, 100000); // needs to be < ~0.5s
     if (res < 0) {
       // error checking interrupt occurred
       printf("failed waiting for PRU interrupt\n");
-      break;
+      return 3;
     } else if (res == 0) {
       // timeout -> just continue
       continue;
@@ -315,6 +341,10 @@ int pru1_sample(uint8_t* pru_buffer, FILE* data_file)
     
     readout_count++;
   }
+  if (pru1_handshake() != 0) {
+    return 4;
+  }
+  
   // copy the remaining data
   if (readout_count & 1) {
     fwrite(&pru_buffer[BUFFER_SIZE / 2], (BUFFER_SIZE / 2), 1, data_file);
@@ -323,10 +353,10 @@ int pru1_sample(uint8_t* pru_buffer, FILE* data_file)
   }
   
 #if INTERACTIVE_MODE
-  printf("stored %u samples to file\n", readout_count * BUFFER_SIZE / 8);
+  printf("captured %u samples\n", readout_count * BUFFER_SIZE / 8);
 #endif /* INTERACTIVE_MODE */
 
-  return res;
+  return 0;
 }
 
 
@@ -360,7 +390,7 @@ void parse_tracing_data(const char* filename, unsigned long starttime)
       long int pos = ftell(data_file);
       fseek(data_file, 0, SEEK_END);
       long int size = ftell(data_file);
-      printf("invalid sample detected, aborting conversion (current position: %ld/%ld)", pos, size);
+      printf("%ld of %ld bytes parsed\n", pos, size);
 #endif /* INTERACTIVE_MODE */
       break;
     }
@@ -392,19 +422,15 @@ void parse_tracing_data(const char* filename, unsigned long starttime)
 // MAIN
 int main(int argc, char** argv)
 {
-  FILE*    datafile = NULL;
-  uint8_t* prubuffer = NULL;
   char     filename[SPRINTF_BUFFER_LENGTH];
+  FILE*    datafile  = NULL;
+  uint8_t* prubuffer = NULL;
   long int starttime = 0;
+  long int stoptime  = 0;
   
-  // get arguments
-  if (argc > 2) {
-    // 2nd argument is always the start timestamp
-    starttime = strtol(argv[2], NULL, 10);
-  }
-  // generate filename and create output directory
+  // --- check arguments ---
   if (argc > 1) {
-    // 1st argument is always the filename
+    // 1st argument if given is the filename
     strncpy(filename, argv[1], SPRINTF_BUFFER_LENGTH);
     char* tmp = strrchr(argv[1], '/');
     if (tmp) tmp[0] = 0;
@@ -417,13 +443,28 @@ int main(int argc, char** argv)
     }
     sprintf(filename, OUTPUT_DIR "%s_%lu.dat", DATA_FILENAME_PREFIX, time(NULL));
   }
+  if (argc > 2) {
+    // 2nd argument if given is the start timestamp
+    starttime = strtol(argv[2], NULL, 10);
+    if (starttime < time(NULL)) {
+      starttime = time(NULL);    // invalid start time
+    }
+  }
+  if (argc > 3) {
+    // 3rd argument if given is the test duration in seconds or stop timestamp
+    stoptime = strtol(argv[3], NULL, 10);
+    if (stoptime < time(NULL)) {
+      // appears to be an offset rather than a UNIX timestamp
+      stoptime += starttime;
+    }
+  }
   
-  // register signal handler for SIGTERM and SIGINT (for stopping)
+  // --- register signal handler ---
   if (register_sighandler() != 0) {
     return 1;
   }
   
-  // open output file
+  // --- open output file ---
   datafile = fopen(filename, "wb");
   if (NULL == datafile) {
     printf("failed to open file %s\n", filename);
@@ -431,37 +472,33 @@ int main(int argc, char** argv)
     return 2;
   }
   
-  // setup
+  // --- configure PRU ---
   if (pru1_init(&prubuffer) != 0) {
     fclose(datafile);
     return 3;
   }
   
-  // if start time is given, wait for it
+  // --- configure used pins ---
+  config_pins(true);
+  
+  // --- wait for the start ---
   wait_for_start(starttime);
   
-  // handshake with PRU (synchronize)
-  if (pru1_handshake() != 0) {
-    printf("handshake failed\n");
-    fclose(datafile);
-    return 4;
-  }
-  
-  // start sampling
-  if (pru1_sample(prubuffer, datafile) != 0) {
+  // --- start sampling ---
+  if (pru1_run(prubuffer, datafile, stoptime) != 0) {
     printf("an error occurred\n");
   }
   
-  // cleanup
+  // --- cleanup ---
+  config_pins(false);
   pru1_deinit();
-  
   fflush(datafile);
   fclose(datafile);
 #if INTERACTIVE_MODE
   printf("samples stored in %s\n", filename);
 #endif /* INTERACTIVE_MODE */
   
-  // parse data
+  // --- parse data ---
   parse_tracing_data(filename, starttime);
   
 #if INTERACTIVE_MODE
