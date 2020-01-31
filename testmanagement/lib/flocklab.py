@@ -611,12 +611,17 @@ def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samp
         return errno.EINVAL
     if not out_file:
         out_file = "%s/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-    cmd = ["rocketlogger", "start", "-o", out_file, "--rate=%s" % str(sampling_rate)]
+    cmd = ["rocketlogger", "start", "-b", "--channel=V1,V2,I1L,I1H", "--output=%s" % out_file, "--rate=%d" % int(sampling_rate)]
     if num_samples:
         if num_samples > rl_max_samples:
             num_samples = rl_max_samples
-        cmd.append('--samples=' + str(num_samples))
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        cmd.append(('--samples=' + str(num_samples)))
+    logger = get_logger()
+    logger.debug("Starting power measurement with command '%s'" % cmd)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    rs = p.wait()
+    if rs != 0:
+        return FAILED
     return SUCCESS
 ### END start_pwr_measurement()
 
@@ -628,7 +633,7 @@ def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samp
 ##############################################################################
 def stop_pwr_measurement():
     cmd = ["rocketlogger", "stop"]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     return SUCCESS
 ### END stop_pwr_measurement()
 
@@ -638,14 +643,17 @@ def stop_pwr_measurement():
 # start_gpio_tracing
 #
 ##############################################################################
-def start_gpio_tracing(out_file=None, start_time=0):
+def start_gpio_tracing(out_file=None, start_time=0, stop_time=0):
     if not out_file:
         out_file = "%s/gpiotracing_%s.dat" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     # for now, ignore the XML config -> trace all pins by default
     cmd = ["fl_logic", out_file]
     if start_time > 0:
         cmd.append("%d" % start_time)
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # test start time must be given in order to specify a stop time
+        if stop_time > 0:
+            cmd.append("%d" % stop_time)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     # do not call communicate(), it will block
     return SUCCESS
 ### END start_gpio_tracing()
@@ -665,8 +673,14 @@ def stop_gpio_tracing():
         if pid:
             os.kill(int(pid), signal.SIGTERM)
             logger.debug("Waiting for gpio tracing service to stop...")
-            (p, rs) = os.waitpid(int(pid))
-            if rs == 0:
+            timeout = 30
+            rs = 0
+            while rs == 0 and timeout:
+                time.sleep(1)
+                timeout = timeout - 1
+                p = subprocess.Popen(['pgrep', '-f', 'fl_logic'], stdout=subprocess.PIPE)
+                rs = p.wait()
+            if rs != 0:         # process does not exist anymore
                 return SUCCESS
     except:
         pass

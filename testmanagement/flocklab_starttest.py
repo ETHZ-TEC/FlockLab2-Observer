@@ -274,13 +274,12 @@ def main(argv):
         # determine test start
         try:
             teststarttime = int(resets[0])   # 1st reset actuation is the reset release = start of test
-            logger.debug("Test start time is %s." % (teststarttime))
+            teststoptime  = int(resets[-1])  # last reset actuation is the test stop time
+            logger.debug("Test will run from %s to %s." % (teststarttime, teststoptime))
         except:
             logger.error("Could not determine test start time.")
     else:
         logger.debug("No config for GPIO setting service found.")
-    # for now, just release the reset pin
-    #flocklab.tg_reset()   # TODO
     
     # GPIO tracing ---
     if (tree.find('obsGpioMonitorConf') != None):
@@ -294,7 +293,7 @@ def main(argv):
             pins.append(flocklab.pin_abbr2num(pinconf.find('pin').text))
         # TODO use pins config
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        if flocklab.start_gpio_tracing(tracingfile, teststarttime) != flocklab.SUCCESS:
+        if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime) != flocklab.SUCCESS:
             logger.error
         # touch the file
         open(tracingfile + ".csv", 'a').close()

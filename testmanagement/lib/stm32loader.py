@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # -*- coding: utf-8 -*-
 # vim: sw=4:ts=4:si:et:enc=utf-8
@@ -40,6 +40,8 @@ VERSION = (0, 3, 0)
 __version__ = '.'.join(map(str, VERSION))
 
 VERBOSITY = 5
+
+ENTRY_SEQUENCE = True
 
 CHIP_IDS = {
     # see ST AN2606
@@ -401,12 +403,18 @@ class Stm32Bootloader:
         self.serial.write(bytearray([checksum]))
 
     def _reset(self):
+        global ENTRY_SEQUENCE
+        if not ENTRY_SEQUENCE:
+            return
         self._enable_reset(True)
         time.sleep(0.1)
         self._enable_reset(False)
         time.sleep(0.5)
 
     def _enable_reset(self, enable=True):
+        global ENTRY_SEQUENCE
+        if not ENTRY_SEQUENCE:
+            return
         # reset on the MCU is active low (0 Volt puts the MCU in reset)
         # but RS-232 DTR is active low by itself so it inverts this
         # (writing logical 1 outputs a low voltage)
@@ -423,6 +431,9 @@ class Stm32Bootloader:
             self.serial.setDTR(level)
 
     def _enable_boot0(self, enable=True):
+        global ENTRY_SEQUENCE
+        if not ENTRY_SEQUENCE:
+            return
         # active low unless otherwise specified
         level = 0 if enable else 1
 

@@ -132,13 +132,13 @@ def main(argv):
                     optional_reprogramming = True
                 except configparser.NoOptionError:
                     break
-            cmd = [config.get("observer", "progscript"), '--image=%s/%s' % (config.get("observer", "defaultimgfolder"), imgfile), '--target=%s'%(platform), '--core=%d' % core]
+            cmd = [config.get("observer", "progscript"), '--image=%s/%s' % (config.get("observer", "defaultimgfolder"), imgfile), '--target=%s' % (platform), '--core=%d' % core]
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             (out, err) = p.communicate()
             rs = p.returncode
             if (rs != flocklab.SUCCESS):
                 if not optional_reprogramming:
-                    errors.append("Could not flash target with default image because error %d occurred." % rs)
+                    errors.append("Could not flash target with default image because error %d occurred (%s)." % (rs, err))
             else:
                 logger.debug("Reprogrammed target with default image.")
             core = core + 1

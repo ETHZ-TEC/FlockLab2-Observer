@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import os, sys, getopt, subprocess, errno, time, serial
+import os, sys, getopt, subprocess, errno, time, serial, traceback
 import lib.flocklab as flocklab
 import lib.stm32loader as stm32loader
 from intelhex import hex2bin
@@ -122,7 +122,6 @@ def prog_msp432(imagefile, port, speed):
 ##############################################################################
 def prog_stm32l4(imagefile, port, speed=115200):
     global debug
-    usleep = 0.001
 
     # stm32loader expects a binary file
     if "hex" in os.path.splitext(imagefile)[1]:
@@ -142,9 +141,11 @@ def prog_stm32l4(imagefile, port, speed=115200):
     flocklab.set_pin(flocklab.gpio_tg_nrst, 1)    # reset high
     flocklab.set_pin(flocklab.gpio_tg_prog, 0)    # prog low
     flocklab.set_pin(flocklab.gpio_tg_nrst, 0)    # reset low
+    time.sleep(0.01)
     flocklab.set_pin(flocklab.gpio_tg_prog, 1)    # prog high
-    time.sleep(usleep)
+    time.sleep(0.01)
     flocklab.set_pin(flocklab.gpio_tg_nrst, 1)    # reset high
+    time.sleep(0.1)
 
     # call the bootloader script
     loader = stm32loader.Stm32Loader()
@@ -155,17 +156,15 @@ def prog_stm32l4(imagefile, port, speed=115200):
     loader.configuration['erase'] = True
     loader.configuration['write'] = True
     loader.configuration['verify'] = True
+    stm32loader.ENTRY_SEQUENCE = False
     if debug:
         stm32loader.VERBOSITY = 10
     else:
         stm32loader.VERBOSITY = 0
     loader.connect()
     if loader.read_device_details() != 0x435:
-        flocklab.tg_reset()
         return 2
     loader.perform_commands()
-    
-    flocklab.tg_reset()
     
     # Revert back all config changes:
     #subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
@@ -294,8 +293,9 @@ def main(argv):
     else:
         logger.error("Unknown target '%s'" % target)
     
-    # Make sure the PROG pin is low
-    flocklab.pin_clr(flocklab.gpio_tg_prog)
+    # Reset
+    flocklab.tg_reset()
+    #flocklab.gpio_clr(flocklab.gpio_tg_prog)  -> already done in tg_reset()
     
     # Return an error if there was one while flashing:
     if (rs != 0):
