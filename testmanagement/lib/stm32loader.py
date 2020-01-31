@@ -447,6 +447,7 @@ class Stm32Bootloader:
             self.serial.setRTS(level)
 
     def _wait_for_ack(self, info=""):
+        time.sleep(0.001)   # wait 1ms
         try:
             ack = bytearray(self.serial.read())[0]
         except TypeError:

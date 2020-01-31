@@ -198,37 +198,6 @@ def main(argv):
     else:
         logger.debug("No config for serial service found.")
 
-    # Power profiling ---
-    if tree.find('obsPowerprofConf') != None:
-        logger.debug("Found config for power profiling.")
-        # Cycle through all powerprof configs and insert them into file:
-        subtree = tree.find('obsPowerprofConf')
-        profconfs = list(subtree.getiterator("profConf"))
-        # For now, only accept one powerprofiling config
-        profconf = profconfs[0]
-        duration = profconf.find('duration').text
-        # Get time and bring it into right format:
-        starttime = flocklab.timeformat_xml2service(config, profconf.find('absoluteTime/absoluteDateTime').text)
-        microsecs = profconf.find('absoluteTime/absoluteMicrosecs').text
-        nthsample = profconf.find('samplingDivider')
-        if nthsample != None:
-            try:
-                nthsample = int(nthsample.text)
-            except:
-                logger.error("Sampling divider is not an integer value.")
-                nthsample = 0
-        if nthsample:
-            sampling_rate = flocklab.rl_max_rate / nthsample
-        else:
-            sampling_rate = flocklab.rl_default_rate
-        # Start profiling
-        out_file = "%s/%d/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        if flocklab.start_pwr_measurement(out_file, sampling_rate) != flocklab.SUCCESS:
-            flocklab.error_logandexit("Failed to start power measurement.")
-        logger.debug("Started power measurement (output file: %s)." % out_file)
-    else:
-        logger.debug("No config for powerprofiling service found.")
-    
     # GPIO actuation ---
     flocklab.tg_act_en()  # make sure actuation is enabled
     if (tree.find('obsGpioSettingConf') != None):
@@ -300,6 +269,38 @@ def main(argv):
         logger.debug("Started GPIO tracing (output file: %s)." % tracingfile)
     else:
         logger.debug("No config for GPIO monitoring service found.")
+    
+    # Power profiling ---
+    if tree.find('obsPowerprofConf') != None:
+        logger.debug("Found config for power profiling.")
+        # Cycle through all powerprof configs and insert them into file:
+        subtree = tree.find('obsPowerprofConf')
+        profconfs = list(subtree.getiterator("profConf"))
+        # For now, only accept one powerprofiling config
+        profconf = profconfs[0]
+        duration = profconf.find('duration').text
+        # Get time and bring it into right format:
+        starttime = flocklab.timeformat_xml2service(config, profconf.find('absoluteTime/absoluteDateTime').text)
+        microsecs = profconf.find('absoluteTime/absoluteMicrosecs').text
+        nthsample = profconf.find('samplingDivider')
+        if nthsample != None:
+            try:
+                nthsample = int(nthsample.text)
+            except:
+                logger.error("Sampling divider is not an integer value.")
+                nthsample = 0
+        if nthsample:
+            samplingrate = flocklab.rl_max_rate / nthsample
+        else:
+            samplingrate = flocklab.rl_default_rate
+        # Start profiling
+        outputfile = "%s/%d/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+        # TODO use start_time=teststarttime
+        if flocklab.start_pwr_measurement(out_file=outputfile, sampling_rate=samplingrate) != flocklab.SUCCESS:
+            flocklab.error_logandexit("Failed to start power measurement.")
+        logger.debug("Started power measurement (output file: %s)." % outputfile)
+    else:
+        logger.debug("No config for powerprofiling service found.")
     
     flocklab.gpio_clr(flocklab.gpio_led_error)
     logger.info("Test successfully started.")

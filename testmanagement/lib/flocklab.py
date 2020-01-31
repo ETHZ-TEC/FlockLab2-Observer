@@ -606,7 +606,7 @@ def timeformat_xml2timestamp(config=None, timestring=""):
 # start_pwr_measurement
 #
 ##############################################################################
-def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samples=0):
+def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samples=0, start_time=0):
     if sampling_rate not in rl_samp_rates:
         return errno.EINVAL
     if not out_file:
@@ -615,12 +615,14 @@ def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samp
     if num_samples:
         if num_samples > rl_max_samples:
             num_samples = rl_max_samples
-        cmd.append(('--samples=' + str(num_samples)))
-    logger = get_logger()
-    logger.debug("Starting power measurement with command '%s'" % cmd)
+        cmd.append(("--samples=%s" % str(num_samples)))
+    if start_time > 0:
+        cmd.append(("--tstart=%s" % str(start_time)))
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     rs = p.wait()
     if rs != 0:
+        logger = get_logger()
+        logger.warn("Tried to start power measurement with command '%s'" % cmd)
         return FAILED
     return SUCCESS
 ### END start_pwr_measurement()
