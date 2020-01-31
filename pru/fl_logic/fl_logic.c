@@ -303,14 +303,15 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
     if (stoptime) {
       if (time(NULL) >= stoptime) {
         running = false;
+        break;
       }
     }
     // wait for PRU event (returns 0 on timeout, -1 on error with errno)
     int res = prussdrv_pru_wait_event_timeout(PRU_EVTOUT_1, 100000); // needs to be < ~0.5s
     if (res < 0) {
       // error checking interrupt occurred
-      printf("failed waiting for PRU interrupt\n");
-      return 3;
+      if (running)
+        return 3;   // only return error code if still running
     } else if (res == 0) {
       // timeout -> just continue
       continue;
@@ -485,8 +486,9 @@ int main(int argc, char** argv)
   wait_for_start(starttime);
   
   // --- start sampling ---
-  if (pru1_run(prubuffer, datafile, stoptime) != 0) {
-    printf("an error occurred\n");
+  int rs = pru1_run(prubuffer, datafile, stoptime);
+  if (rs != 0) {
+    printf("pru1_run() returned with error code %d\n", rs);
   }
   
   // --- cleanup ---
@@ -505,5 +507,5 @@ int main(int argc, char** argv)
   printf("terminated\n");
 #endif /* INTERACTIVE_MODE */
   
-  return 0;
+  return rs;
 }
