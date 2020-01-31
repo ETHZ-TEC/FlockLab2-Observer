@@ -56,9 +56,9 @@ FIRMWARE_NAME = rocketlogger.bin
 ## config file names
 SERVICE_CONFIG = rocketlogger.service
 
-## code revision
-GIT_DESCRIPTION = `git describe --tags --dirty`
-GIT_DATE = `git show -s --format="%ci" HEAD`
+## code revision  `git describe --tags --dirty`  `git show -s --format="%ci" HEAD`
+GIT_DESCRIPTION = v1.1.6-154-gac73716
+GIT_DATE = 2019-10-08 17:11:24 +0200
 COMPILE_DATE = `date --rfc-3339=seconds`
 
 ## source files

@@ -165,6 +165,8 @@ struct rl_config {
     uint64_t file_size;
     /// File comment
     char const *file_comment;
+    /// Start timestamp
+    long int t_start;
 };
 
 /**
