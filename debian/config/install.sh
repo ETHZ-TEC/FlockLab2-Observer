@@ -170,8 +170,12 @@ check_retval "Failed to install system updates." "System updates installed."
 
 # install fundamental dependencies
 echo "       Installing fundamental dependencies..."
-apt-get --assume-yes install unzip git ntp make build-essential python3 python3-dev python3-pip device-tree-compiler gcc g++ libncurses5-dev libi2c-dev linux-headers-$(uname -r) > /dev/null 2>> $ERRORLOG
+apt-get --assume-yes install unzip git ntp make build-essential python2.7 python3 python3-dev python3-pip device-tree-compiler gcc g++ libncurses5-dev libi2c-dev linux-headers-$(uname -r) > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install packages." "Packages installed."
+
+# install TI code generation tools for PRU
+apt-get --assume-yes install ti-pru-cgt-installer
+check_retval "Failed to install TI PRU CGT." "TI PRU CGT installed."
 
 # install am355x PRU support package from git
 echo "       Compiling and installing am335x-pru-package..."

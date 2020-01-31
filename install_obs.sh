@@ -168,7 +168,7 @@ check_retval "Failed to configure chrony." "Chrony configured."
 ln -sf /lib/systemd/system/gpsd.service /etc/systemd/system/multi-user.target.wants/gpsd.service
 
 # compile and install kernel module for gmtimer pps:
-cd ${HOMEDIR}/observer/various/pps-gmtimer && make install
+cd ${HOMEDIR}/observer/various/pps-gmtimer && make install > /dev/null 2>> $ERRORLOG
 echo "pps-gmtimer" > /etc/modules-load.d/pps_gmtimer.conf
 depmod
 # after reboot, check if module loaded: lsmod | grep pps-gmtimer

@@ -51,7 +51,6 @@ INSTALL_SERVICE_DIR = /etc/systemd/system
 ## binary names
 BINARY_NAME = rocketlogger
 DEAMON_NAME = rocketloggerd
-SERVER_NAME = rocketloggers
 FIRMWARE_NAME = rocketlogger.bin
 
 ## config file names
@@ -145,7 +144,7 @@ install: all
 	$(COPY) $(TARGET_BINARY) $(INSTALL_BIN_DIR)
 	$(COPY) $(TARGET_DAEMON) $(INSTALL_BIN_DIR)
 	$(COPY) $(TARGET_FIRMWARE) $(INSTALL_FIRMWARE_DIR)
-	chmod 4755 $(INSTALL_BIN_DIR)/$(BINARY_NAME) $(INSTALL_BIN_DIR)/$(DEAMON_NAME) $(INSTALL_BIN_DIR)/$(SERVER_NAME)
+	chmod 4755 $(INSTALL_BIN_DIR)/$(BINARY_NAME) $(INSTALL_BIN_DIR)/$(DEAMON_NAME)
 	$(COPY) $(SERVICE_CONFIG) $(INSTALL_SERVICE_DIR)
 	systemctl enable rocketlogger
 	systemctl restart rocketlogger
