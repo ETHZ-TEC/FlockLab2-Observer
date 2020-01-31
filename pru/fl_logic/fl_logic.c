@@ -155,7 +155,7 @@ void wait_for_start(unsigned long starttime)
 #endif /* INTERACTIVE_MODE */
   starttime--;
   
-  while (currtime && (currtime < starttime)) {
+  while (currtime && (currtime < starttime) && running) {
     // alternatively, use clock_gettime(CLOCK_REALTIME, &currtime)
     currtime = time(NULL);
     usleep(100000);         // must be < ~0.5s
@@ -283,7 +283,7 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
 {
   uint32_t readout_count = 0;
   
-  if (!pru_buffer || !data_file) {
+  if (!pru_buffer || !data_file || !running) {
     return 1;
   }
   
