@@ -169,6 +169,7 @@ ln -sf /lib/systemd/system/gpsd.service /etc/systemd/system/multi-user.target.wa
 
 # compile and install kernel module for gmtimer pps:
 cd ${HOMEDIR}/observer/various/pps-gmtimer && make install > /dev/null 2>> $ERRORLOG
+check_retval "Failed to install PPS gmtimer kernel module" "PPS gmtimer kernel module installed"
 echo "pps-gmtimer" > /etc/modules-load.d/pps_gmtimer.conf
 depmod
 # after reboot, check if module loaded: lsmod | grep pps-gmtimer
@@ -187,7 +188,7 @@ ExecStart=/home/flocklab/observer/scripts/flocklab_init.sh
 WantedBy=default.target" > /etc/systemd/system/flocklab.service
 chmod +x /home/flocklab/observer/scripts/flocklab_init.sh
 chmod 664 /etc/systemd/system/flocklab.service
-systemctl daemon-reload && systemctl enable flocklab.service
+systemctl daemon-reload && systemctl enable flocklab.service > /dev/null 2>> $ERRORLOG
 check_retval "Failed to enable FlockLab service." "FlockLab service enabled."
 
 # cleanup
