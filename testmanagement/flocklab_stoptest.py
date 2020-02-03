@@ -119,6 +119,9 @@ def main(argv):
     else:
         logger.debug("Stopped power measurement.")
     
+    # allow some time for the above services to terminate properly
+    time.sleep(10)
+    
     # Flash target with default image ---
     if platform:
         core = 0

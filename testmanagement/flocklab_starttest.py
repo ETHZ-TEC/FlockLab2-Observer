@@ -296,7 +296,7 @@ def main(argv):
         # Start profiling
         outputfile = "%s/%d/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         # TODO use start_time=teststarttime
-        if flocklab.start_pwr_measurement(out_file=outputfile, sampling_rate=samplingrate) != flocklab.SUCCESS:
+        if flocklab.start_pwr_measurement(out_file=outputfile, sampling_rate=samplingrate, start_time=teststarttime) != flocklab.SUCCESS:
             flocklab.error_logandexit("Failed to start power measurement.")
         logger.debug("Started power measurement (output file: %s)." % outputfile)
     else:
