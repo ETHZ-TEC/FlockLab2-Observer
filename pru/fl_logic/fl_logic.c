@@ -258,6 +258,9 @@ void pru1_deinit(void)
 
 int pru1_handshake(void)
 {
+  // make sure event is cleared before doing the handshake
+  prussdrv_pru_clear_event(PRU_EVTOUT_1, PRU1_ARM_INTERRUPT);
+  
   // signal PRU to start by setting the status bit (R31.t31)
   prussdrv_pru_send_event(ARM_PRU1_INTERRUPT);   // event #22
   
@@ -310,8 +313,9 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
     int res = prussdrv_pru_wait_event_timeout(PRU_EVTOUT_1, 100000); // needs to be < ~0.5s
     if (res < 0) {
       // error checking interrupt occurred
-      if (running)
-        return 3;   // only return error code if still running
+      if (!running)
+        break;
+      return 3;   // only return error code if still running
     } else if (res == 0) {
       // timeout -> just continue
       continue;
@@ -347,6 +351,7 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
   }
   
   // copy the remaining data
+    __sync_synchronize();
   if (readout_count & 1) {
     fwrite(&pru_buffer[BUFFER_SIZE / 2], (BUFFER_SIZE / 2), 1, data_file);
   } else {
