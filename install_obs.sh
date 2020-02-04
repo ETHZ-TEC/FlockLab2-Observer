@@ -131,20 +131,22 @@ check_retval "Failed to install python-msp430-tools." "python-msp430-tools insta
 ##########################################################
 # configure time sync
 echo "       Installing required packages for time sync..."
-apt-get --assume-yes install gpsd gpsd-clients linuxptp chrony pps-tools > /dev/null 2>> $ERRORLOG
+apt-get --assume-yes install linuxptp chrony pps-tools > /dev/null 2>> $ERRORLOG    # gpsd gpsd-clients (GPSD doesn't seem to be required)
 check_retval "Failed to install packages." "Packages installed."
 
 # add a udev rules for PPS device to allow access by the user 'flocklab' and 'gpsd'
 [ -e /etc/udev/rules.d/99-pps-noroot.rules ] || echo "KERNEL==\"pps0\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"
-KERNEL==\"pps1\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"
-KERNEL==\"pps2\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"" > /etc/udev/rules.d/99-pps-noroot.rules
+KERNEL==\"pps1\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"" > /etc/udev/rules.d/99-pps-noroot.rules
 
-# set config for gpsd
-echo 'DEVICES="/dev/pps0 /dev/ttyS4"
-GPSD_OPTIONS="-n -b"
-START_DAEMON="true"
-USBAUTO="true"' > /etc/default/gpsd
-check_retval "Failed to configure gpsd." "gpsd configured."
+# set config for gpsd -> GPSD doesn't seem to be required!
+#echo 'DEVICES="/dev/pps0 /dev/ttyS4"
+#GPSD_OPTIONS="-n -b"
+#START_DAEMON="true"
+#USBAUTO="true"' > /etc/default/gpsd
+#check_retval "Failed to configure gpsd." "gpsd configured."
+
+# enable gpsd service and make sure gpsd is started after reboot
+#ln -sf /lib/systemd/system/gpsd.service /etc/systemd/system/multi-user.target.wants/gpsd.service
 
 # configure chrony
 echo "driftfile /var/lib/chrony/chrony.drift
@@ -153,9 +155,9 @@ rtcsync
 makestep 1 3
 # GPSD via SHM
 refclock PPS /dev/pps0 refid PPS precision 1e-7 poll 4 filter 128
-refclock SHM 0 refid PPS2 precision 1e-7 lock GPS
-refclock SHM 1 refid GPS precision 1e-1 offset 0.136 noselect
-refclock PHC /dev/ptp0 poll 3 dpoll -2 offset 0.0 noselect
+#refclock SHM 0 refid PPS2 precision 1e-7 lock GPS
+#refclock SHM 1 refid GPS precision 1e-1 offset 0.136 noselect
+#refclock PHC /dev/ptp0 poll 3 dpoll -2 offset 0.0 noselect
 # NTP servers
 server 129.132.2.21 minpoll 5 maxpoll 6
 server 129.132.2.22 minpoll 5 maxpoll 6
@@ -164,12 +166,9 @@ server time1.ethz.ch minpoll 5 maxpoll 6
 server time2.ethz.ch minpoll 5 maxpoll 6" > /etc/chrony/chrony.conf
 check_retval "Failed to configure chrony." "Chrony configured."
 
-# enable gpsd service and make sure gpsd is started after reboot
-ln -sf /lib/systemd/system/gpsd.service /etc/systemd/system/multi-user.target.wants/gpsd.service
-
 # compile and install kernel module for gmtimer pps:
 cd ${HOMEDIR}/observer/various/pps-gmtimer && make install > /dev/null 2>> $ERRORLOG
-check_retval "Failed to install PPS gmtimer kernel module" "PPS gmtimer kernel module installed"
+check_retval "Failed to install PPS gmtimer kernel module." "PPS gmtimer kernel module installed."
 echo "pps-gmtimer" > /etc/modules-load.d/pps_gmtimer.conf
 depmod
 # after reboot, check if module loaded: lsmod | grep pps-gmtimer

@@ -20,9 +20,9 @@ echo out > /sys/class/gpio/gpio81/direction # Target_PROG
 # set pin state
 echo 1 > /sys/class/gpio/gpio47/value # select0
 echo 1 > /sys/class/gpio/gpio27/value # select1
-echo 1 > /sys/class/gpio/gpio26/value # power_EN
-echo 0 > /sys/class/gpio/gpio46/value # Target_nEN
-echo 0 > /sys/class/gpio/gpio65/value # act_nEN
+echo 0 > /sys/class/gpio/gpio26/value # power_EN
+echo 1 > /sys/class/gpio/gpio46/value # Target_nEN
+echo 1 > /sys/class/gpio/gpio65/value # act_nEN
 echo 1 > /sys/class/gpio/gpio44/value # JLink_nRST
 echo 1 > /sys/class/gpio/gpio68/value # USB_nRST
 echo 1 > /sys/class/gpio/gpio67/value # GNSS_nRST
