@@ -114,8 +114,7 @@ def main(argv):
         syslog.syslog(syslog.LOG_ERR, err)
         sys.exit(errno.ENXIO)
     
-    # Enable power and MUX
-    flocklab.tg_pwr_en()
+    # Enable MUX
     flocklab.tg_mux_en()
     
     # Save currently selected target
