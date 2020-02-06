@@ -250,7 +250,7 @@ def main(argv):
         elif opt in ("-i", "--image"):
             imagefile = arg
         elif opt in ("-t", "--target"):
-            target = arg
+            target = arg.lower()
         elif opt in ("-p", "--port"):
             porttype = arg
         elif opt in ("-c", "--core"):
@@ -281,6 +281,7 @@ def main(argv):
     
     # Flash the target:
     logger.info("Programming target %s with image %s..." % (target, imagefile))
+    rs = 0
     if target == 'dpp':
         rs = prog_dpp(imagefile, core)
     elif target == 'dpp2lora' or target == 'dpp2lorahg':
