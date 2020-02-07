@@ -37,10 +37,10 @@
 #include "rl.h"
 
 /// Default system wide calibration file path
-#define RL_CALIBRATION_SYSTEM_FILE "/etc/flocklab/rocketloger_cal.dat"
+#define RL_CALIBRATION_SYSTEM_FILE "/etc/flocklab/rl_calibration.dat"
 
 /// User folder calibration file path
-#define RL_CALIBRATION_USER_FILE   "/home/flocklab/.config/rocketloger_cal.dat"
+#define RL_CALIBRATION_USER_FILE   "/home/flocklab/.config/rocketlogger/calibration.dat"
 
 /// Calibraiton file header magic
 #define RL_CALIBRATION_FILE_MAGIC 0x434C5225

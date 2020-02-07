@@ -56,7 +56,7 @@ echo "[ OK ] SSH login successful."
 # either clone the repo on the beaglebone or copy all files
 #ssh -p $PORT ${HOST} "git clone git@gitlab.ethz.ch:tec/research/flocklab/observer.git observer"
 echo "       Copying repository files..."
-rsync -a -q --progress -e "ssh -p ${PORT}" ../observer ${USER}@${HOST}: > /dev/null 2>&1
+rsync -a -q --progress --exclude=".git" -e "ssh -p ${PORT}" ../observer ${USER}@${HOST}: > /dev/null 2>&1
 if [ $? -ne 0 ]; then
   echo "[ !! ] Failed to copy repository files!"
   exit 1

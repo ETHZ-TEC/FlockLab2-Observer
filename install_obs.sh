@@ -120,6 +120,12 @@ tar xzf ${HOMEDIR}/observer/jlink/${JLINK} -C ${JLINKPATH} && cp -f ${JLINKPATH}
 check_retval "Failed to install JLink." "JLink installed."
 
 ##########################################################
+# install required packages for rocketlogger calibration
+echo "       Installing required packages for Rocketlogger calibration..."
+apt-get --assume-yes install libfreetype6 libatlas3-base > /dev/null 2>> $ERRORLOG && pip3 install pyvisa pyvisa-py rocketlogger==1.99a6 >> /dev/null 2>> $ERRORLOG
+check_retval "Failed to install packages." "Packages installed."
+
+##########################################################
 # install required packages for serial logging and GPIO actuation
 echo "       Installing required packages for serial logging..."
 apt-get --assume-yes install python3-serial minicom > /dev/null 2>> $ERRORLOG && pip3 install smbus intelhex > /dev/null 2>> $ERRORLOG 
