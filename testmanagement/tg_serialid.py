@@ -117,8 +117,12 @@ def main(argv):
     # Enable MUX
     flocklab.tg_mux_en()
     
-    # Save currently selected target
+    # Save currently selected target and enable state
     sel_target = flocklab.tg_get_selected()
+    tg_is_enabled = flocklab.tg_en_state()
+    
+    # Enable target (required for backwards compatibility with old target adapters, otherwise GND_sensed is not connected!)
+    flocklab.tg_en()
     
     # Get the serial ID of the requested targets:
     if (target == None):
@@ -158,6 +162,7 @@ def main(argv):
         print("%i: %s" %(target, sid.strip()))
         
     flocklab.tg_select(sel_target)
+    flocklab.tg_en(tg_is_enabled)
     
     sys.exit(SUCCESS)
     

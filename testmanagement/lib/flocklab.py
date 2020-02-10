@@ -273,7 +273,7 @@ def tg_pwr_state():
 
 ##############################################################################
 #
-# tg_pwr_set - set power state of a target slot
+# tg_pwr_set - set power state
 #
 ##############################################################################
 def tg_pwr_en(enable=True):
@@ -287,7 +287,7 @@ def tg_pwr_en(enable=True):
 
 ##############################################################################
 #
-# tg_en - set power state of a target slot
+# tg_en - enable target
 #
 ##############################################################################
 def tg_en(enable=True):
@@ -297,6 +297,16 @@ def tg_en(enable=True):
         gpio_set(gpio_tg_nen)
     return SUCCESS
 ### END tg_en()
+
+
+##############################################################################
+#
+# tg_en_state - get the enabled state (returns True if enabled, False otherwise)
+#
+##############################################################################
+def tg_en_state():
+    return (gpio_get(gpio_tg_nen) == 0)
+### END tg_en_state()
 
 
 ##############################################################################
