@@ -66,9 +66,11 @@ $M?:    SUB     TMP, TMP, 1
         .endm
 
 DELAYI  .macro cycles   ; delay cycles (pass immediate value)
-        LDI32   TMP, cycles/2
-$M?:    SUB     TMP, TMP, 1
-        QBNE    $M?, TMP, 0
+    .if cycles >= 4
+        LDI32   TMP, (cycles - 2)/2     ; LDI32 takes 2 cycles
+$M?:    SUB     TMP, TMP, 1             ; 1
+        QBNE    $M?, TMP, 0             ; 1
+    .endif
         .endm
 
 DELAY   .macro Rx       ; delay cycles (pass register)
@@ -230,18 +232,18 @@ done:
         JMP     main_loop
 
 exit:
+        ; TODO: store current cycle counter before continuing to avoid overflow!
+
         ; wait for next rising edge of PPS signal
         ; note: WBC/WBS won't work here, since we need to count the number of cycles
 wait_for_pps_low:
-        DELAYI  (200000000/SAMPLING_FREQ - 20)
+        DELAYI  (200000000/SAMPLING_FREQ - 2)       ; one loop pass takes 2 cycles
         ADD     SCNT, SCNT, 1
         QBBS    wait_for_pps_low, GPI, PPS_PIN
 wait_for_pps_high:
-        DELAYI  (200000000/SAMPLING_FREQ - 20)
+        DELAYI  (200000000/SAMPLING_FREQ - 2)
         ADD     SCNT, SCNT, 1
         QBBC    wait_for_pps_high, GPI, PPS_PIN
-
-        ; TODO: handle SCNT overflow
 
         ; actuate the target reset pin
         CLR     GPO.t7

@@ -8,7 +8,6 @@
 #define __PRU_LOGIC_CONFIG_H__
 
 /* parameters */
-#define DEBUG           0
 #define USE_32B_BUFFER  0           /* use alternative main loop with 32 byte register buffer (5MHz max. sampling freq.) */
 #define CONFIG_ADDR     0x0         /* base address where the config is stored (in local data memory) */
 #ifndef CONFIG_ADDR
@@ -17,7 +16,7 @@
 #else
  #define BUFFER_SIZE    0
 #endif
-#define SAMPLING_FREQ   1000000     /* in Hz (1 - 10000000) */
+#define SAMPLING_FREQ   10000000    /* in Hz (1 - 10000000) */
 
 /* parameter check */
 #ifndef CONFIG_ADDR
