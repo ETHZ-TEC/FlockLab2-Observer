@@ -136,7 +136,7 @@ def main(argv):
     p = subprocess.Popen([config.get("observer", "serialservice"), '--stop'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     (out, err) = p.communicate()
     if (p.returncode not in (flocklab.SUCCESS, errno.ENOPKG)):
-        flocklab.error_logandexit("Error %d when trying to stop a potentially running serial service script: %s" % (p.returncode, str(err)))
+        flocklab.error_logandexit("Error %d when trying to stop a potentially running serial service script: %s" % (p.returncode, str(err).strip()))
     
     # Pull down GPIO setting lines ---
     if flocklab.gpio_clr(flocklab.gpio_tg_sig1) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2) != flocklab.SUCCESS:
@@ -148,13 +148,14 @@ def main(argv):
             if (platform in (flocklab.tg_platforms)):
                 cmd = [config.get("observer", "progscript"), '--image=%s' % image, '--target=%s' % (platform), '--core=%d' % core]
             else:
-                cmd = None
+                flocklab.tg_en(False)
                 flocklab.error_logandexit("Unknown platform %s. Not known how to program this platform." % platform)
             if cmd:
                 logger.debug("Going to flash user image to %s..." % platform)
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                 (out, err) = p.communicate()
                 if (p.returncode != flocklab.SUCCESS):
+                    flocklab.tg_en(False)
                     flocklab.error_logandexit("Error %d when programming target image: %s" % (p.returncode, str(out)))
                 logger.debug("Programmed target with image %s" % (image))
     
@@ -234,7 +235,7 @@ def main(argv):
         #(out, err) = p.communicate()
         #if (p.returncode != flocklab.SUCCESS):
         if False:
-            flocklab.error_logandexit("Error %d when trying to configure GPIO setting service: %s" % (p.returncode, str(err)))
+            flocklab.error_logandexit("Error %d when trying to configure GPIO setting service: %s" % (p.returncode, str(err).strip()))
             if debug:
                 logger.error(msg)
                 logger.error("Tried to configure with: %s" % (str(cmd)))

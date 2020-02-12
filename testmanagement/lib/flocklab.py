@@ -188,6 +188,21 @@ def error_logandexit(msg=None, err=FAILED):
 
 ##############################################################################
 #
+# log_test_error - write error message to log appended to test results
+#
+##############################################################################
+def log_test_error(testid=None, msg=None):
+    if testid and msg:
+        resfolder = "%s/%d" % (config.get("observer", "testresultfolder"), testid)
+        errorlogfile = "%s/%d/error_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+        with open(errorlogfile, 'a') as f:
+            f.write("%s,%s\n" % (str(time.time()), msg))
+        log_debug("Error message logged to file '%s'" % errorlogfile)
+### END log_test_error()
+
+
+##############################################################################
+#
 # init_gpio - initialize all used GPIOs (output pins) to their default value
 #
 ##############################################################################
