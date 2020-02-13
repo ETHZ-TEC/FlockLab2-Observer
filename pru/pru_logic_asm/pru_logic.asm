@@ -31,11 +31,11 @@ PPS_PIN                 .set    8              ; 0x100    (P8.27)
 PRUSYNC_PIN             .set    9              ;          (P8.29)
 SYSEVT_GEN_VALID_BIT    .set    0x20
 PRU_EVTOUT_2            .set    0x04
-BUFFER_ADDR_OFS         .set    0x0
-BUFFER_SIZE_OFS         .set    0x4
-SAMPLING_RATE_OFS       .set    0x8
 PRU_CRTL_CTR_ON         .set    0x0B
 PRU_CRTL_CTR_OFF        .set    0x03
+BUFFER_ADDR_OFS         .set    0x0            ; buffer address offset in config structure
+BUFFER_SIZE_OFS         .set    0x4            ; buffer size offset in config structure
+PIN_MASK_OFS            .set    0x8            ; pin mask offset in config structure (defines which pins are sampled)
 
 
 ; Register mapping
@@ -52,8 +52,8 @@ SIZE2   .set R9     ; half buffer size
 IBUF    .set R10    ; intermediate buffer (R10 - R25, 64 bytes)
 IPTR    .set R26    ; instruction pointer for jump to the correct buffer
 IPTR0   .set R27    ; initial value for IPTR
-CCNT    .set R28    ; cycle counter 1
-CCNT2   .set R29    ; cycle counter 2
+PINMASK .set R28    ; pin mask
+CCNT    .set R29    ; cycle counter 1
 GPO     .set R30    ; GPIO output pin register
 GPI     .set R31    ; GPIO input pin register
 
@@ -137,7 +137,16 @@ main:
         LDI     TMP, CONFIG_ADDR
         LBBO    &ADDR, TMP, BUFFER_ADDR_OFS, 4
         LBBO    &SIZE, TMP, BUFFER_SIZE_OFS, 4
-        ;LBBO    SPS, TMP, SAMPLING_RATE_OFS, 4
+        LBBO    &PINMASK, TMP, PIN_MASK_OFS, 1      ; apply a custom pin mask if given
+
+        ; if tracing pin mask is invalid (0x0), use the default mask
+        QBEQ    use_default_mask, PINMASK, 0
+        JMP     skip_use_default_mask
+use_default_mask:
+        LDI     PINMASK, TRACING_PINS
+skip_use_default_mask:
+        AND     PINMASK, PINMASK, 0xff    ; make sure the upper bits are cleared
+
         LSR     SIZE2, SIZE, 1
         SUB     SIZE, SIZE, 1
     .if BUFFER_SIZE
@@ -176,15 +185,14 @@ main:
         ; sampling loop
 main_loop:
 
-        ; sample pins (3 cycles)
-        AND     CVAL, GPI, TRACING_PINS
-        AND     TMP, GPO, ACTUATION_PINS  ; TODO
-        OR      CVAL, TMP, CVAL
+        ; sample pins
+        AND     CVAL, GPI, PINMASK
+        SET     CVAL.t7                   ; TODO (temporary fix only)
 
         ; value changed?
-        QBNE    update_val, CVAL, PVAL
+        QBNE    update_val, CVAL, PVAL    ; 4
         LDI32   TMP, 0xFFFFFF             ; pseudo instruction, takes 2 cycles
-        QBEQ    update_val2, SCNT, TMP
+        QBEQ    update_val2, SCNT, TMP    ; 7
         ADD     SCNT, SCNT, 1
         NOP
         NOP
@@ -194,28 +202,27 @@ main_loop:
         NOP
         NOP
         NOP
-        JMP     done
+        JMP     done                      ; 17
 
 update_val:
         NOP
         NOP
-        NOP
+        NOP                               ; 7
 update_val2:
         ; processing and state update (4 cycles)
         LSL     SCNT, SCNT, 8
-        OR      TMP2, CVAL, SCNT
+        OR      TMP, CVAL, SCNT
         MOV     PVAL, CVAL                ; previous = current
         LDI     SCNT, 1                   ; reset sample counter to value 1
-        ; 11
         ; copy into the large RAM buffer, takes 1 cycle for 4 bytes in the best/average case
-        SBBO    &TMP2, ADDR, OFS, 4
+        SBBO    &TMP, ADDR, OFS, 4
         ; update offset (2 cycles)
         ADD     OFS, OFS, 4
         AND     OFS, OFS, SIZE            ; keep offset in the range 0..SIZE
         ; notify host processor when buffer full
         QBEQ    notify_host, OFS, 0       ; 15
-        QBEQ    notify_host2, OFS, SIZE2
-        JMP     done
+        QBEQ    notify_host2, OFS, SIZE2  ; 16
+        JMP     done                      ; 17
 notify_host:
         NOP
 notify_host2:
@@ -224,15 +231,23 @@ done:
         ; check if it is time to stop
         QBBS    exit, GPI, 31             ; jump to exit if PRU1 status bit set
 
-        ; 19 cycles
-        ;NOP                              ; add nops here to get exactly 19 cycles (1 cycle is for the jump below)
+        ; add nops here to get exactly 19 cycles (1 cycle is for the jump below)
+        NOP
+        NOP
 
         ; stall the loop to achieve the desired sampling frequency
         DELAYI  (200000000/SAMPLING_FREQ - 20)      ; one loop pass takes ~20 cycles
         JMP     main_loop
 
 exit:
-        ; TODO: store current cycle counter before continuing to avoid overflow!
+        ; store current cycle counter before continuing to avoid an overflow
+        LSL     SCNT, SCNT, 8
+        OR      TMP, CVAL, SCNT
+        LDI     SCNT, 1                   ; reset sample counter to value 1
+        SBBO    &TMP, ADDR, OFS, 4        ; copy into RAM buffer
+        ADD     OFS, OFS, 4               ; increment buffer offset
+        AND     OFS, OFS, SIZE            ; keep offset in the range 0..SIZE
+        ; TODO: if the offset wraps around at this point, the last sample will be lost
 
         ; wait for next rising edge of PPS signal
         ; note: WBC/WBS won't work here, since we need to count the number of cycles
@@ -269,9 +284,7 @@ main_loop_alt:
         NOP
 
         ; sample pins (3 cycles)
-        AND     CVAL, GPI, TRACING_PINS
-        AND     TMP, GPO, ACTUATION_PINS  ; TODO
-        OR      CVAL, TMP, CVAL
+        AND     CVAL, GPI, PINMASK
 
         ; value changed?
         QBNE    update_val_alt, CVAL, PVAL
@@ -368,7 +381,9 @@ done_alt:
 done_alt2:
         QBBS    exit_alt, GPI, 31       ; jump to exit if PRU1 status bit set
 
-        ; 19 cycles
+        ; add NOPs here to make one loop pass 19 cycles long
+        NOP
+        NOP
 
         DELAYI  (200000000/SAMPLING_FREQ - 20)  ; one loop pass takes 20 cycles
         JMP     main_loop_alt

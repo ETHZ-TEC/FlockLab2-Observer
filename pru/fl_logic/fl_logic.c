@@ -33,12 +33,14 @@
  * initiates GPIO sampling with PRU1
  *
  * usage:
- *          ./fl_logic [filename] [starttime]
+ *          ./fl_logic [filename] [starttime] [stoptime/duration] [pinmask]
  *
- * filename     (optional) output filename
- * starttime    (optional) UNIX timestamp of the sampling start
- * 
- * Note: starttime needs to be the 2nd argument, i.e. only works in conjunction with a filename.
+ * filename           output filename
+ * starttime          UNIX timestamp of the sampling start
+ * stoptime/duration  UNIX timestamp of the sampling stop, or sampling duration in seconds
+ * pinmask            pins to trace, in hex (e.g. 0xff to trace all 8 pins)
+ *
+ * Note: all arguments are optional, but must be used in-order (i.e. argument starttime must always be the 2nd one, etc.)
  *
  */
 
@@ -67,7 +69,7 @@
 #else
  #define BUFFER_SIZE          4096
 #endif
-#define SAMPLING_RATE         1000000               // must match the sampling rate of the PRU
+#define SAMPLING_RATE         10000000              // must match the sampling rate of the PRU
 #define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"     // must be a binary file
 #define DATA_FILENAME_PREFIX  "tracing_data"
 #define OUTPUT_DIR            "/home/flocklab/data/"                // with last slash
@@ -98,6 +100,7 @@
 typedef struct {
   uint32_t buffer_addr;
   uint32_t buffer_size;
+  uint8_t  pin_mask;
 } pru1_config_t;
 
 
@@ -181,7 +184,7 @@ int config_pins(bool start)
 }
 
 
-int pru1_init(uint8_t** out_buffer_addr)
+int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask)
 {
   static pru1_config_t prucfg;
   
@@ -198,36 +201,37 @@ int pru1_init(uint8_t** out_buffer_addr)
   
   // PRU SETUP
   prucfg.buffer_size = BUFFER_SIZE;
-  
-#if INTERACTIVE_MODE
-  printf("buffer size is %u bytes\n", BUFFER_SIZE);
-#endif /* INTERACTIVE_MODE */
+  prucfg.pin_mask = pinmask;
 
   // get buffers
-  void *pru_extmem_base;
+  void* pru_extmem_base;
   prussdrv_map_extmem(&pru_extmem_base);
+  uint32_t pru_extmem_size = (uint32_t)prussdrv_extmem_size();
+  // place the buffer at the end of the mapped memory
+  pru_extmem_base = (void*)((uint32_t)pru_extmem_base + pru_extmem_size - BUFFER_SIZE);
   prucfg.buffer_addr = (uint32_t)prussdrv_get_phys_addr(pru_extmem_base);
 
   // check max PRU buffer size
-  uint32_t pru_extmem_size = (uint32_t)prussdrv_extmem_size();
-  uint32_t pru_extmem_size_demand = BUFFER_SIZE;
-  if (pru_extmem_size_demand > pru_extmem_size) {
-    printf("insufficient PRU memory allocated/available.\nupdate uio_pruss configuration: options uio_pruss extram_pool_sz=0x%06x\n", pru_extmem_size_demand);
+  if (BUFFER_SIZE > pru_extmem_size) {
+    printf("insufficient PRU memory allocated/available.\nupdate uio_pruss configuration: options uio_pruss extram_pool_sz=0x%06x\n", BUFFER_SIZE);
     return 2;
   }
+#if INTERACTIVE_MODE
+  printf("%d / %d bytes allocated in mapped PRU memory (physical address 0x%x)\n", BUFFER_SIZE, pru_extmem_size, prucfg.buffer_addr);
+#endif /* INTERACTIVE_MODE */
   
   // get user space mapped PRU memory addresses
   if (out_buffer_addr) {
     *out_buffer_addr = prussdrv_get_virt_addr(prucfg.buffer_addr);
     if (!*out_buffer_addr) {
-      printf("failed to get virtual address");
+      printf("failed to get virtual address\n");
       return 3;
     }
     // clear buffer
     memset(*out_buffer_addr, 0, BUFFER_SIZE);
   }
 
-  // write configuration to PRU data memory
+  // write configuration to PRU1 data memory
   prussdrv_pru_write_memory(PRUSS0_PRU1_DATARAM, 0x0, (unsigned int *)&prucfg, sizeof(prucfg));
 
   // PRU memory write fence
@@ -251,7 +255,7 @@ int pru1_init(uint8_t** out_buffer_addr)
 void pru1_deinit(void)
 {
   // deinit
-  prussdrv_pru_disable(0);
+  prussdrv_pru_disable(1);    // PRU1 only
   prussdrv_exit();
 }
 
@@ -433,6 +437,7 @@ int main(int argc, char** argv)
   uint8_t* prubuffer = NULL;
   long int starttime = 0;
   long int stoptime  = 0;
+  uint8_t  pinmask   = 0x0;
   
   // --- check arguments ---
   if (argc > 1) {
@@ -453,7 +458,7 @@ int main(int argc, char** argv)
     // 2nd argument if given is the start timestamp
     starttime = strtol(argv[2], NULL, 10);
     if (starttime < time(NULL)) {
-      starttime = time(NULL);    // invalid start time
+      starttime = time(NULL) + 2;    // invalid start time -> start in 2 seconds
     }
   }
   if (argc > 3) {
@@ -463,6 +468,13 @@ int main(int argc, char** argv)
       // appears to be an offset rather than a UNIX timestamp
       stoptime += starttime;
     }
+  }
+  if (argc > 4) {
+    // 4th argument if given is the pin mask
+    pinmask = (uint8_t)strtol(argv[4], NULL, 0);
+#if INTERACTIVE_MODE
+    printf("using pin mask 0x%x\n", pinmask);
+#endif /* INTERACTIVE_MODE */
   }
   
   // --- register signal handler ---
@@ -479,7 +491,7 @@ int main(int argc, char** argv)
   }
   
   // --- configure PRU ---
-  if (pru1_init(&prubuffer) != 0) {
+  if (pru1_init(&prubuffer, pinmask) != 0) {
     fclose(datafile);
     return 3;
   }
