@@ -259,17 +259,20 @@ def main(argv):
         # Cycle trough all configurations and write them to a file which is then fed to the service.
         # Cycle through all configs and insert them into file:
         subtree = tree.find('obsGpioMonitorConf')
+        pins = 0x0
+        pinlist = subtree.findtext("pins")
+        if pinlist:
+            for pin in pinlist.strip().split():
+                pins = pins | flocklab.pin_abbr2num(pin)
         pinconfs = list(subtree.getiterator("pinConf"))
-        pins = []
         for pinconf in pinconfs:
-            pins.append(flocklab.pin_abbr2num(pinconf.find('pin').text))
-        # TODO use pins config
+            pins = pins | flocklab.pin_abbr2num(pinconf.find('pin').text)
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime) != flocklab.SUCCESS:
+        if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins) != flocklab.SUCCESS:
             logger.error
         # touch the file
         open(tracingfile + ".csv", 'a').close()
-        logger.debug("Started GPIO tracing (output file: %s)." % tracingfile)
+        logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x)." % (tracingfile, pins))
     else:
         logger.debug("No config for GPIO monitoring service found.")
     

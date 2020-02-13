@@ -417,55 +417,28 @@ def tg_reset(release=True):
 
 ##############################################################################
 #
-# pin_abbr2num - Convert a pin abbreviation to its corresponding number
+# pin_abbr2num - Convert a pin abbreviation to its corresponding PRU pin number
 #
 ##############################################################################
 def pin_abbr2num(abbr=""):
     if not abbr:
-        return errno.EINVAL
+        return 0x0
     abbrdict =    {
-                    'RST' : "P8_9",
-                    'SIG1': "P8_45",
-                    'SIG2': "P8_46",
-                    'INT1': "P8_37",
-                    'INT2': "P8_38",
-                    'LED1': "P8_39",
-                    'LED2': "P8_40",
-                    'LED3': "P8_41"
+                    'LED1': 0x01,
+                    'LED2': 0x02,
+                    'LED3': 0x04,
+                    'INT1': 0x08,
+                    'INT2': 0x10,
+                    'SIG1': 0x20,
+                    'SIG2': 0x40,
+                    'RST' : 0x80
                 }
     try:
         pinnum = abbrdict[abbr.upper()]
     except KeyError:
-        return ""
-    
-    return pinnum    
+        return 0x0
+    return pinnum
 ### END pin_abbr2num()
-
-##############################################################################
-#
-# pin_num2abbr - Convert a pin abbreviation to its corresponding number
-#
-##############################################################################
-def pin_num2abbr(pinnum=""):
-    if not pinnum:
-        return errno.EINVAL
-    pindict =    {
-                    'P8_9' : "RST",
-                    'P8_45': "SIG1",
-                    'P8_45': "SIG2",
-                    'P8_37': "INT1",
-                    'P8_38': "INT2",
-                    'P8_39': "LED1",
-                    'P8_40': "LED2",
-                    'P8_41': "LED3"
-                }
-    try:
-        abbr = pindict[pinnum.upper()]
-    except KeyError:
-        return ""
-    
-    return abbr
-### END pin_num2abbr()
 
 
 ##############################################################################
@@ -670,16 +643,17 @@ def stop_pwr_measurement():
 # start_gpio_tracing
 #
 ##############################################################################
-def start_gpio_tracing(out_file=None, start_time=0, stop_time=0):
+def start_gpio_tracing(out_file=None, start_time=0, stop_time=0, pins=0x0):
     if not out_file:
         out_file = "%s/gpiotracing_%s.dat" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-    # for now, ignore the XML config -> trace all pins by default
     cmd = ["fl_logic", out_file]
     if start_time > 0:
         cmd.append("%d" % start_time)
         # test start time must be given in order to specify a stop time
         if stop_time > 0:
             cmd.append("%d" % stop_time)
+            if pins != 0x0:
+                cmd.append("0x%x" % pins)
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     # do not call communicate(), it will block
     return SUCCESS
