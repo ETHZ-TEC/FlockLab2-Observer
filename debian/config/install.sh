@@ -173,6 +173,11 @@ echo "       Installing fundamental dependencies..."
 apt-get --assume-yes install unzip git ntp make build-essential python2.7 python3 python3-dev python3-pip device-tree-compiler gcc g++ libncurses5-dev libi2c-dev linux-headers-$(uname -r) > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install packages." "Packages installed."
 
+# install SNMP for monitoring
+echo "       Installing snmpd..."
+apt-get --assume-yes install snmpd > /dev/null 2>> $ERRORLOG && cp -f snmp/snmpd.conf /etc/snmp/
+check_retval "Failed to install snmpd." "snmpd installed."
+
 # install TI code generation tools for PRU
 apt-get --assume-yes install ti-pru-cgt-installer
 check_retval "Failed to install TI PRU CGT." "TI PRU CGT installed."

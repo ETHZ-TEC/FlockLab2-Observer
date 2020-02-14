@@ -141,8 +141,7 @@ apt-get --assume-yes install linuxptp chrony pps-tools > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install packages." "Packages installed."
 
 # add a udev rules for PPS device to allow access by the user 'flocklab' and 'gpsd'
-[ -e /etc/udev/rules.d/99-pps-noroot.rules ] || echo "KERNEL==\"pps0\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"
-KERNEL==\"pps1\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"" > /etc/udev/rules.d/99-pps-noroot.rules
+[ -e /etc/udev/rules.d/99-pps-noroot.rules ] || echo "KERNEL==\"pps0\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"" > /etc/udev/rules.d/99-pps-noroot.rules
 
 # set config for gpsd -> GPSD doesn't seem to be required!
 #echo 'DEVICES="/dev/pps0 /dev/ttyS4"
