@@ -5,7 +5,7 @@
 ##############################################################################
 
 # needed imports:
-import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil, smbus
+import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil, smbus, re
 
 # pin numbers
 gpio_tg_nrst    = 77
@@ -73,6 +73,8 @@ rl_max_samples  = 100000000
 configfile   = '/home/flocklab/observer/testmanagement/config.ini'
 loggerconf   = '/home/flocklab/observer/testmanagement/logging.conf'
 gmtimerstats = '/sys/devices/platform/ocp/ocp:pps_gmtimer/stats'
+tracinglog   = '/home/flocklab/log/fl_logic.log'
+rllog        = '/home/flocklab/log/rocketlogger.log'
 scriptname   = os.path.basename(os.path.abspath(sys.argv[0]))   # name of caller script
 
 # constants
@@ -194,12 +196,38 @@ def error_logandexit(msg=None, err=FAILED):
 ##############################################################################
 def log_test_error(testid=None, msg=None):
     if testid and msg:
-        resfolder = "%s/%d" % (config.get("observer", "testresultfolder"), testid)
         errorlogfile = "%s/%d/error_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         with open(errorlogfile, 'a') as f:
             f.write("%s,%s\n" % (str(time.time()), msg))
         log_debug("Error message logged to file '%s'" % errorlogfile)
 ### END log_test_error()
+
+
+##############################################################################
+#
+# log_timesync_info
+#
+##############################################################################
+def log_timesync_info(testid=None, includepps=False):
+    if testid:
+        timesynclogfile = "%s/%d/timesync_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+        p = subprocess.Popen(['chronyc', 'sources'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        out, err = p.communicate(None)
+        if (p.returncode == 0):
+            lines = out.split('\n')
+            for line in lines:
+                res = re.match("^[#^]{1}\*\s+([a-zA-Z0-9.-_]+)[0-9\s]+([+-]{1}[0-9a-z]+)\[\s*([+-]{1}[0-9a-z]+)\]\s+(\+/\-[0-9a-z\s]*)$", line)
+                if res:
+                    with open(timesynclogfile, "a") as tslog:
+                        tslog.write("%s,time source: %s | adjusted offset: %s | measured offset: %s | estimated error: %s\n" % (str(time.time()), res.group(1), res.group(2), res.group(3), res.group(4)))
+                    break;
+        else:
+            log_test_error(testid=testid, msg="Failed to query time source.")
+        
+        if includepps:
+            with open(timesynclogfile, "a") as tslog:
+                tslog.write("%s,GNSS PPS reception: %.2f%%\n" % (str(time.time()), get_pps_delta(testid)))
+### END log_timesync_info()
 
 
 ##############################################################################
@@ -688,3 +716,56 @@ def stop_gpio_tracing():
         pass
     return FAILED
 ### END stop_gpio_tracing()
+
+
+##############################################################################
+#
+# get_pps_count from the kernel module stats
+#
+##############################################################################
+def get_pps_count():
+    if os.path.exists(gmtimerstats):
+        try:
+            with open(gmtimerstats) as ppsstats:
+                return ppsstats.read().split()[1]
+        except:
+            return FAILED
+### END get_pps_count()
+
+
+##############################################################################
+#
+# store_pps_count in a temporary file in the test results directory
+#
+##############################################################################
+def store_pps_count(testid=None):
+    if testid:
+        ppsfile = "%s/%d/ppscount" % (config.get("observer", "testresultfolder"), testid)
+        with open(ppsfile, "w") as ppsfile:
+            ppsfile.write("%s %s" % (str(time.time()), get_pps_count()))
+### END get_pps_count()
+
+
+##############################################################################
+#
+# get_pps_delta calculates the percentage of received PPS pulses since on the previously stored value with store_pps_count()
+#
+##############################################################################
+def get_pps_delta(testid=None):
+    if testid:
+        ppscount = get_pps_count()
+        if ppscount == FAILED:
+            return FAILED
+        ppsfile = "%s/%d/ppscount" % (config.get("observer", "testresultfolder"), testid)
+        if os.path.isfile(ppsfile):
+            try:
+                with open(ppsfile) as f:
+                    ppsstatsstart = f.read().split()
+                    deltacount = int(ppscount) - int(ppsstatsstart[1])
+                    deltaT = int(time.time() - float(ppsstatsstart[0]))
+                    return min(100.0, (deltacount * 100.0 / deltaT))
+            except:
+                return FAILED
+        else:
+            return FAILED
+### END get_pps_count()

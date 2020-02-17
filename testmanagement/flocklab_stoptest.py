@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import os, sys, getopt, errno, subprocess, serial, time, configparser, shutil, syslog, xml.etree.ElementTree, traceback, re
+import os, sys, getopt, errno, subprocess, serial, time, configparser, shutil, syslog, xml.etree.ElementTree, traceback, datetime
 import lib.flocklab as flocklab
 
 
@@ -17,6 +17,47 @@ def usage():
     print("  --debug\t\tOptional. Print out debug messages.")
     print("  --help\t\tOptional. Print this help.")
 ### END usage()
+
+
+##############################################################################
+#
+# collect_error_logs
+#
+##############################################################################
+def collect_error_logs(testid=None):
+    # collect GPIO tracing error log
+    errorlogfile = "%s/%d/error_%s.log" % (flocklab.config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+    errorlog = open(errorlogfile, 'a')
+    if os.path.isfile(flocklab.tracinglog):
+        flocklab.logger.debug("Error log %s found." % flocklab.tracinglog)
+        with open(flocklab.tracinglog) as logfile:
+            lines = logfile.read().split("\n")
+            for line in lines:
+                try:
+                    (timestamp, level, msg) = line.split("\t", 2)
+                    t = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())   # convert to UNIX timestamp
+                    errorlog.write("%s,GPIO tracing error: %s\n" % (t, msg))
+                except ValueError:
+                    continue        # probably invalid line / empty line
+        os.replace(flocklab.tracinglog, flocklab.tracinglog + ".old")     # keep a copy of the file
+    
+    # collect RL error log
+    if os.path.isfile(flocklab.rllog):
+        flocklab.logger.debug("Error log %s found." % flocklab.rllog)
+        with open(flocklab.rllog) as logfile:
+            lines = logfile.read().split("\n")
+            for line in lines:
+                try:
+                    (timestamp, level, msg) = line.split("\t", 2)
+                    if level in ("ERROR", "WARN"):
+                        t = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())   # convert to UNIX timestamp
+                        errorlog.write("%s,RocketLogger error: %s\n" % (t, msg))
+                except ValueError:
+                    continue        # probably invalid line / empty line
+        os.replace(flocklab.rllog, flocklab.rllog + ".old")   # keep a copy of the file
+    
+    errorlog.close()
+### END collect_error_messages()
 
 
 ##############################################################################
@@ -119,37 +160,20 @@ def main(argv):
     else:
         logger.debug("Stopped power measurement.")
     
-    # allow some time for the above services to terminate properly
+    # allow some time for the above services to terminate properly ---
     time.sleep(10)
     
     # add some more info to the timesync log ---
-    timesynclogfile = "%s/%d/timesync_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-    chronyinfo = "invalid"
-    p = subprocess.Popen(['chronyc', 'sources'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    out, err = p.communicate(None)
-    if (p.returncode == 0):
-        lines = out.split('\n')
-        for line in lines:
-            res = re.match("^[#^]{1}\*\s+([a-zA-Z0-9.-_]+)[0-9\s]+([+-]{1}[0-9a-z]+)\[\s*([+-]{1}[0-9a-z]+)\]\s+(\+/\-[0-9a-z\s]*)$", line)
-            if res:
-                with open(timesynclogfile, "a") as tslog:
-                    tslog.write("%s,time source: %s | adjusted offset: %s | measured offset: %s | estimated error: %s\n" % (str(time.time()), res.group(1), res.group(2), res.group(3), res.group(4)))
-                break;
-    else:
-        flocklab.log_test_error("Failed to query time source.")
-    ppsfile = "%s/%d/ppscount" % (config.get("observer", "testresultfolder"), testid)
-    if os.path.isfile(ppsfile):
-        try:
-            with open(ppsfile) as f:
-                ppsstatsstart = f.read().split()
-                with open(flocklab.gmtimerstats) as ppsstats:
-                    ppscountend = ppsstats.read().split()[1]
-                    deltacount = int(ppscountend) - int(ppsstatsstart[1])
-                    deltaT = int(time.time() - float(ppsstatsstart[0]))
-                    with open(timesynclogfile, "a") as tslog:
-                        tslog.write("%s,GNSS PPS reception: %.2f%%\n" % (str(time.time()), min(100.0, (deltacount * 100.0 / deltaT))))
-        except:
-            flocklab.log_test_error("Failed to calculate PPS count.");
+    try:
+        flocklab.log_timesync_info(testid=testid, includepps=True)
+    except:
+        errors.append("An error occurred while collecting timesync info: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+    
+    # collect error logs from services ---
+    try:
+        collect_error_logs(testid)
+    except:
+        errors.append("An error occurred while collecting error logs: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
     
     # Flash target with default image ---
     if platform:
