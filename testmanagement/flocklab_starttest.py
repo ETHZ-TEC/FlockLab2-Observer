@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import os, sys, subprocess, getopt, errno, tempfile, time, shutil, serial, xml.etree.ElementTree, traceback
+import os, sys, subprocess, getopt, errno, tempfile, time, shutil, serial, xml.etree.ElementTree, traceback, re
 import lib.flocklab as flocklab
 
 
@@ -306,6 +306,34 @@ def main(argv):
         logger.debug("Started power measurement (output file: %s)." % outputfile)
     else:
         logger.debug("No config for powerprofiling service found.")
+    
+    # Timesync log ---
+    timesynclogfile = "%s/%d/timesync_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+    ppsfile = "%s/%d/ppscount" % (config.get("observer", "testresultfolder"), testid)
+    chronyinfo = "invalid"
+    p = subprocess.Popen(['chronyc', 'sources'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    out, err = p.communicate(None)
+    if (p.returncode == 0):
+        lines = out.split('\n')
+        for line in lines:
+            res = re.match("^[#^]{1}\*\s+([a-zA-Z0-9.-_]+)[0-9\s]+([+-]{1}[0-9a-z]+)\[\s*([+-]{1}[0-9a-z]+)\]\s+(\+/\-[0-9a-z\s]*)$", line)
+            if res:
+                with open(timesynclogfile, "w") as tslog:
+                    tslog.write("%s,time source: %s | adjusted offset: %s | measured offset: %s | estimated error: %s\n" % (str(time.time()), res.group(1), res.group(2), res.group(3), res.group(4)))
+                break;
+    else:
+        flocklab.log_test_error("Failed to query time source.")
+    p = subprocess.Popen(['cat', flocklab.gmtimerstats], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    out, err = p.communicate(None)
+    if (p.returncode == 0):
+        ppscount = out.split()[1]
+        with open(ppsfile, "w") as ppsfile:
+            ppsfile.write("%s %s" % (str(time.time()), ppscount))
+    else:
+        flocklab.log_test_error("Failed to query gmtimer stats.")
+    
+    # disable MUX for more accurate current measurements (TODO only disable MUX if USB and SWD not used)
+    flocklab.tg_mux_en(False)
     
     flocklab.gpio_clr(flocklab.gpio_led_error)
     logger.info("Test successfully started.")

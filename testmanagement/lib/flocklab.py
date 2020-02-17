@@ -70,9 +70,10 @@ rl_samp_rates   = [1, 10, 100, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
 rl_max_samples  = 100000000
 
 # paths
-configfile = '/home/flocklab/observer/testmanagement/config.ini'
-loggerconf = '/home/flocklab/observer/testmanagement/logging.conf'
-scriptname = os.path.basename(os.path.abspath(sys.argv[0]))   # name of caller script
+configfile   = '/home/flocklab/observer/testmanagement/config.ini'
+loggerconf   = '/home/flocklab/observer/testmanagement/logging.conf'
+gmtimerstats = '/sys/devices/platform/ocp/ocp:pps_gmtimer/stats'
+scriptname   = os.path.basename(os.path.abspath(sys.argv[0]))   # name of caller script
 
 # constants
 SUCCESS = 0

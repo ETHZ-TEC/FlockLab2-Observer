@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import os, sys, getopt, errno, subprocess, serial, time, configparser, shutil, syslog, xml.etree.ElementTree, traceback
+import os, sys, getopt, errno, subprocess, serial, time, configparser, shutil, syslog, xml.etree.ElementTree, traceback, re
 import lib.flocklab as flocklab
 
 
@@ -121,6 +121,35 @@ def main(argv):
     
     # allow some time for the above services to terminate properly
     time.sleep(10)
+    
+    # add some more info to the timesync log ---
+    timesynclogfile = "%s/%d/timesync_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+    chronyinfo = "invalid"
+    p = subprocess.Popen(['chronyc', 'sources'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    out, err = p.communicate(None)
+    if (p.returncode == 0):
+        lines = out.split('\n')
+        for line in lines:
+            res = re.match("^[#^]{1}\*\s+([a-zA-Z0-9.-_]+)[0-9\s]+([+-]{1}[0-9a-z]+)\[\s*([+-]{1}[0-9a-z]+)\]\s+(\+/\-[0-9a-z\s]*)$", line)
+            if res:
+                with open(timesynclogfile, "a") as tslog:
+                    tslog.write("%s,time source: %s | adjusted offset: %s | measured offset: %s | estimated error: %s\n" % (str(time.time()), res.group(1), res.group(2), res.group(3), res.group(4)))
+                break;
+    else:
+        flocklab.log_test_error("Failed to query time source.")
+    ppsfile = "%s/%d/ppscount" % (config.get("observer", "testresultfolder"), testid)
+    if os.path.isfile(ppsfile):
+        try:
+            with open(ppsfile) as f:
+                ppsstatsstart = f.read().split()
+                with open(flocklab.gmtimerstats) as ppsstats:
+                    ppscountend = ppsstats.read().split()[1]
+                    deltacount = int(ppscountend) - int(ppsstatsstart[1])
+                    deltaT = int(time.time() - float(ppsstatsstart[0]))
+                    with open(timesynclogfile, "a") as tslog:
+                        tslog.write("%s,GNSS PPS reception: %.2f%%\n" % (str(time.time()), min(100.0, (deltacount * 100.0 / deltaT))))
+        except:
+            flocklab.log_test_error("Failed to calculate PPS count.");
     
     # Flash target with default image ---
     if platform:
