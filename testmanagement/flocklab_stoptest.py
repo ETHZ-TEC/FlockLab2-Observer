@@ -39,7 +39,6 @@ def collect_error_logs(testid=None):
                     errorlog.write("%s,GPIO tracing error: %s\n" % (t, msg))
                 except ValueError:
                     continue        # probably invalid line / empty line
-        os.replace(flocklab.tracinglog, flocklab.tracinglog + ".old")     # keep a copy of the file
     
     # collect RL error log
     if os.path.isfile(flocklab.rllog):
@@ -54,7 +53,6 @@ def collect_error_logs(testid=None):
                         errorlog.write("%s,RocketLogger error: %s\n" % (t, msg))
                 except ValueError:
                     continue        # probably invalid line / empty line
-        os.replace(flocklab.rllog, flocklab.rllog + ".old")   # keep a copy of the file
     
     errorlog.close()
 ### END collect_error_messages()

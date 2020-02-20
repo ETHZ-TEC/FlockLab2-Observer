@@ -216,16 +216,16 @@ def main(argv):
         resets = []
         for pinconf in pinconfs:
             pin = flocklab.pin_abbr2num(pinconf.find('pin').text)
+            tstart = flocklab.timeformat_xml2timestamp(pinconf.find('absoluteTime/absoluteDateTime').text)
             if pinconf.find('pin').text == 'RST':
-                resets.append(flocklab.timeformat_xml2timestamp(config, pinconf.find('absoluteTime/absoluteDateTime').text))
+                resets.append(tstart)
             settingcount = settingcount + 1
             level = flocklab.level_str2abbr(pinconf.find('level').text)
             interval = pinconf.find('intervalMicrosecs').text
             count = pinconf.find('count').text
             # Get time and bring it into right format:
-            starttime = flocklab.timeformat_xml2service(config, pinconf.find('absoluteTime/absoluteDateTime').text)
             microsecs = pinconf.find('absoluteTime/absoluteMicrosecs').text
-            f.write("%s;%s;%s;%s;%s;%s;\n" %(pin, level, starttime, microsecs, interval, count))
+            f.write("%s;%s;%s;%s;%s;%s;\n" %(pin, level, tstart, microsecs, interval, count))
         f.close()
         # Feed service with batchfile:
         #cmd = ['flocklab_gpiosetting', '-addbatch', '--file=%s'%batchfile]
@@ -254,8 +254,11 @@ def main(argv):
         logger.debug("No config for GPIO setting service found.")
     
     # GPIO tracing ---
-    if (tree.find('obsGpioMonitorConf') != None):
+    if tree.find('obsGpioMonitorConf'):
         logger.debug("Found config for GPIO monitoring.")
+        # move the old log file
+        if os.path.isfile(flocklab.tracinglog):
+            os.replace(flocklab.tracinglog, flocklab.tracinglog + ".old")
         # Cycle trough all configurations and write them to a file which is then fed to the service.
         # Cycle through all configs and insert them into file:
         subtree = tree.find('obsGpioMonitorConf')
@@ -277,33 +280,27 @@ def main(argv):
         logger.debug("No config for GPIO monitoring service found.")
     
     # Power profiling ---
-    if tree.find('obsPowerprofConf') != None:
+    if tree.find('obsPowerprofConf'):
         logger.debug("Found config for power profiling.")
+        # move the old log file
+        if os.path.isfile(flocklab.rllog):
+            os.replace(flocklab.rllog, flocklab.rllog + ".old")
         # Cycle through all powerprof configs and insert them into file:
-        subtree = tree.find('obsPowerprofConf')
-        profconfs = list(subtree.getiterator("profConf"))
-        # For now, only accept one powerprofiling config
-        profconf = profconfs[0]
-        duration = profconf.find('duration').text
+        duration = flocklab.parse_int(tree.findtext('obsPowerprofConf/duration'))
         # Get time and bring it into right format:
-        starttime = flocklab.timeformat_xml2service(config, profconf.find('absoluteTime/absoluteDateTime').text)
-        microsecs = profconf.find('absoluteTime/absoluteMicrosecs').text
-        nthsample = profconf.find('samplingDivider')
-        if nthsample != None:
-            try:
-                nthsample = int(nthsample.text)
-            except:
-                logger.error("Sampling divider is not an integer value.")
-                nthsample = 0
-        if nthsample:
-            samplingrate = flocklab.rl_max_rate / nthsample
-        else:
+        starttime = flocklab.parse_int(tree.findtext('obsPowerprofConf/starttime'))
+        samplingrate = flocklab.parse_int(tree.findtext('obsPowerprofConf/samplingRate'))
+        if samplingrate == 0:
+            samplingdiv = flocklab.parse_int(tree.findtext('obsPowerprofConf/samplingDivider'))
+            if samplingdiv > 0:
+                samplingrate = flocklab.rl_max_rate / samplingdiv
+        if samplingrate == 0:
             samplingrate = flocklab.rl_default_rate
         # Start profiling
         outputfile = "%s/%d/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        if flocklab.start_pwr_measurement(out_file=outputfile, sampling_rate=samplingrate, start_time=teststarttime) != flocklab.SUCCESS:
+        if flocklab.start_pwr_measurement(out_file=outputfile, sampling_rate=samplingrate, start_time=starttime, num_samples=(duration * samplingrate)) != flocklab.SUCCESS:
             flocklab.error_logandexit("Failed to start power measurement.")
-        logger.debug("Started power measurement (output file: %s)." % outputfile)
+        logger.debug("Power measurement will start at %s (output: %s, sampling rate: %dHz, duration: %ds)." % (str(starttime), outputfile, samplingrate, duration))
     else:
         logger.debug("No config for powerprofiling service found.")
     

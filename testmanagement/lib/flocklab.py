@@ -589,37 +589,15 @@ def is_sdcard_mounted():
 
 ##############################################################################
 #
-# timeformat_xml2service -   Convert between different timeformats of 
-#                            XML config file and FlockLab services
-#
-##############################################################################
-def timeformat_xml2service(config=None, timestring=""):
-    if (not config) or (not timestring):
-        return errno.EINVAL
-    try:
-        # First convert time from xml-string to time format:
-        xmltime = time.strptime(timestring, config.get("xml", "timeformat_xml"))
-        # Now convert to service time-string:
-        servicetimestring = time.strftime(config.get("observer", "timeformat_services"), xmltime)
-    except:
-        return ""
-    
-    return servicetimestring
-### END timeformat_xml2service()
-
-
-##############################################################################
-#
 # timeformat_xml2timestamp - Convert between different timeformats of 
 #                            XML config file and FlockLab services
 #
 ##############################################################################
-def timeformat_xml2timestamp(config=None, timestring=""):
-    if (not config) or (not timestring):
+def timeformat_xml2timestamp(timestring=""):
+    if not timestring:
         return errno.EINVAL
     try:
         # First convert time from xml-string to time format:
-        #xmltime = time.strptime(timestring, config.get("xml", "timeformat_xml"))
         xmltime = time.strptime(timestring, "%Y-%m-%dT%H:%M:%S")
     except:
         return ""
@@ -635,6 +613,7 @@ def timeformat_xml2timestamp(config=None, timestring=""):
 ##############################################################################
 def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samples=0, start_time=0):
     if sampling_rate not in rl_samp_rates:
+        logger.warn("Invalid sampling rate '%s'" % str(sampling_rate))
         return errno.EINVAL
     if not out_file:
         out_file = "%s/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
@@ -661,6 +640,11 @@ def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samp
 #
 ##############################################################################
 def stop_pwr_measurement():
+    # check if process exists
+    p = subprocess.Popen(['pgrep', '-f', 'rocketlogger start'], stdout=subprocess.PIPE)
+    rs = p.wait()
+    if rs != 0:
+        return SUCCESS      # process does not exist
     cmd = ["rocketlogger", "stop"]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     return SUCCESS
@@ -769,3 +753,20 @@ def get_pps_delta(testid=None):
         else:
             return FAILED
 ### END get_pps_count()
+
+
+##############################################################################
+#
+# parse_int()   parses a string to int
+#
+##############################################################################
+def parse_int(s):
+    res = 0
+    if s:
+        try:
+            res = int(float(s.strip())) # higher success rate if first parsed to float
+        except ValueError:
+            if logger:
+                logger.warning("Could not parse %s to int." % (str(s)))
+    return res
+### END parse_int()

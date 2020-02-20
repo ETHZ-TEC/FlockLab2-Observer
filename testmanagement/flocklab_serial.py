@@ -26,7 +26,7 @@ def usage():
     print("  --port=<string>\t\tOptional. Port over which serial communication is done. Default is serial.")
     print("\t\t\t\tPossible values are: %s" % (str(flocklab.tg_port_types)))
     print("  --baudrate=<int>\t\tOptional. Baudrate of serial device. Default is 115200.")
-    print("\t\t\t\tPossible values are: %s" % (" ".join(flocklab.tg_baud_rates)))
+    print("\t\t\t\tPossible values are: %s" % (" ".join([str(x) for x in flocklab.tg_baud_rates])))
     print("  --socketport=<int>\t\tOptional. If set, a server socket will be created on the specified port.")
     print("  --stop\t\t\tOptional. Causes the program to stop a possibly running instance of the serial reader service.")
     print("  --daemon\t\t\tOptional. If set, program will run as a daemon. If not specified, all output will be written to STDOUT and STDERR.")
@@ -265,7 +265,7 @@ def ThreadSerialReader(sf, msgQueueDbBuf, msgQueueSockBuf, stopLock):
                             # Data is wirtten directly into the DB bufferr queue:
                             msgQueueDbBuf.put([0,data,timestamp], False)
                             flocklab.log_info("[0,%s,%s]" %(str(data), str(timestamp)))
-                        except Queue.Full:
+                        except queue.Full:
                             flocklab.log_error("Queue msgQueueSockBuf full in ThreadSerialReader, dropping data.")
                         except:
                             flocklab.log_error("ThreadSerialReader could not insert data into queues because: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
@@ -347,7 +347,7 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
                                         ts = timestamp + i * 0.000001 # with sligthly different timestamps we make sure that ordering is preserved
                                         if(len(dataSan) > 0):
                                             msgQueueDbBuf.put([1, dataSan, ts], False)
-                                except Queue.Full:
+                                except queue.Full:
                                     flocklab.log_error("Queue msgQueueDbBuf full in ThreadSocketProxy, dropping data.")
                                 except Exception:
                                     flocklab.log_error("Serial data could not be sanitized, dropping data.")
