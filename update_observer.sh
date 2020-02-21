@@ -28,7 +28,7 @@ do
         fi
         continue
     fi
-    RES=$(echo ${RES} | grep '^<fc' | cut -d' ' -f2)
+    RES=$(echo "${RES}" | grep '^<fc' | cut -d' ' -f2)
     if [ -z "$RES" ]; then
         echo "Files on FlockLab observer ${HOSTPREFIX}${OBS} are up to date."
         continue
