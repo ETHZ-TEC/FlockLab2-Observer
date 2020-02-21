@@ -25,6 +25,10 @@ def usage():
 #
 ##############################################################################
 def collect_error_logs(testid=None):
+    # check if results directory exists
+    if not os.path.isdir("%s/%d" % (flocklab.config.get("observer", "testresultfolder"), testid)):
+        return
+    
     # collect GPIO tracing error log
     errorlogfile = "%s/%d/error_%s.log" % (flocklab.config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     errorlog = open(errorlogfile, 'a')

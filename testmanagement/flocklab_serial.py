@@ -342,7 +342,7 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
                                 #flocklab.log_debug("<--- Wrote data to SF: >%s<" % (str(data)))
                                 # Signal with 1, that data is from writer (use 0 for reader):
                                 try:
-                                    dataSanList = data.replace(b'\r', b'').split('\n')
+                                    dataSanList = data.replace(b'\r', b'').split(b'\n')
                                     for i, dataSan in enumerate(dataSanList):
                                         ts = timestamp + i * 0.000001 # with sligthly different timestamps we make sure that ordering is preserved
                                         if(len(dataSan) > 0):
@@ -350,7 +350,7 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
                                 except queue.Full:
                                     flocklab.log_error("Queue msgQueueDbBuf full in ThreadSocketProxy, dropping data.")
                                 except Exception:
-                                    flocklab.log_error("Serial data could not be sanitized, dropping data.")
+                                    flocklab.log_error("An error occurred, serial data dropped (%s, %s)." % (str(sys.exc_info()[1]), traceback.format_exc()))
                         elif s is msgQueueSockBuf:
                             # Retrieve element from queue:
                             item = msgQueueSockBuf.get()
@@ -389,7 +389,7 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
                 ServerSock.disconnectClient()
                 ServerSock.stop()
         except:
-            pass
+            flocklab.log_error("Error in ServerSock.disconnectClient(): %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
 
     except:
         flocklab.log_error("ThreadSocketProxy encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
@@ -557,7 +557,7 @@ def stop_on_api():
             try:
                 os.waitpid(pid, 0)
             except OSError:
-                pass
+                flocklab.log_error("OSError occurred in stop_on_api()")
         return flocklab.SUCCESS
     except (IOError, OSError):
         # The pid file was most probably not present. This can have two causes:
@@ -645,8 +645,12 @@ def main(argv):
             flocklab.error_logandexit("Unknown option '%s'." % (opt), errno.EINVAL)
 
     # Check if the mandatory parameter --testid is set:
-    if not testid and not stop:
-        flocklab.error_logandexit("No test ID specified.", errno.EINVAL)
+    if not stop:
+        if not testid:
+            flocklab.error_logandexit("No test ID specified.", errno.EINVAL)
+        # Check if folder exists
+        if not os.path.isdir("%s/%d" % (os.path.realpath(config.get("observer", 'testresultfolder')), testid)):
+            flocklab.error_logandexit("Test results folder does not exist.")
 
     # init logger
     logger = flocklab.get_logger(debug=debug)
