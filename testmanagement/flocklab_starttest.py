@@ -156,7 +156,7 @@ def main(argv):
                 (out, err) = p.communicate()
                 if (p.returncode != flocklab.SUCCESS):
                     flocklab.tg_en(False)
-                    flocklab.error_logandexit("Error %d when programming target image: %s" % (p.returncode, str(out)))
+                    flocklab.error_logandexit("Error %d when programming target image:\n%s" % (p.returncode, str(out.strip())))
                 logger.debug("Programmed target with image %s" % (image))
     
     # Hold target in reset state
@@ -298,7 +298,7 @@ def main(argv):
             samplingrate = flocklab.rl_default_rate
         # Start profiling
         outputfile = "%s/%d/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        if flocklab.start_pwr_measurement(out_file=outputfile, sampling_rate=samplingrate, start_time=starttime, num_samples=(duration * samplingrate)) != flocklab.SUCCESS:
+        if flocklab.start_pwr_measurement(out_file=outputfile, sampling_rate=samplingrate, start_time=starttime, num_samples=int(duration * samplingrate)) != flocklab.SUCCESS:
             flocklab.error_logandexit("Failed to start power measurement.")
         logger.debug("Power measurement will start at %s (output: %s, sampling rate: %dHz, duration: %ds)." % (str(starttime), outputfile, samplingrate, duration))
     else:

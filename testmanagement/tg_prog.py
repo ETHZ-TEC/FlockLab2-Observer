@@ -5,9 +5,8 @@ import lib.flocklab as flocklab
 import lib.stm32loader as stm32loader
 from intelhex import hex2bin
 
-# bootstrap loader scripts
 #import msp430.bsl5.uart
-
+#os.environ["PYTHONPATH"] = os.environ.get("PYTHONPATH", "") + "/home/flocklab/observer/testmanagement/lib"
 
 debug = False
 
@@ -46,11 +45,11 @@ def prog_msp430(imagefile, port, prog_toggle_num=1, progstate=0, speed=38400):
     
     for i in range(0, prog_toggle_num):
         #prog.write(0)
-        flocklab.gpio_clr(flocklab.gpio_tg_prog, 0)
+        flocklab.gpio_clr(flocklab.gpio_tg_prog)
         time.sleep(usleep)
     
         #prog.write(1)
-        flocklab.gpio_set(flocklab.gpio_tg_prog, 1)
+        flocklab.gpio_set(flocklab.gpio_tg_prog)
         time.sleep(usleep)
     
     flocklab.gpio_set(flocklab.gpio_tg_nrst)  # release reset
@@ -60,22 +59,23 @@ def prog_msp430(imagefile, port, prog_toggle_num=1, progstate=0, speed=38400):
     if progstate == 1:
         time.sleep(usleep)
         flocklab.gpio_set(flocklab.gpio_tg_prog)
-    
-    cmd = ["python","-m","msp430.bsl5.uart","-p", port, "-e", "-S", "-V", "--speed=%d" %speed, "-i", "ihex", "-P", imagefile, "-v", "--debug"]
-    
+
+    # currently only runs with python2.7
+    cmd = ["python2.7","-m","msp430.bsl5.uart","-p", port, "-e", "-S", "-V", "--speed=%d" %speed, "-i", "ihex", "-P", imagefile]
     if debug:
         cmd.append("-vvv")
         cmd.append("--debug")
     try:
-        subprocess.call(cmd)
+        rs = subprocess.call(cmd)
     except Exception:
         flocklab.tg_reset()
         return 3
     
     # Revert back all config changes:
     subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
-    flocklab.gpio_clr(flocklab.gpio_tg_prog)
-
+  
+    if rs != 0:
+        return flocklab.FAILED
     return flocklab.SUCCESS
 ### END reprog_cc430()
 
@@ -96,7 +96,7 @@ def prog_msp432(imagefile, port, speed):
     flocklab.set_pin(flocklab.gpio_tg_nrst, 1)
     time.sleep(5)
 
-    cmd = ["python","-m","msp430.bsl5.uart","-p", port, "-e", "-S", "-V","--speed=%d" % speed, "-i", "ihex", "-P", imagefile, "-v", "--debug"]
+    cmd = ["python","-m","msp430.bsl5.uart","-p", port, "-e", "-S", "-V","--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
     if debug:
         cmd.append("-vvv")
         cmd.append("--debug")
@@ -232,9 +232,6 @@ def main(argv):
     target    = None
     core      = 0
     
-    # Get logger
-    logger = flocklab.get_logger(debug=debug)
-    
     # Get command line parameters.
     try:
         opts, args = getopt.getopt(argv, "dhi:t:p:c:", ["debug", "help", "image=", "target=", "port=", "core="])
@@ -246,7 +243,6 @@ def main(argv):
             sys.exit(flocklab.SUCCESS)
         elif opt in ("-d", "--debug"):
             debug = True
-            logger.setLevel(logging.DEBUG)
         elif opt in ("-i", "--image"):
             imagefile = arg
         elif opt in ("-t", "--target"):
@@ -262,12 +258,12 @@ def main(argv):
     if (imagefile == None) or (target == None):
         flocklab.error_logandexit("No image file or target specified.", errno.EINVAL)
     
+    # Get logger
+    logger = flocklab.get_logger(debug=debug)
+    
     # Check if file exists
     if not os.path.isfile(imagefile):
         flocklab.error_logandexit("Image file '%s' not found." % imagefile, errno.ENOENT)
-    
-    # Set environment variable needed for programmer: 
-    #os.environ["PYTHONPATH"] = os.environ.get("PYTHONPATH", "") + "/usr/local/lib/python2.7/"
     
     # Set target voltage to default value and make sure power, MUX and actuation are enabled
     flocklab.tg_set_vcc()

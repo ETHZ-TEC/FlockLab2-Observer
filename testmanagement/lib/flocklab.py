@@ -209,7 +209,7 @@ def log_test_error(testid=None, msg=None):
 #
 ##############################################################################
 def log_timesync_info(testid=None, includepps=False):
-    if testid:
+    if testid and os.path.isdir("%s/%d" % (config.get("observer", "testresultfolder"), testid)):
         timesynclogfile = "%s/%d/timesync_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         p = subprocess.Popen(['chronyc', 'sources'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         out, err = p.communicate(None)
@@ -621,9 +621,9 @@ def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samp
     if num_samples:
         if num_samples > rl_max_samples:
             num_samples = rl_max_samples
-        cmd.append(("--samples=%s" % str(num_samples)))
+        cmd.append(("--samples=%d" % int(num_samples)))
     if start_time > 0:
-        cmd.append(("--tstart=%s" % str(start_time)))
+        cmd.append(("--tstart=%d" % int(start_time)))
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     rs = p.wait()
     if rs != 0:
@@ -767,6 +767,6 @@ def parse_int(s):
             res = int(float(s.strip())) # higher success rate if first parsed to float
         except ValueError:
             if logger:
-                logger.warning("Could not parse %s to int." % (str(s)))
+                logger.warn("Could not parse %s to int." % (str(s)))
     return res
 ### END parse_int()

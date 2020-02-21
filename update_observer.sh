@@ -21,18 +21,18 @@ do
     # get a list of modified files (-c option to use checksum to determine changes)
     RES=$(rsync -a -z -c -i --timeout=5 --dry-run --exclude=".git" -e "ssh -q -p ${PORT}" ../observer/ ${USER}@${HOSTPREFIX}${OBS}:observer/  2>&1)
     if [ $? -ne 0 ]; then
-        if [[ $RES = *timeout* ]]; then
-            echo "FlockLab observer not responsive (skipped)."
+        if [[ $RES = *timeout* ]] || [[ $RES = *"connection unexpectedly closed"* ]]; then
+            echo "FlockLab observer ${HOSTPREFIX}${OBS} not responsive (skipped)."
         else
-            echo "An error occurred: $RES"
+            echo "An error occurred when trying to access observer ${HOSTPREFIX}${OBS}: $RES"
         fi
         continue
     fi
-    RES=$(echo "${RES}" | grep '^<fc' | cut -d' ' -f2)
     if [ -z "$RES" ]; then
         echo "Files on FlockLab observer ${HOSTPREFIX}${OBS} are up to date."
         continue
     fi
+    #RES=$(echo "${RES}" | grep '^<fc' | cut -d' ' -f2)
     #printf "changed files:\n$RES\n"
     printf "Updating files on FlockLab observer ${HOSTPREFIX}${OBS}... "
     # copy modified files (quiet mode, compress data during file transfer)
