@@ -63,6 +63,7 @@ tg_vcc_default  = 3.3             # e.g. used for target programming
 tg_platforms    = ['dpp', 'tmote', 'dpp2lora', 'nrf5']
 tg_port_types   = ['usb', 'serial']
 tg_serial_port  = '/dev/ttyS5'
+tg_usb_port     = '/dev/ttyUSB0'
 tg_baud_rates   = [9600, 19200, 38400, 57600, 115200]
 rl_max_rate     = 64000
 rl_default_rate = 1000
