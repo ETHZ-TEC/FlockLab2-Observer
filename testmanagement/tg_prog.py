@@ -34,46 +34,39 @@ def usage():
 # MSP430 via serial port / bootloader
 #
 ##############################################################################
-def prog_msp430(imagefile, port, prog_toggle_num=1, progstate=0, speed=38400):
-    global debug
-    usleep = 0.001
-
-    flocklab.gpio_clr(flocklab.gpio_tg_nrst)
+def prog_msp430(imagefile, port, speed=38400):
+    
+    # both pins high
+    flocklab.gpio_set(flocklab.gpio_tg_nrst)
     flocklab.gpio_set(flocklab.gpio_tg_prog)
-
-    time.sleep(usleep)
+    time.sleep(0.2)
     
-    for i in range(0, prog_toggle_num):
-        #prog.write(0)
-        flocklab.gpio_clr(flocklab.gpio_tg_prog)
-        time.sleep(usleep)
-    
-        #prog.write(1)
-        flocklab.gpio_set(flocklab.gpio_tg_prog)
-        time.sleep(usleep)
-    
-    flocklab.gpio_set(flocklab.gpio_tg_nrst)  # release reset
-    time.sleep(usleep)
+    # both pins low
+    flocklab.gpio_clr(flocklab.gpio_tg_nrst)
     flocklab.gpio_clr(flocklab.gpio_tg_prog)
+    time.sleep(0.01)
     
-    if progstate == 1:
-        time.sleep(usleep)
-        flocklab.gpio_set(flocklab.gpio_tg_prog)
-
+    # toggle TEST pin to trigger BSL entry
+    flocklab.gpio_set(flocklab.gpio_tg_prog)
+    time.sleep(0.01)
+    flocklab.gpio_clr(flocklab.gpio_tg_prog)
+    time.sleep(0.01)
+    flocklab.gpio_set(flocklab.gpio_tg_prog)
+    time.sleep(0.01)
+    
+    # release reset
+    flocklab.gpio_set(flocklab.gpio_tg_nrst)
+    time.sleep(0.01)
+    flocklab.gpio_clr(flocklab.gpio_tg_prog)
+    # bootloader should start now
+    
     # currently only runs with python2.7
-    cmd = ["python2.7","-m","msp430.bsl5.uart","-p", port, "-e", "-S", "-V", "--speed=%d" %speed, "-i", "ihex", "-P", imagefile]
+    cmd = ["python2.7", "-m", "msp430.bsl5.uart", "-p", port, "-e", "-S", "-V", "--no-start", "--speed=%d" %speed, "-i", "ihex", "-P", imagefile]
     if debug:
-        cmd.append("-vvv")
+        cmd.append("-v")
         cmd.append("--debug")
-    try:
-        rs = subprocess.call(cmd)
-    except Exception:
-        flocklab.tg_reset()
-        return 3
+    rs = subprocess.call(cmd)
     
-    # Revert back all config changes:
-    subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
-  
     if rs != 0:
         return flocklab.FAILED
     return flocklab.SUCCESS
@@ -86,33 +79,59 @@ def prog_msp430(imagefile, port, prog_toggle_num=1, progstate=0, speed=38400):
 #
 ##############################################################################
 def prog_msp432(imagefile, port, speed):
-    global debug
-    usleep = 0.001
-
-    flocklab.set_pin(flocklab.gpio_tg_nrst, 0)
+    
+    # both pins high
+    flocklab.gpio_set(flocklab.gpio_tg_nrst)
+    flocklab.gpio_set(flocklab.gpio_tg_prog)
+    time.sleep(0.2)
+    
+    # both low
+    flocklab.gpio_clr(flocklab.gpio_tg_nrst)
+    flocklab.gpio_clr(flocklab.gpio_tg_prog)
+    
+    # prog high
     flocklab.set_pin(flocklab.gpio_tg_prog, 1)
-    time.sleep(usleep)
-
+    time.sleep(0.01)
+    
+    # release reset
     flocklab.set_pin(flocklab.gpio_tg_nrst, 1)
-    time.sleep(5)
+    time.sleep(1)
 
-    cmd = ["python","-m","msp430.bsl5.uart","-p", port, "-e", "-S", "-V","--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
+    cmd = ["python2.7", "-m", "msp430.bsl5.uart", "-p", port, "-e", "-S", "-V", "--no-start", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
     if debug:
-        cmd.append("-vvv")
+        cmd.append("-v")
         cmd.append("--debug")
-    try:
-        subprocess.call(cmd)
-    except Exception:
-        flocklab.tg_reset()
-        return 3
+    rs = subprocess.call(cmd)
     
-    flocklab.set_pin(flocklab.gpio_tg_prog, 0)
-    
-    # Revert back all config changes:
-    #subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
-
+    if rs != 0:
+        return flocklab.FAILED
     return flocklab.SUCCESS
 ### END prog_msp432()
+
+
+##############################################################################
+#
+# TelosB (Tmote Sky) via USB / bootloader
+#
+##############################################################################
+def prog_telosb(imagefile, speed=38400):
+    
+    # both pins high
+    flocklab.gpio_set(flocklab.gpio_tg_nrst)
+    flocklab.gpio_set(flocklab.gpio_tg_prog)
+    time.sleep(0.2)
+    
+    # currently only runs with python2.7
+    cmd = ["python2.7", "-m", "msp430.bsl.target.telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "-V", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
+    if debug:
+        cmd.append("-v")
+        cmd.append("--debug")
+    rs = subprocess.call(cmd)
+    
+    if rs != 0:
+        return flocklab.FAILED
+    return flocklab.SUCCESS
+### END reprog_cc430()
 
 
 ##############################################################################
@@ -188,13 +207,13 @@ def prog_dpp(imagefile, core):
     # program
     ret = 1
     if core == 0: # COMM
-        ret = prog_msp430(imagefile, flocklab.tg_serial_port, progstate = 1, speed=115200)
+        ret = prog_msp430(imagefile, flocklab.tg_serial_port, 115200)
     elif core == 1: # BOLT
-        ret = prog_msp430(imagefile, flocklab.tg_serial_port, speed=115200)
+        ret = prog_msp430(imagefile, flocklab.tg_serial_port, 115200)
     elif core == 2: # APP
         ret = prog_msp432(imagefile, flocklab.tg_serial_port, 57600)
     elif core == 3: # SENSOR
-        ret = prog_msp430(imagefile, flocklab.tg_serial_port, progstate = 1, speed=115200)
+        ret = prog_msp430(imagefile, flocklab.tg_serial_port, 115200)
 
     flocklab.set_pin(flocklab.gpio_tg_sig1, 0)
     flocklab.set_pin(flocklab.gpio_tg_sig2, 0)
@@ -280,7 +299,7 @@ def main(argv):
     rs = 0
     if target == 'dpp':
         rs = prog_dpp(imagefile, core)
-    elif target == 'dpp2lora' or target == 'dpp2lorahg':
+    elif target in ('dpp2lora', 'dpp2lorahg'):
         if porttype in ("SWD", "swd"):
             rs = prog_swd(imagefile, "STM32L433CC")
         else:
@@ -290,8 +309,13 @@ def main(argv):
                 rs = 1
     elif target == 'nrf5':
         rs = prog_swd(imagefile, "nRF52840_xxAA")
+    elif target in ('tmote', 'telosb', 'sky'):
+        rs = prog_telosb(imagefile)
     else:
         logger.error("Unknown target '%s'" % target)
+    
+    # Revert back all config changes:
+    #subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
     
     # Reset
     flocklab.tg_reset()
