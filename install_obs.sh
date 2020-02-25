@@ -180,6 +180,10 @@ depmod
 # to test the module: 
 #cd /sys/devices/platform/ocp/ocp:pps_gmtimer && ~/observer/various/pps-gmtimer/watch-pps
 
+##########################################################
+# install Ethernet PHY / SYS_RESETn fix for BeagleBone
+apt-get --assume-yes install ethtool > /dev/null 2>> $ERRORLOG && cd observer/various/bbbrtc && make > /dev/null 2>> $ERRORLOG
+check_retval "Failed to install bbbrtc." "bbbrtc installed."
 
 ##########################################################
 # add startup script
