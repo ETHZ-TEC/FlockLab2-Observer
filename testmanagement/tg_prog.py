@@ -36,27 +36,22 @@ def usage():
 ##############################################################################
 def prog_msp430(imagefile, port, speed=38400):
     
-    # both pins high
-    flocklab.gpio_set(flocklab.gpio_tg_nrst)
-    flocklab.gpio_set(flocklab.gpio_tg_prog)
-    time.sleep(0.2)
-    
     # both pins low
     flocklab.gpio_clr(flocklab.gpio_tg_nrst)
     flocklab.gpio_clr(flocklab.gpio_tg_prog)
-    time.sleep(0.01)
+    time.sleep(0.001)
     
     # toggle TEST pin to trigger BSL entry
     flocklab.gpio_set(flocklab.gpio_tg_prog)
-    time.sleep(0.01)
+    time.sleep(0.001)
     flocklab.gpio_clr(flocklab.gpio_tg_prog)
-    time.sleep(0.01)
+    time.sleep(0.001)
     flocklab.gpio_set(flocklab.gpio_tg_prog)
-    time.sleep(0.01)
+    time.sleep(0.001)
     
     # release reset
     flocklab.gpio_set(flocklab.gpio_tg_nrst)
-    time.sleep(0.01)
+    time.sleep(0.001)
     flocklab.gpio_clr(flocklab.gpio_tg_prog)
     # bootloader should start now
     
@@ -66,7 +61,6 @@ def prog_msp430(imagefile, port, speed=38400):
         cmd.append("-v")
         cmd.append("--debug")
     rs = subprocess.call(cmd)
-    
     if rs != 0:
         return flocklab.FAILED
     return flocklab.SUCCESS
@@ -80,29 +74,23 @@ def prog_msp430(imagefile, port, speed=38400):
 ##############################################################################
 def prog_msp432(imagefile, port, speed):
     
-    # both pins high
-    flocklab.gpio_set(flocklab.gpio_tg_nrst)
-    flocklab.gpio_set(flocklab.gpio_tg_prog)
-    time.sleep(0.2)
-    
     # both low
     flocklab.gpio_clr(flocklab.gpio_tg_nrst)
     flocklab.gpio_clr(flocklab.gpio_tg_prog)
-    
+    time.sleep(0.001)
     # prog high
-    flocklab.set_pin(flocklab.gpio_tg_prog, 1)
-    time.sleep(0.01)
-    
+    flocklab.gpio_set(flocklab.gpio_tg_prog)
+    time.sleep(0.001)
     # release reset
-    flocklab.set_pin(flocklab.gpio_tg_nrst, 1)
-    time.sleep(1)
+    flocklab.gpio_set(flocklab.gpio_tg_nrst)
+    time.sleep(0.1)
 
-    cmd = ["python2.7", "-m", "msp430.bsl5.uart", "-p", port, "-e", "-S", "-V", "--no-start", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
+    # currently only runs with python2.7 (note: for some reason does not work when adding '--no-start' flag)
+    cmd = ["python2.7", "-m", "msp430.bsl32.uart", "-p", port, "-e", "-S", "-V", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
     if debug:
         cmd.append("-v")
         cmd.append("--debug")
     rs = subprocess.call(cmd)
-    
     if rs != 0:
         return flocklab.FAILED
     return flocklab.SUCCESS
@@ -116,18 +104,12 @@ def prog_msp432(imagefile, port, speed):
 ##############################################################################
 def prog_telosb(imagefile, speed=38400):
     
-    # both pins high
-    flocklab.gpio_set(flocklab.gpio_tg_nrst)
-    flocklab.gpio_set(flocklab.gpio_tg_prog)
-    time.sleep(0.2)
-    
     # currently only runs with python2.7
     cmd = ["python2.7", "-m", "msp430.bsl.target.telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "-V", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
     if debug:
         cmd.append("-v")
         cmd.append("--debug")
     rs = subprocess.call(cmd)
-    
     if rs != 0:
         return flocklab.FAILED
     return flocklab.SUCCESS
@@ -140,7 +122,6 @@ def prog_telosb(imagefile, speed=38400):
 #
 ##############################################################################
 def prog_stm32l4(imagefile, port, speed=115200):
-    global debug
 
     # stm32loader expects a binary file
     if "hex" in os.path.splitext(imagefile)[1]:
@@ -160,9 +141,9 @@ def prog_stm32l4(imagefile, port, speed=115200):
     flocklab.set_pin(flocklab.gpio_tg_nrst, 1)    # reset high
     flocklab.set_pin(flocklab.gpio_tg_prog, 0)    # prog low
     flocklab.set_pin(flocklab.gpio_tg_nrst, 0)    # reset low
-    time.sleep(0.01)
+    time.sleep(0.001)
     flocklab.set_pin(flocklab.gpio_tg_prog, 1)    # prog high
-    time.sleep(0.01)
+    time.sleep(0.001)
     flocklab.set_pin(flocklab.gpio_tg_nrst, 1)    # reset high
     time.sleep(0.1)
 
@@ -185,9 +166,6 @@ def prog_stm32l4(imagefile, port, speed=115200):
         return 2
     loader.perform_commands()
     
-    # Revert back all config changes:
-    #subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
-
     return flocklab.SUCCESS
 ### END prog_stm32l4()
 
@@ -207,12 +185,17 @@ def prog_dpp(imagefile, core):
     # program
     ret = 1
     if core == 0: # COMM
+        flocklab.logger.debug("Programming CC430...")
         ret = prog_msp430(imagefile, flocklab.tg_serial_port, 115200)
     elif core == 1: # BOLT
+        flocklab.logger.debug("Programming BOLT...")
         ret = prog_msp430(imagefile, flocklab.tg_serial_port, 115200)
     elif core == 2: # APP
+        flocklab.logger.debug("Programming MSP432...")
+        # cannot go higher than 57600 due to a bug in the on-chip bootloader
         ret = prog_msp432(imagefile, flocklab.tg_serial_port, 57600)
     elif core == 3: # SENSOR
+        flocklab.logger.debug("Programming sensor...")
         ret = prog_msp430(imagefile, flocklab.tg_serial_port, 115200)
 
     flocklab.set_pin(flocklab.gpio_tg_sig1, 0)

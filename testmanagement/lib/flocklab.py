@@ -254,7 +254,10 @@ def init_gpio():
 ##############################################################################
 def gpio_set(pin):
     try:
-        os.system("echo 1 > /sys/class/gpio/gpio%s/value" % (pin))
+        #os.system("echo 1 > /sys/class/gpio/gpio%s/value" % (pin))
+        f = open("/sys/class/gpio/gpio%s/value" % (pin), 'w')
+        f.write('1')
+        f.close()
     except IOError:
         print("Failed to set GPIO state.")
         return FAILED
@@ -269,7 +272,10 @@ def gpio_set(pin):
 ##############################################################################
 def gpio_clr(pin):
     try:
-        os.system("echo 0 > /sys/class/gpio/gpio%s/value" % (pin))
+        #os.system("echo 0 > /sys/class/gpio/gpio%s/value" % (pin))
+        f = open("/sys/class/gpio/gpio%s/value" % (pin), 'w')
+        f.write('0')
+        f.close()
     except IOError:
         print("Failed to set GPIO state.")
         return FAILED
@@ -284,8 +290,11 @@ def gpio_clr(pin):
 ##############################################################################
 def gpio_get(pin):
     try:
-        p = subprocess.Popen(["cat", "/sys/class/gpio/gpio%s/value" % (pin)], stdout=subprocess.PIPE, universal_newlines=True)
-        out = p.communicate()[0]
+        #p = subprocess.Popen(["cat", "/sys/class/gpio/gpio%s/value" % (pin)], stdout=subprocess.PIPE, universal_newlines=True)
+        #out = p.communicate()[0]
+        f = open("/sys/class/gpio/gpio%s/value" % (pin), 'r')
+        out = f.read()
+        f.close()
     except IOError:
         print("Failed to get GPIO state.")
         return FAILED
@@ -300,9 +309,9 @@ def gpio_get(pin):
 ##############################################################################
 def set_pin(pin, level):
     if level:
-      return gpio_set(pin)
+        return gpio_set(pin)
     else:
-      return gpio_clr(pin)
+        return gpio_clr(pin)
 ### END set_pin()
 
 
@@ -439,7 +448,7 @@ def tg_reset(release=True):
     gpio_clr(gpio_tg_prog)    # ensure prog pin is low
     gpio_clr(gpio_tg_nrst)
     if release:
-        time.sleep(0.1)
+        time.sleep(0.001)
         gpio_set(gpio_tg_nrst)
     return SUCCESS
 ### END tg_reset()
