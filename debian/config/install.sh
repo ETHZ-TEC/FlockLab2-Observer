@@ -170,7 +170,7 @@ check_retval "Failed to install system updates." "System updates installed."
 
 # install fundamental dependencies
 echo "       Installing fundamental dependencies..."
-apt-get --assume-yes install unzip git ntp make build-essential python2.7 python3 python3-dev python3-pip device-tree-compiler gcc g++ libncurses5-dev libi2c-dev linux-headers-$(uname -r) > /dev/null 2>> $ERRORLOG
+apt-get --assume-yes install unzip minicom git ntp make build-essential python3 python3-dev python3-pip device-tree-compiler gcc g++ libncurses5-dev libi2c-dev linux-headers-$(uname -r) > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install packages." "Packages installed."
 
 # install SNMP for monitoring

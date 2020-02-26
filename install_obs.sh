@@ -126,13 +126,17 @@ apt-get --assume-yes install libfreetype6 libatlas3-base > /dev/null 2>> $ERRORL
 check_retval "Failed to install packages." "Packages installed."
 
 ##########################################################
-# install required packages for serial logging and GPIO actuation
+# install required packages for serial logging and BSL programming
 echo "       Installing required packages for serial logging..."
-apt-get --assume-yes install python3-serial python-serial minicom > /dev/null 2>> $ERRORLOG && pip3 install smbus intelhex > /dev/null 2>> $ERRORLOG 
-# probably not needed: Adafruit_BBIO pyserial
+apt-get --assume-yes install python3-serial python2.7 python-serial python-setuptools > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install pyserial." "pyserial installed."
-tar xzf ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools-patched.tar.gz -C ${HOMEDIR}/observer/various/python-msp430-tools/ && cd ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools && python2.7 setup.py install > /dev/null 2>> $ERRORLOG
+tar xzf ${HOMEDIR}/observer/various/python-msp430-tools/python-msp430-tools-patched.tar.gz -C /tmp && cd /tmp/python-msp430-tools && python2.7 setup.py install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install python-msp430-tools." "python-msp430-tools installed."
+
+##########################################################
+# misc python modules
+pip3 install smbus intelhex > /dev/null 2>> $ERRORLOG
+check_retval "Failed to install additional python modules." "Additional python modules installed."
 
 ##########################################################
 # configure time sync
