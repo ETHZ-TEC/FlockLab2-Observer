@@ -32,7 +32,8 @@ do
         echo "Files on FlockLab observer ${HOSTPREFIX}${OBS} are up to date."
         continue
     fi
-    #RES=$(echo "${RES}" | grep '^<fc' | cut -d' ' -f2)
+    # filter, keep only changed files
+    RES=$(echo "${RES}" | grep '^<fc' | cut -d' ' -f2)
     #printf "changed files:\n$RES\n"
     printf "Updating files on FlockLab observer ${HOSTPREFIX}${OBS}... "
     # copy modified files (quiet mode, compress data during file transfer)
