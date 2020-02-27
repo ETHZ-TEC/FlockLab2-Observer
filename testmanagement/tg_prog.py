@@ -217,7 +217,7 @@ def prog_swd(imagefile, device):
     out, err = p.communicate(input=cmd)
     if "Core found" not in out:
         flocklab.log_error("Failed to program target via SWD. Message: %s" % out)
-        return -1
+        return flocklab.FAILED
     return flocklab.SUCCESS
 
 
@@ -279,7 +279,7 @@ def main(argv):
     
     # Flash the target:
     logger.info("Programming target %s with image %s..." % (target, imagefile))
-    rs = 0
+    rs = flocklab.FAILED
     if target == 'dpp':
         rs = prog_dpp(imagefile, core)
     elif target in ('dpp2lora', 'dpp2lorahg'):
