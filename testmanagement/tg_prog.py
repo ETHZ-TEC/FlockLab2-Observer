@@ -2,7 +2,7 @@
 
 import os, sys, getopt, subprocess, errno, time, serial, traceback
 import lib.flocklab as flocklab
-import lib.stm32loader as stm32loader
+from stm32loader.main import Stm32Loader
 from intelhex import hex2bin
 
 #import msp430.bsl5.uart
@@ -35,12 +35,12 @@ def usage():
 #
 ##############################################################################
 def prog_msp430(imagefile, port, speed=38400):
-    
+
     # both pins low
     flocklab.gpio_clr(flocklab.gpio_tg_nrst)
     flocklab.gpio_clr(flocklab.gpio_tg_prog)
     time.sleep(0.001)
-    
+
     # toggle TEST pin to trigger BSL entry
     flocklab.gpio_set(flocklab.gpio_tg_prog)
     time.sleep(0.001)
@@ -48,13 +48,13 @@ def prog_msp430(imagefile, port, speed=38400):
     time.sleep(0.001)
     flocklab.gpio_set(flocklab.gpio_tg_prog)
     time.sleep(0.001)
-    
+
     # release reset
     flocklab.gpio_set(flocklab.gpio_tg_nrst)
     time.sleep(0.001)
     flocklab.gpio_clr(flocklab.gpio_tg_prog)
     # bootloader should start now
-    
+
     # currently only runs with python2.7
     cmd = ["python2.7", "-m", "msp430.bsl5.uart", "-p", port, "-e", "-S", "-V", "--no-start", "--speed=%d" %speed, "-i", "ihex", "-P", imagefile]
     if debug:
@@ -73,7 +73,7 @@ def prog_msp430(imagefile, port, speed=38400):
 #
 ##############################################################################
 def prog_msp432(imagefile, port, speed):
-    
+
     # both low
     flocklab.gpio_clr(flocklab.gpio_tg_nrst)
     flocklab.gpio_clr(flocklab.gpio_tg_prog)
@@ -103,7 +103,7 @@ def prog_msp432(imagefile, port, speed):
 #
 ##############################################################################
 def prog_telosb(imagefile, speed=38400):
-    
+
     # currently only runs with python2.7
     cmd = ["python2.7", "-m", "msp430.bsl.target.telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "-V", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
     if debug:
@@ -148,7 +148,8 @@ def prog_stm32l4(imagefile, port, speed=115200):
     time.sleep(0.1)
 
     # call the bootloader script
-    loader = stm32loader.Stm32Loader()
+    loader = Stm32Loader()
+    loader.configuration['family'] = 'L4'
     loader.configuration['data_file'] = imagefile
     loader.configuration['port'] = port
     loader.configuration['baud'] = 115200
@@ -156,16 +157,16 @@ def prog_stm32l4(imagefile, port, speed=115200):
     loader.configuration['erase'] = True
     loader.configuration['write'] = True
     loader.configuration['verify'] = True
-    stm32loader.ENTRY_SEQUENCE = False
     if debug:
-        stm32loader.VERBOSITY = 10
+        loader.VERBOSITY = 10
     else:
-        stm32loader.VERBOSITY = 0
+        loader.VERBOSITY = 0
     loader.connect()
-    if loader.read_device_details() != 0x435:
+    loader.read_device_id()
+    if loader.stm32.get_id() != 0x435:
         return 2
     loader.perform_commands()
-    
+
     return flocklab.SUCCESS
 ### END prog_stm32l4()
 
@@ -181,7 +182,7 @@ def prog_dpp(imagefile, core):
     # select core
     flocklab.set_pin(flocklab.gpio_tg_sig1, core2sig[core][0])
     flocklab.set_pin(flocklab.gpio_tg_sig2, core2sig[core][1])
-    
+
     # program
     ret = 1
     if core == 0: # COMM
@@ -228,12 +229,12 @@ def prog_swd(imagefile, device):
 ##############################################################################
 def main(argv):
     global debug
-    
+
     porttype  = "serial"
     imagefile = None
     target    = None
     core      = 0
-    
+
     # Get command line parameters.
     try:
         opts, args = getopt.getopt(argv, "dhi:t:p:c:", ["debug", "help", "image=", "target=", "port=", "core="])
@@ -255,28 +256,28 @@ def main(argv):
             core = int(arg)
         else:
             flocklab.error_logandexit("Unknown argument %s" % opt, errno.EINVAL)
-    
+
     # Check mandatory parameters
     if (imagefile == None) or (target == None):
         flocklab.error_logandexit("No image file or target specified.", errno.EINVAL)
-    
+
     # Get logger
     logger = flocklab.get_logger(debug=debug)
-    
+
     # Check if file exists
     if not os.path.isfile(imagefile):
         flocklab.error_logandexit("Image file '%s' not found." % imagefile, errno.ENOENT)
-    
+
     # Set target voltage to default value and make sure power, MUX and actuation are enabled
     flocklab.tg_set_vcc()
     flocklab.tg_pwr_en()
     flocklab.tg_mux_en()
     flocklab.tg_act_en()
-    
+
     # Enable and reset the target (also ensures the PROG pin is low)
     flocklab.tg_en()
     flocklab.tg_reset()
-    
+
     # Flash the target:
     logger.info("Programming target %s with image %s..." % (target, imagefile))
     rs = flocklab.FAILED
@@ -296,18 +297,18 @@ def main(argv):
         rs = prog_telosb(imagefile)
     else:
         logger.error("Unknown target '%s'" % target)
-    
+
     # Revert back all config changes:
     #subprocess.call(["stty", "-F", port, "-parenb", "iexten", "echoe", "echok", "echoctl", "echoke", "115200"])
-    
+
     # Reset
     flocklab.tg_reset()
     #flocklab.gpio_clr(flocklab.gpio_tg_prog)  -> already done in tg_reset()
-    
+
     # Return an error if there was one while flashing:
     if (rs != 0):
         flocklab.error_logandexit("Image could not be flashed to target. Error %d occurred." % rs, errno.EIO)
-    
+
     logger.info("Target node flashed successfully.")
     sys.exit(flocklab.SUCCESS)
 ### END main()
