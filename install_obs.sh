@@ -135,7 +135,7 @@ check_retval "Failed to install python-msp430-tools." "python-msp430-tools insta
 
 ##########################################################
 # misc python modules
-pip3 install smbus intelhex > /dev/null 2>> $ERRORLOG
+pip3 install smbus intelhex stm32loader > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install additional python modules." "Additional python modules installed."
 
 ##########################################################
@@ -181,7 +181,7 @@ check_retval "Failed to install PPS gmtimer kernel module." "PPS gmtimer kernel 
 echo "pps-gmtimer" > /etc/modules-load.d/pps_gmtimer.conf
 depmod
 # after reboot, check if module loaded: lsmod | grep pps-gmtimer
-# to test the module: 
+# to test the module:
 #cd /sys/devices/platform/ocp/ocp:pps_gmtimer && ~/observer/various/pps-gmtimer/watch-pps
 
 ##########################################################

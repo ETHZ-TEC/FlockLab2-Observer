@@ -27,17 +27,17 @@ def usage():
 #
 ##############################################################################
 def main(argv):
-    
+
     xmlfile    = None
     testid     = None
     serialport = None
     debug      = False
-    
+
     # Get config:
     config = flocklab.get_config()
     if not config:
         flocklab.error_logandexit("Could not read configuration file.")
-    
+
     # Get command line parameters.
     try:
         opts, args = getopt.getopt(argv, "hdt:x:p:", ["help", "debug", "testid=", "xml=", "serialport="])
@@ -61,26 +61,26 @@ def main(argv):
             debug = True
         else:
             flocklab.error_logandexit("Invalid option '%s'." % (opt), errno.EINVAL)
-    
+
     # Check for mandatory arguments:
     if not xmlfile or not testid or not serialport:
         flocklab.error_logandexit("Test ID, XML or serial port missing.", errno.EINVAL)
-    
+
     # init logger
     logger = flocklab.get_logger(debug=debug)
     if not logger:
         flocklab.error_logandexit("Could not get logger.")
-    
+
     # Indicate start of the script by enabling status LED
     flocklab.gpio_set(flocklab.gpio_led_status)
-    
+
     # Rename XML ---
     try:
         os.rename(xmlfile, "%s/config.xml" % os.path.dirname(xmlfile))
         xmlfile = "%s/config.xml" % os.path.dirname(xmlfile)
     except (OSError) as err:
         flocklab.error_logandexit("Could not rename XML config file.")
-    
+
     # Process XML ---
     # Open and parse XML:
     try:
@@ -90,7 +90,7 @@ def main(argv):
         #logger.debug("XML config:\n%s" % (xml.etree.ElementTree.tostring(tree.getroot(), encoding='utf8', method='xml').decode()))
     except:
         flocklab.error_logandexit("Could not find or open XML file '%s'." % str(xmlfile))
-    
+
     # Get basic information from <obsTargetConf> ---
     voltage         = None
     imagefile       = None
@@ -107,7 +107,7 @@ def main(argv):
     if len(imagefiles_to_process) == 0:
         logger.debug("Test without image")
         noimage = True
-    
+
     try:
         voltage = float(tree.find('obsTargetConf/voltage').text)
         # limit the voltage to the allowed range
@@ -120,7 +120,7 @@ def main(argv):
             platform = tree.find('obsTargetConf/platform').text.lower()
     except:
         flocklab.error_logandexit("XML: could not find mandatory element(s) in element <obsTargetConf>")
-    
+
     # Activate interface, turn power on ---
     if slotnr:
         if flocklab.tg_select(slotnr) != flocklab.SUCCESS or flocklab.tg_pwr_en() != flocklab.SUCCESS or flocklab.tg_en() != flocklab.SUCCESS:
@@ -128,20 +128,20 @@ def main(argv):
         logger.debug("Target %d selected and enabled." % (slotnr))
     else:
         flocklab.error_logandexit("Slot number could not be determined.")
-    
+
     # Ensure MUX is enabled
     flocklab.tg_mux_en()
-    
+
     # Make sure no serial service scripts are running ---
     p = subprocess.Popen([config.get("observer", "serialservice"), '--stop'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     (out, err) = p.communicate()
     if (p.returncode not in (flocklab.SUCCESS, errno.ENOPKG)):
         flocklab.error_logandexit("Error %d when trying to stop a potentially running serial service script: %s" % (p.returncode, str(err).strip()))
-    
+
     # Pull down GPIO setting lines ---
     if flocklab.gpio_clr(flocklab.gpio_tg_sig1) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2) != flocklab.SUCCESS:
         flocklab.error_logandexit("Failed to set GPIO lines")
-    
+
     # Flash target (will set target voltage to 3.3V) ---
     if not noimage:
         for core, image in imagefile.items():
@@ -158,18 +158,19 @@ def main(argv):
                     flocklab.tg_en(False)
                     shutil.move(image, '/tmp/failed_image_%s' % os.path.basename(image))
                     logger.debug("Moved file to /tmp. Command was: %s." % cmd)
+                    logger.debug("Error: %s" % (err))
                     flocklab.error_logandexit("Error %d when programming target image:\n%s" % (p.returncode, out.strip()))
                 logger.debug("Programmed target with image %s" % (image))
-    
+
     # Hold target in reset state
     flocklab.tg_reset(False)
-    
+
     # Set voltage ---
     msg = None
     if flocklab.tg_set_vcc(voltage) != flocklab.SUCCESS:
         flocklab.error_logandexit("Failed to set target voltage to %.1fV" % (voltage))
     logger.debug("Target voltage set to %.1fV" % voltage)
-    
+
     # Create test results directory ---
     resfolder = "%s/%d" % (config.get("observer", "testresultfolder"), testid)
     try:
@@ -177,7 +178,7 @@ def main(argv):
     except Exception as e:
         flocklab.error_logandexit("Failed to create directory: %s" % str(e))
     logger.debug("Test results folder '%s' created" % resfolder)
-    
+
     # Configure needed services ---
     # Serial ---
     if tree.find('obsSerialConf') != None:
@@ -209,7 +210,7 @@ def main(argv):
         logger.debug("Found config for GPIO setting.")
         # Cycle trough all configurations and write them to a file which is then fed to the service.
         # Create temporary file:
-        (fd, batchfile) = tempfile.mkstemp() 
+        (fd, batchfile) = tempfile.mkstemp()
         f = os.fdopen(fd, 'w')
         # Cycle through all configs and insert them into file:
         subtree = tree.find('obsGpioSettingConf')
@@ -254,7 +255,7 @@ def main(argv):
             logger.error("Could not determine test start time.")
     else:
         logger.debug("No config for GPIO setting service found.")
-    
+
     # GPIO tracing ---
     if tree.find('obsGpioMonitorConf'):
         logger.debug("Found config for GPIO monitoring.")
@@ -280,7 +281,7 @@ def main(argv):
         logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x)." % (tracingfile, pins))
     else:
         logger.debug("No config for GPIO monitoring service found.")
-    
+
     # Power profiling ---
     if tree.find('obsPowerprofConf'):
         logger.debug("Found config for power profiling.")
@@ -305,20 +306,20 @@ def main(argv):
         logger.debug("Power measurement will start at %s (output: %s, sampling rate: %dHz, duration: %ds)." % (str(starttime), outputfile, samplingrate, duration))
     else:
         logger.debug("No config for powerprofiling service found.")
-    
+
     # Timesync log ---
     try:
         flocklab.log_timesync_info(testid=testid)
         flocklab.store_pps_count(testid)
     except:
         flocklab.error_logandexit("Failed to collect timesync info (%s, %s)." % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
-    
+
     # disable MUX for more accurate current measurements (TODO only disable MUX if USB and SWD not used)
     flocklab.tg_mux_en(False)
-    
+
     flocklab.gpio_clr(flocklab.gpio_led_error)
     logger.info("Test successfully started.")
-    
+
     sys.exit(flocklab.SUCCESS)
 ### END main()
 
