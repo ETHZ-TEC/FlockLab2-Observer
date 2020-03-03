@@ -487,6 +487,11 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
   prev_sample = 0xffffffff;
   // calculate correction factor for time scaling timestamps
   corr_factor = ( (stoptime_s - starttime_s) + 1.0 ) / ( (double)(timestamp_end_ticks - timestamp_start_ticks)/SAMPLING_RATE );
+  fl_log(LOG_DEBUG, "corr_factor: %f", corr_factor);
+  if (corr_factor < 0.9 || corr_factor > 1.1) {
+    fl_log(LOG_ERROR, "GPIO Trace timestamp scaling failed, correction factor (%f) is out of valid range [0.9, 1.1]. GPIO Trace timestamps are returned unscaled!", corr_factor);
+    corr_factor = 1.0;
+  }
   // parse and write data
   while (fread(&sample, 4, 1, data_file)) {
     if (prev_sample == 0xffffffff) {
