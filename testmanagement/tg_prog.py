@@ -212,15 +212,32 @@ def prog_dpp(imagefile, core):
 # Program via SWD / J-Link
 #
 ##############################################################################
-def prog_swd(imagefile, device):
-    cmd = 'loadfile %s\nr\nq\n' % imagefile
-    # JRunExe -device STM32L433CC -if SWD -speed 4000 imagefile
-    p = subprocess.Popen(['JLinkExe', '-device', device, '-if', 'SWD', '-speed', 'auto', '-autoconnect', '1'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    out, err = p.communicate(input=cmd)
+def prog_swd(imagefile, device, speed='auto'):
+    # JLinkExe expects Intel hex file format
+    if "hex" not in os.path.splitext(imagefile)[1]:
+        ret = os.system("objcopy -O ihex %s %s.hex" % (imagefile, imagefile))
+        if ret != 0:
+            flocklab.log_warning("Failed to convert file '%s' to Intel hex format." % imagefile)
+        else:
+            imagefile = imagefile + ".hex"
+    # flash to target
+    # note: JRunExe expects an ELF file and needs to be aborted (does not terminate automatically)
+    #cmd = ['JRunExe', '-device', device, '-if', 'SWD', '-speed', str(speed), '--quit', imagefile]
+    #p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    cmd = ['JLinkExe', '-device', device, '-if', 'SWD', '-speed', str(speed), '-autoconnect', '1']
+    jlinkcmd = 'loadfile %s\nr\nq\n' % imagefile
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    out, err = p.communicate(input=jlinkcmd)
     if "Core found" not in out:
-        flocklab.log_error("Failed to program target via SWD. Message: %s" % out)
+        flocklab.log_error("Failed to connect to target via SWD. JLink output: %s" % out)
         return flocklab.FAILED
+    if (out.find("Programming flash [100%] Done") != -1) and ("Skipped. Contents already match" not in out):
+        flocklab.log_error("Failed to program target via SWD. JLink output: %s" % out)
+        return flocklab.FAILED
+    if debug:
+        flocklab.log_debug(out)
     return flocklab.SUCCESS
+### END prog_swd()
 
 
 ##############################################################################
@@ -266,11 +283,13 @@ def main(argv):
     logger = flocklab.get_logger(debug=debug)
 
     # Check if file exists
+    imagefile = os.path.abspath(imagefile)
     if not os.path.isfile(imagefile):
         flocklab.error_logandexit("Image file '%s' not found." % imagefile, errno.ENOENT)
 
     # Set target voltage to default value and make sure power, MUX and actuation are enabled
     flocklab.tg_set_vcc()
+    flocklab.log_debug("Target voltage set to 3.3V.")
     flocklab.tg_pwr_en()
     flocklab.tg_mux_en()
     flocklab.tg_act_en()
@@ -293,7 +312,7 @@ def main(argv):
             except:     # use except here to also catch sys.exit()
                 rs = 1
     elif target == 'nrf5':
-        rs = prog_swd(imagefile, "nRF52840_xxAA")
+        rs = prog_swd(imagefile, "nRF52840_xxAA", 4000)
     elif target in ('tmote', 'telosb', 'sky'):
         rs = prog_telosb(imagefile)
     else:
