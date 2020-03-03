@@ -130,7 +130,7 @@ static bool  running = true;
 void fl_log(log_level_t log_level, char const *const format, ...)
 {
   static const char* levelstr[] = { "ERROR\t", "WARN\t", "INFO\t", "DEBUG\t" };
-  
+
   // get arguments
   va_list args;
   va_start(args, format);
@@ -158,7 +158,7 @@ void fl_log(log_level_t log_level, char const *const format, ...)
       fclose(log_fp);
     }
   }
-  
+
 #if INTERACTIVE_MODE
   // also print to stdout
   //printf(levelstr[log_level]);
@@ -208,14 +208,14 @@ void wait_for_start(unsigned long starttime)
 {
   //struct timespec currtime;
   unsigned long currtime = time(NULL);
-  
+
   if (!starttime) {
     return;
   }
-  
+
   fl_log(LOG_DEBUG, "waiting for start time... (%lus)", (starttime - time(NULL)));
   starttime--;
-  
+
   while (currtime && (currtime < starttime) && running) {
     // alternatively, use clock_gettime(CLOCK_REALTIME, &currtime)
     currtime = time(NULL);
@@ -245,7 +245,7 @@ int config_pins(bool start)
 int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask)
 {
   static pru1_config_t prucfg;
-  
+
   // initialize and open PRU device
   prussdrv_init();
   // note: for some reason, EVTOUT_1 corresponds to event 4 (should be event 3 according to manual)
@@ -256,7 +256,7 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask)
   // setup PRU interrupt mapping
   tpruss_intc_initdata pruss_intc_initdata = PRUSS_INTC_INITDATA;
   prussdrv_pruintc_init(&pruss_intc_initdata);
-  
+
   // PRU SETUP
   prucfg.buffer_size = BUFFER_SIZE;
   prucfg.pin_mask = pinmask;
@@ -276,7 +276,7 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask)
   }
 
   fl_log(LOG_DEBUG, "%d / %d bytes allocated in mapped PRU memory (physical address 0x%x)", BUFFER_SIZE, pru_extmem_size, prucfg.buffer_addr);
-  
+
   // get user space mapped PRU memory addresses
   if (out_buffer_addr) {
     *out_buffer_addr = prussdrv_get_virt_addr(prucfg.buffer_addr);
@@ -299,9 +299,9 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask)
     fl_log(LOG_ERROR,"failed to start PRU (invalid or inexisting firmware file '%s')", PRU1_FIRMWARE);
     return 4;
   }
-  
+
   fl_log(LOG_INFO, "PRU firmware loaded");
-  
+
   return 0;
 }
 
@@ -318,10 +318,10 @@ int pru1_handshake(void)
 {
   // make sure event is cleared before doing the handshake
   prussdrv_pru_clear_event(PRU_EVTOUT_1, PRU1_ARM_INTERRUPT);
-  
+
   // signal PRU to start by setting the status bit (R31.t31)
   prussdrv_pru_send_event(ARM_PRU1_INTERRUPT);   // event #22
-  
+
   // wait for PRU event (returns 0 on timeout, -1 on error with errno)
   int res = prussdrv_pru_wait_event_timeout(PRU_EVTOUT_1, 2000000); // needs to be > 1s
   if (res < 0) {
@@ -332,10 +332,10 @@ int pru1_handshake(void)
     fl_log(LOG_ERROR, "failed to synchronize with PRU (not responding)");
     return 2;
   }
-  
+
   // clear system (event #20)
   prussdrv_pru_clear_event(PRU_EVTOUT_1, PRU1_ARM_INTERRUPT);
-  
+
   return 0;
 }
 
@@ -343,18 +343,18 @@ int pru1_handshake(void)
 int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
 {
   uint32_t readout_count = 0;
-  
+
   if (!pru_buffer || !data_file || !running) {
     return 1;
   }
-  
+
   if (pru1_handshake() != 0) {
     return 2;
   }
-  
+
   // start sampling
   fl_log(LOG_INFO, "starting sampling loop...");
-  
+
   // continuous sampling loop
   while (running) {
     // check whether it is time to stop
@@ -392,19 +392,19 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
     printf("\b\b\b\b\b\b\b\b" BYTE_TO_BIN_PATTERN, BYTE_TO_BIN(curr_value));
     fflush(stdout);
 #endif /* INTERACTIVE_MODE */
-    
+
     // write to file
     fwrite(curr_buffer, (BUFFER_SIZE / 2), 1, data_file);
 
     // clear buffer
     memset(curr_buffer, 0, (BUFFER_SIZE / 2));
-    
+
     readout_count++;
   }
   if (pru1_handshake() != 0) {
     return 4;
   }
-  
+
   // copy the remaining data
     __sync_synchronize();
   if (readout_count & 1) {
@@ -412,25 +412,30 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
   } else {
     fwrite(pru_buffer, (BUFFER_SIZE / 2), 1, data_file);
   }
-  
+
   fl_log(LOG_DEBUG, "collected %u samples", readout_count * BUFFER_SIZE / 8);
-  
+
   return 0;
 }
 
 
 // convert binary tracing data to a csv file
-void parse_tracing_data(const char* filename, unsigned long starttime)
+void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigned long stoptime_s)
 {
   char     buffer[SPRINTF_BUFFER_LENGTH];
-  FILE*    data_file   = NULL;
-  FILE*    csv_file    = NULL;
-  uint32_t sample      = 0;
-  uint32_t prev_sample = 0xffffffff;
-  uint32_t line_cnt    = 0;
-  uint32_t sample_cnt  = 0;
-  uint64_t timestamp   = 0;
-  
+  FILE*    data_file                = NULL;
+  FILE*    csv_file                 = NULL;
+  uint32_t sample                   = 0;
+  uint32_t prev_sample              = 0xffffffff;
+  uint32_t line_cnt                 = 0;
+  uint32_t sample_cnt               = 0;
+  uint64_t timestamp_ticks          = 0;
+  uint64_t timestamp_start_ticks    = 0; // timestamp of start of test (nRST=0)
+  uint64_t timestamp_end_ticks      = 0; // timestamp of end of sampling (nRST=1) (not equal to timestamp of stoptest!)
+  double   corr_factor              = 0; // time correction factor
+  bool     timestamp_start_obtained = false; // flag for to ensure first occurence of nRST=0 is obtained
+
+  // open files
   data_file = fopen(filename, "rb");      // binary mode
   sprintf(buffer, "%s.csv", filename);
   csv_file = fopen(buffer, "w");          // text mode
@@ -438,6 +443,50 @@ void parse_tracing_data(const char* filename, unsigned long starttime)
     fl_log(LOG_ERROR, "failed to open files (%s and/or %s)", filename, csv_file);
     return;
   }
+  // go through entire file to read timestamps of starting and ending nRST events (used for correction of timestamps)
+  while (fread(&sample, 4, 1, data_file)) {
+    if (prev_sample == 0xffffffff) {
+      prev_sample = ~sample & 0xff;
+    }
+    // data valid? -> at least the cycle counter must be > 0 (first sample after end of trace)
+    if (sample == 0) {
+      long int pos = ftell(data_file);
+      fseek(data_file, 0, SEEK_END);
+      long int size = ftell(data_file);
+      fl_log(LOG_INFO, "%ld of %ld bytes parsed", pos, size);
+      break;
+    }
+    // update the timestamp
+    timestamp_ticks += (sample >> 8);
+    // look for changed nRST values
+    if ( (prev_sample & 0x80) != (sample & 0x80) ) {
+      if ((sample & 0x80) > 0) {
+        // nRST=1
+        if (!timestamp_start_obtained) {
+          // only store the first occurence
+          timestamp_start_ticks = timestamp_ticks;
+          timestamp_start_obtained = true;
+        }
+      } else {
+        // nRST=0
+        // store last occurence
+        timestamp_end_ticks = timestamp_ticks;
+      }
+    }
+    prev_sample = sample;
+    sample_cnt++;
+  }
+  fl_log(LOG_DEBUG, "sample_cnt: %lu", sample_cnt);
+  fl_log(LOG_DEBUG, "timestamp_start_ticks: %llu, timestamp_end_ticks: %llu", (long long unsigned)timestamp_start_ticks, (long long unsigned)timestamp_end_ticks);
+  fl_log(LOG_DEBUG, "starttime_s: %lu, stoptime_s: %lu", starttime_s, stoptime_s);
+  // reinitialize file pointer and variables
+  fseek(data_file, 0, SEEK_SET);
+  timestamp_ticks = 0;
+  sample_cnt = 0;
+  sample = 0;
+  prev_sample = 0xffffffff;
+  // calculate correction factor for time scaling timestamps
+  corr_factor = ( (stoptime_s - starttime_s) + 1.0 ) / ( (double)(timestamp_end_ticks - timestamp_start_ticks)/SAMPLING_RATE );
   // parse and write data
   while (fread(&sample, 4, 1, data_file)) {
     if (prev_sample == 0xffffffff) {
@@ -452,8 +501,12 @@ void parse_tracing_data(const char* filename, unsigned long starttime)
       break;
     }
     // update the timestamp
-    timestamp += (sample >> 8);
-    double currtime = (double)starttime + (double)timestamp / SAMPLING_RATE;
+    timestamp_ticks += (sample >> 8);
+    double currtime = (double)starttime_s + (double)timestamp_ticks / SAMPLING_RATE * corr_factor;
+    // // stop parsing if stoptime passed (not currently used since last nRST event would be lost or needs to be artifically added at the end of the test)
+    // if (currtime > stoptime_s) {
+    //   break;
+    // }
     // go through all pins and check whether there has been a change
     uint32_t i = 0;
     while (i < 8) {
@@ -483,10 +536,10 @@ int main(int argc, char** argv)
   long int starttime = 0;
   long int stoptime  = 0;
   uint8_t  pinmask   = 0x0;
-  
+
   // --- remove old log file ---
   remove(LOG_FILENAME);
-  
+
   // --- check arguments ---
   if (argc > 1) {
     // 1st argument if given is the filename
@@ -522,12 +575,12 @@ int main(int argc, char** argv)
     pinmask = (uint8_t)strtol(argv[4], NULL, 0);
     fl_log(LOG_DEBUG, "using pin mask 0x%x", pinmask);
   }
-  
+
   // --- register signal handler ---
   if (register_sighandler() != 0) {
     return 1;
   }
-  
+
   // --- open output file ---
   datafile = fopen(filename, "wb");
   if (NULL == datafile) {
@@ -535,36 +588,36 @@ int main(int argc, char** argv)
     pru1_deinit();
     return 2;
   }
-  
+
   // --- configure PRU ---
   if (pru1_init(&prubuffer, pinmask) != 0) {
     fclose(datafile);
     return 3;
   }
-  
+
   // --- configure used pins ---
   config_pins(true);
-  
+
   // --- wait for the start ---
   wait_for_start(starttime);
-  
+
   // --- start sampling ---
   int rs = pru1_run(prubuffer, datafile, stoptime);
   if (rs != 0) {
     fl_log(LOG_ERROR, "pru1_run() returned with error code %d", rs);
   }
-  
+
   // --- cleanup ---
   config_pins(false);
   pru1_deinit();
   fflush(datafile);
   fclose(datafile);
   fl_log(LOG_INFO, "samples stored in %s", filename);
-  
+
   // --- parse data ---
-  parse_tracing_data(filename, starttime);
-  
+  parse_tracing_data(filename, starttime, stoptime);
+
   fl_log(LOG_DEBUG, "terminated");
-  
+
   return rs;
 }
