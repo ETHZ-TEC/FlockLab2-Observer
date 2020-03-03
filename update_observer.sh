@@ -7,10 +7,17 @@ PORT=2322
 USER="flocklab"
 HOSTPREFIX="fl-"
 OBSIDS="02 04 05 06 07 08 09 10 11 12"
+SRCDIR="."
+DESTDIR="observer"
+RSYNCPARAMS=" -a -z -c --timeout=5 --exclude=.git"  # --delete
 
 # check arguments
 if [ $# -gt 0 ]; then
-  OBSIDS=$1
+    if [[ ! $OBSIDS = *"$1"* ]] || [ ${#1} -ne 2 ]; then
+        echo "Invalid observer $1"
+        exit 1
+    fi
+    OBSIDS=$1
 fi
 
 echo "Going to update files on FlockLab observer(s) $OBSIDS..."
@@ -19,7 +26,7 @@ sleep 2   # give the user time to abort, just in case
 for OBS in $OBSIDS
 do
     # get a list of modified files (-c option to use checksum to determine changes)
-    RES=$(rsync -a -z -c -i --timeout=5 --dry-run --exclude=".git" -e "ssh -q -p ${PORT}" ../observer/ ${USER}@${HOSTPREFIX}${OBS}:observer/  2>&1)
+    RES=$(rsync ${RSYNCPARAMS} -i --dry-run --exclude=".git" -e "ssh -q -p ${PORT}" ${SRCDIR} ${USER}@${HOSTPREFIX}${OBS}:${DESTDIR}  2>&1)
     if [ $? -ne 0 ]; then
         if [[ $RES = *timeout* ]] || [[ $RES = *"connection unexpectedly closed"* ]]; then
             echo "FlockLab observer ${HOSTPREFIX}${OBS} not responsive (skipped)."
@@ -37,7 +44,7 @@ do
     #printf "changed files:\n$RES\n"
     printf "Updating files on FlockLab observer ${HOSTPREFIX}${OBS}... "
     # copy modified files (quiet mode, compress data during file transfer)
-    rsync -a -q -z -c --exclude=".git" -e "ssh -q -p ${PORT}" ../observer/ ${USER}@${HOSTPREFIX}${OBS}:observer/
+    rsync ${RSYNCPARAMS} -q -e "ssh -q -p ${PORT}" ${SRCDIR} ${USER}@${HOSTPREFIX}${OBS}:${DESTDIR}
     if [ $? -ne 0 ]; then
         printf "failed to copy repository files!\n"
         continue

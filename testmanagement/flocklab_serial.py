@@ -676,7 +676,10 @@ def main(argv):
         flocklab.error_logandexit("Could not determine slot number.")
     logger.debug("Selected slot number is %d." % slotnr)
     # Set the serial path:
-    serialdev = flocklab.tg_serial_port
+    if port == 'usb':
+        serialdev = flocklab.tg_usb_port
+    else:
+        serialdev = flocklab.tg_serial_port
 
     # Initialize message queues ---
     msgQueueDbBuf = multiprocessing.Queue()

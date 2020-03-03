@@ -157,10 +157,11 @@ def prog_stm32l4(imagefile, port, speed=115200):
     loader.configuration['erase'] = True
     loader.configuration['write'] = True
     loader.configuration['verify'] = True
+    loader.configuration['hide_progress_bar'] = True
     if debug:
-        loader.VERBOSITY = 10
+        loader.verbosity = 10
     else:
-        loader.VERBOSITY = 0
+        loader.verbosity = 0
     loader.connect()
     loader.read_device_id()
     if loader.stm32.get_id() != 0x435:
