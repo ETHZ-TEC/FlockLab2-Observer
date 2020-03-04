@@ -129,14 +129,14 @@ def main(argv):
     else:
         flocklab.error_logandexit("Slot number could not be determined.")
 
-    # Ensure MUX is enabled
-    flocklab.tg_mux_en()
-
-    # Make sure no serial service scripts are running ---
+    # Make sure all services are stopped ---
     p = subprocess.Popen([config.get("observer", "serialservice"), '--stop'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     (out, err) = p.communicate()
     if (p.returncode not in (flocklab.SUCCESS, errno.ENOPKG)):
         flocklab.error_logandexit("Error %d when trying to stop a potentially running serial service script: %s" % (p.returncode, str(err).strip()))
+    flocklab.stop_gpio_tracing()
+    flocklab.stop_pwr_measurement()
+    flocklab.stop_gdb_server()
 
     # Pull down GPIO setting lines ---
     if flocklab.gpio_clr(flocklab.gpio_tg_sig1) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2) != flocklab.SUCCESS:
@@ -256,6 +256,32 @@ def main(argv):
     else:
         logger.debug("No config for GPIO setting service found.")
 
+    # Make sure the test start time is in the future ---
+    if int(time.time()) > teststarttime:
+        flocklab.error_logandexit("Test start time %d is in the past." % (teststarttime))
+
+    # Debug ---
+    if tree.find('obsDebugConf') != None:
+        logger.debug("Found config for debug service.")
+        remoteIp = "0.0.0.0"
+        if tree.find('obsDebugConf/remoteIp') != None:
+            remoteIp = tree.findtext('obsDebugConf/remoteIp')
+        port = 2331
+        if tree.find('obsDebugConf/gdbPort') != None:
+            port = int(tree.findtext('obsDebugConf/gdbPort'))
+        # make sure mux is enabled and target is released from reset state!
+        flocklab.tg_mux_en(True)
+        flocklab.tg_reset()
+        if flocklab.start_gdb_server(platform, port) != flocklab.SUCCESS:
+            flocklab.error_logandexit("Failed to start debug service.")
+        else:
+            logger.debug("GDB server is listening on port %d." % port)
+        logger.debug("Started and configured debug service.")
+    else:
+        # disable MUX for more accurate current measurements
+        flocklab.tg_mux_en(False)
+        logger.debug("No config for debug service found.")
+
     # GPIO tracing ---
     if tree.find('obsGpioMonitorConf'):
         logger.debug("Found config for GPIO monitoring.")
@@ -313,9 +339,6 @@ def main(argv):
         flocklab.store_pps_count(testid)
     except:
         flocklab.error_logandexit("Failed to collect timesync info (%s, %s)." % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
-
-    # disable MUX for more accurate current measurements (TODO only disable MUX if USB and SWD not used)
-    flocklab.tg_mux_en(False)
 
     flocklab.gpio_clr(flocklab.gpio_led_error)
     logger.info("Test successfully started.")

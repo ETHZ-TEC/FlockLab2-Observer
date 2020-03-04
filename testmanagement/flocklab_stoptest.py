@@ -161,6 +161,10 @@ def main(argv):
         errors.append("Failed to stop power measurement.")
     else:
         logger.debug("Stopped power measurement.")
+    if flocklab.stop_gdb_server() != flocklab.SUCCESS:
+        errors.append("Failed to stop debug service.")
+    else:
+        logger.debug("Stopped debug service.")
     
     # allow some time for the above services to terminate properly ---
     time.sleep(10)

@@ -487,7 +487,7 @@ def pin_abbr2num(abbr=""):
 ##############################################################################
 def level_str2abbr(levelstr=""):
     if not levelstr:
-        return errno.EINVAL
+        return FAILED
     strdict =    {
                     'LOW'   : 'L',
                     'HIGH'  : 'H',
@@ -502,7 +502,6 @@ def level_str2abbr(levelstr=""):
 ### END level_str2abbr()
 
 
-
 ##############################################################################
 #
 # edge_str2abbr - Convert a pin edge string to its abbreviation
@@ -510,7 +509,7 @@ def level_str2abbr(levelstr=""):
 ##############################################################################
 def edge_str2abbr(edgestr=""):
     if not edgestr:
-        return errno.EINVAL
+        return FAILED
     strdict =    {
                     'RISING' : 'R',
                     'FALLING': 'F',
@@ -532,7 +531,7 @@ def edge_str2abbr(edgestr=""):
 ##############################################################################
 def gpiomon_mode_str2abbr(modestr=""):
     if not modestr:
-        return errno.EINVAL
+        return FAILED
     strdict =    {
                     'CONTINUOUS' : 'C',
                     'SINGLE'     : 'S'
@@ -544,6 +543,26 @@ def gpiomon_mode_str2abbr(modestr=""):
     
     return abbr
 ### END gpiomon_mode_str2abbr()
+
+
+##############################################################################
+#
+# jlink_mcu_str - Get the MCU name from the platform
+#
+##############################################################################
+def jlink_mcu_str(platform=""):
+    if not platform:
+        return None
+    strdict = {
+                'dpp2lora' : 'STM32L433CC',
+                'nrf5'     : 'nRF52840_xxAA',
+              }
+    try:
+        mcu = strdict[platform.lower()]
+    except KeyError:
+        return None
+    return mcu
+### END jlink_mcu_str()
 
 
 ##############################################################################
@@ -614,6 +633,26 @@ def timeformat_xml2timestamp(timestring=""):
     
     return time.mktime(xmltime)
 ### END timeformat_xml2service()
+
+
+##############################################################################
+#
+# get_pid - returns the PID of the first matching process
+#
+##############################################################################
+def get_pid(process_name=None):
+    if not process_name:
+        return FAILED
+    cmd = ['pgrep', '-f', process_name]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
+    pid, err = p.communicate()
+    if p.returncode != 0:
+        return FAILED
+    if pid:
+        pids = pid.split('\n')
+        return int(pids[0])
+    return FAILED
+### END get_pid()
 
 
 ##############################################################################
@@ -710,6 +749,44 @@ def stop_gpio_tracing():
         pass
     return FAILED
 ### END stop_gpio_tracing()
+
+
+##############################################################################
+#
+# start_gdb_server
+#
+##############################################################################
+def start_gdb_server(platform=None, port=None):
+    if not platform or platform not in tg_platforms:
+        return FAILED
+    platform = jlink_mcu_str(platform)
+    if not platform:
+        return FAILED
+    cmd = ["JLinkGDBServer", "-device", platform, "-if", "SWD", "-speed", "auto"]    # 4000
+    if port:
+        cmd.append("-port")
+        cmd.append(str(port))
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    # do not call communicate(), it will block
+    time.sleep(5)
+    # check if process is still running
+    if get_pid("JLinkGDBServer") >= 0:
+        return SUCCESS
+    return FAILED
+### END start_gdb_server()
+
+
+##############################################################################
+#
+# stop_gdb_server
+#
+##############################################################################
+def stop_gdb_server():
+    gdbpid = get_pid("JLinkGDBServer")
+    if gdbpid >= 0:
+        os.kill(gdbpid, signal.SIGTERM)
+    return SUCCESS
+### END stop_gdb_server()
 
 
 ##############################################################################

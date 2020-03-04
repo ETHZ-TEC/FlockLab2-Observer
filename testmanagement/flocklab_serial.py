@@ -557,7 +557,7 @@ def stop_on_api():
             try:
                 os.waitpid(pid, 0)
             except OSError:
-                flocklab.log_error("OSError occurred in stop_on_api()")
+                pass    # can occur, no need to print a warning
         return flocklab.SUCCESS
     except (IOError, OSError):
         # The pid file was most probably not present. This can have two causes:
