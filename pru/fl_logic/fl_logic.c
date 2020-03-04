@@ -72,11 +72,12 @@
  #define BUFFER_SIZE          4096
 #endif
 #define SAMPLING_RATE         10000000              // must match the sampling rate of the PRU
+#define MAX_TIME_SCALING_DEV  0.01                  // max deviation for time scaling (1 +/- x)
 #define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"     // must be a binary file
 #define DATA_FILENAME_PREFIX  "tracing_data"
 #define OUTPUT_DIR            "/home/flocklab/data/"                // with last slash
 #define LOG_FILENAME          "/home/flocklab/log/fl_logic.log"
-#define LOG_VERBOSITY         LOG_WARNING
+#define LOG_VERBOSITY         LOG_INFO
 #define SPRINTF_BUFFER_LENGTH 256
 #define PIN_NAMES             "LED1", "LED2", "LED3", "INT1", "INT2", "SIG1", "SIG2", "nRST"
 #define TG_RST_PIN            "P840"                // GPIO77
@@ -450,10 +451,6 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     }
     // data valid? -> at least the cycle counter must be > 0 (first sample after end of trace)
     if (sample == 0) {
-      long int pos = ftell(data_file);
-      fseek(data_file, 0, SEEK_END);
-      long int size = ftell(data_file);
-      fl_log(LOG_INFO, "%ld of %ld bytes parsed", pos, size);
       break;
     }
     // update the timestamp
@@ -487,9 +484,9 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
   prev_sample = 0xffffffff;
   // calculate correction factor for time scaling timestamps
   corr_factor = ( (stoptime_s - starttime_s) + 1.0 ) / ( (double)(timestamp_end_ticks - timestamp_start_ticks)/SAMPLING_RATE );
-  fl_log(LOG_DEBUG, "corr_factor: %f", corr_factor);
-  if (corr_factor < 0.9 || corr_factor > 1.1) {
-    fl_log(LOG_ERROR, "GPIO Trace timestamp scaling failed, correction factor (%f) is out of valid range [0.9, 1.1]. GPIO Trace timestamps are returned unscaled!", corr_factor);
+  fl_log(LOG_INFO, "corr_factor: %f", corr_factor);
+  if (corr_factor < (1.0 - MAX_TIME_SCALING_DEV) || (corr_factor > (1.0 + MAX_TIME_SCALING_DEV))) {
+    fl_log(LOG_ERROR, "timestamp scaling failed, correction factor (%f) is out of valid range (timestamps are returned unscaled)", corr_factor);
     corr_factor = 1.0;
   }
   // parse and write data
@@ -508,10 +505,6 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     // update the timestamp
     timestamp_ticks += (sample >> 8);
     double currtime = (double)starttime_s + (double)timestamp_ticks / SAMPLING_RATE * corr_factor;
-    // // stop parsing if stoptime passed (not currently used since last nRST event would be lost or needs to be artifically added at the end of the test)
-    // if (currtime > stoptime_s) {
-    //   break;
-    // }
     // go through all pins and check whether there has been a change
     uint32_t i = 0;
     while (i < 8) {
