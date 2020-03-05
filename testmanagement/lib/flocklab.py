@@ -76,6 +76,7 @@ loggerconf   = '/home/flocklab/observer/testmanagement/logging.conf'
 gmtimerstats = '/sys/devices/platform/ocp/ocp:pps_gmtimer/stats'
 tracinglog   = '/home/flocklab/log/fl_logic.log'
 rllog        = '/home/flocklab/log/rocketlogger.log'
+gdblog       = '/home/flocklab/log/jlinkgdb.log'
 scriptname   = os.path.basename(os.path.abspath(sys.argv[0]))   # name of caller script
 
 # constants
@@ -756,18 +757,15 @@ def stop_gpio_tracing():
 # start_gdb_server
 #
 ##############################################################################
-def start_gdb_server(platform=None, port=None):
+def start_gdb_server(platform=None, port=2331):
     if not platform or platform not in tg_platforms:
         return FAILED
     platform = jlink_mcu_str(platform)
     if not platform:
         return FAILED
-    cmd = ["JLinkGDBServer", "-device", platform, "-if", "SWD", "-speed", "auto"]    # 4000
-    if port:
-        cmd.append("-port")
-        cmd.append(str(port))
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    # do not call communicate(), it will block
+    if get_pid("JLinkGDBServer") >= 0:
+        return FAILED     # already running!
+    os.system("JLinkGDBServer -device %s -if SWD -speed 4000 -port %d > %s 2>&1 &" % (platform, port, gdblog))
     time.sleep(5)
     # check if process is still running
     if get_pid("JLinkGDBServer") >= 0:

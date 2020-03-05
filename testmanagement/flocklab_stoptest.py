@@ -33,7 +33,7 @@ def collect_error_logs(testid=None):
     errorlogfile = "%s/%d/error_%s.log" % (flocklab.config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     errorlog = open(errorlogfile, 'a')
     if os.path.isfile(flocklab.tracinglog):
-        flocklab.logger.debug("Error log %s found." % flocklab.tracinglog)
+        flocklab.logger.debug("Log file %s found." % flocklab.tracinglog)
         with open(flocklab.tracinglog) as logfile:
             lines = logfile.read().split("\n")
             for line in lines:
@@ -46,7 +46,7 @@ def collect_error_logs(testid=None):
     
     # collect RL error log
     if os.path.isfile(flocklab.rllog):
-        flocklab.logger.debug("Error log %s found." % flocklab.rllog)
+        flocklab.logger.debug("Log file %s found." % flocklab.rllog)
         with open(flocklab.rllog) as logfile:
             lines = logfile.read().split("\n")
             for line in lines:
