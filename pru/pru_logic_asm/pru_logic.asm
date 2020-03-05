@@ -24,7 +24,7 @@ PRUSS_SYSCFG_OFS        .set    0x4
 PRUSS_CYCLECNT_OFS      .set    0xC
 PRUSS_STALLCNT_OFS      .set    0x10
 PRUSS_SICR_OFS          .set    0x24
-TRACING_PINS            .set    0x7F           ; trace all pins incl. actuation
+TRACING_PINS            .set    0x7F           ; trace all pins incl. actuation (but without reset pin)
 ACTUATION_PINS          .set    0xe0
 DBG_GPIO                .set    10             ; 0x400    (P8.28)
 PPS_PIN                 .set    8              ; 0x100    (P8.27)
@@ -125,7 +125,7 @@ PIN_CLR .macro  pin_bit
 main:
         ; init
         LDI     CVAL, 0
-        LDI     PVAL, 0xFF                ; choose a value that is unlikely to be the initial GPIO state
+        LDI     PVAL, 0x0                 ; choose a value that is unlikely to be the initial GPIO state
         LDI     SCNT, 1
         LDI     OFS, 0
         LDI32   CTRL, PRU1_CTRL           ; address of CFG register
@@ -145,9 +145,9 @@ main:
 use_default_mask:
         LDI     PINMASK, TRACING_PINS
 skip_use_default_mask:
-        AND     PINMASK, PINMASK, 0xff    ; make sure the upper bits are cleared
+        AND     PINMASK, PINMASK, TRACING_PINS      ; make sure the upper bits are cleared
 
-        LSR     SIZE2, SIZE, 1
+        LSR     SIZE2, SIZE, 1            ; divide by 2
         SUB     SIZE, SIZE, 1
     .if BUFFER_SIZE
         LDI32   ADDR, BUFFER_ADDR
@@ -186,8 +186,13 @@ skip_use_default_mask:
 main_loop:
 
         ; sample pins
-        AND     CVAL, GPI, PINMASK
-        SET     CVAL.t7                   ; TODO (temporary fix only)
+        AND     CVAL, GPI, PINMASK        ; sample tracing and actuation pins
+
+        QBBS    set_pps_bit, GPI, PPS_PIN
+        JMP     set_pps_bit_end
+set_pps_bit:
+        SET     CVAL.t7
+set_pps_bit_end:
 
         ; value changed?
         QBNE    update_val, CVAL, PVAL    ; 4
@@ -233,7 +238,6 @@ done:
 
         ; add nops here to get exactly 19 cycles (1 cycle is for the jump below)
         NOP
-        NOP
 
         ; stall the loop to achieve the desired sampling frequency
         DELAYI  (200000000/SAMPLING_FREQ - 20)      ; one loop pass takes ~20 cycles
@@ -247,7 +251,6 @@ exit:
         SBBO    &TMP, ADDR, OFS, 4        ; copy into RAM buffer
         ADD     OFS, OFS, 4               ; increment buffer offset
         AND     OFS, OFS, SIZE            ; keep offset in the range 0..SIZE
-        ; TODO: if the offset wraps around at this point, the last sample will be lost
 
         ; wait for next rising edge of PPS signal
         ; note: WBC/WBS won't work here, since we need to count the number of cycles

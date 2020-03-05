@@ -69,7 +69,7 @@
 #if INTERACTIVE_MODE
  #define BUFFER_SIZE          8                     // in bytes (must be a power of 2, minimum is 8 bytes)
 #else
- #define BUFFER_SIZE          4096
+ #define BUFFER_SIZE          16384
 #endif
 #define SAMPLING_RATE         10000000              // must match the sampling rate of the PRU
 #define MAX_TIME_SCALING_DEV  0.01                  // max deviation for time scaling (1 +/- x)
@@ -77,9 +77,9 @@
 #define DATA_FILENAME_PREFIX  "tracing_data"
 #define OUTPUT_DIR            "/home/flocklab/data/"                // with last slash
 #define LOG_FILENAME          "/home/flocklab/log/fl_logic.log"
-#define LOG_VERBOSITY         LOG_INFO
+#define LOG_VERBOSITY         LOG_WARNING
 #define SPRINTF_BUFFER_LENGTH 256
-#define PIN_NAMES             "LED1", "LED2", "LED3", "INT1", "INT2", "SIG1", "SIG2", "nRST"
+#define PIN_NAMES             "LED1", "LED2", "LED3", "INT1", "INT2", "SIG1", "SIG2", "nRST", "PPS"
 #define TG_RST_PIN            "P840"                // GPIO77
 
 
@@ -361,7 +361,6 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
     // check whether it is time to stop
     if (stoptime) {
       if (time(NULL) >= stoptime) {
-        running = false;
         break;
       }
     }
@@ -401,17 +400,26 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
     memset(curr_buffer, 0, (BUFFER_SIZE / 2));
 
     readout_count++;
+
+    // check for overrun
+    res = prussdrv_pru_wait_event_timeout(PRU_EVTOUT_1, 10);  // wait for 10us only
+    if (res != 0) {
+      fl_log(LOG_ERROR, "buffer overrun detected!");
+      break;
+    }
   }
+  running = false;
   if (pru1_handshake() != 0) {
     return 4;
   }
+  __sync_synchronize();
 
-  // copy the remaining data
-    __sync_synchronize();
+  // copy the remaining data (add 4 bytes in case there is a buffer wrap around on the PRU)
   if (readout_count & 1) {
     fwrite(&pru_buffer[BUFFER_SIZE / 2], (BUFFER_SIZE / 2), 1, data_file);
+    fwrite(pru_buffer, 4, 1, data_file);
   } else {
-    fwrite(pru_buffer, (BUFFER_SIZE / 2), 1, data_file);
+    fwrite(pru_buffer, (BUFFER_SIZE / 2) + 4, 1, data_file);
   }
 
   fl_log(LOG_DEBUG, "collected %u samples", readout_count * BUFFER_SIZE / 8);
@@ -427,12 +435,14 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
   FILE*    data_file                = NULL;
   FILE*    csv_file                 = NULL;
   uint32_t sample                   = 0;
-  uint32_t prev_sample              = 0xffffffff;
+  uint32_t prev_sample              = 0;
   uint32_t line_cnt                 = 0;
   uint32_t sample_cnt               = 0;
   uint64_t timestamp_ticks          = 0;
   uint64_t timestamp_start_ticks    = 0; // timestamp of start of test (nRST=0)
   uint64_t timestamp_end_ticks      = 0; // timestamp of end of sampling (nRST=1) (not equal to timestamp of stoptest!)
+  long int file_size                = 0;
+  long int parsed_size              = 0;
   double   corr_factor              = 0; // time correction factor
   bool     timestamp_start_obtained = false; // flag for to ensure first occurence of nRST=0 is obtained
 
@@ -445,10 +455,9 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     return;
   }
   // go through entire file to read timestamps of starting and ending nRST events (used for correction of timestamps)
-  while (fread(&sample, 4, 1, data_file)) {
-    if (prev_sample == 0xffffffff) {
-      prev_sample = ~sample & 0xff;
-    }
+  fread(&sample, 4, 1, data_file);
+  prev_sample = ~sample & 0xff;
+  do {
     // data valid? -> at least the cycle counter must be > 0 (first sample after end of trace)
     if (sample == 0) {
       break;
@@ -472,16 +481,11 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     }
     prev_sample = sample;
     sample_cnt++;
-  }
+  } while (fread(&sample, 4, 1, data_file));
+
   fl_log(LOG_DEBUG, "sample_cnt: %lu", sample_cnt);
   fl_log(LOG_DEBUG, "timestamp_start_ticks: %llu, timestamp_end_ticks: %llu", (long long unsigned)timestamp_start_ticks, (long long unsigned)timestamp_end_ticks);
   fl_log(LOG_DEBUG, "starttime_s: %lu, stoptime_s: %lu", starttime_s, stoptime_s);
-  // reinitialize file pointer and variables
-  fseek(data_file, 0, SEEK_SET);
-  timestamp_ticks = 0;
-  sample_cnt = 0;
-  sample = 0;
-  prev_sample = 0xffffffff;
   // calculate correction factor for time scaling timestamps
   corr_factor = ( (stoptime_s - starttime_s) + 1.0 ) / ( (double)(timestamp_end_ticks - timestamp_start_ticks)/SAMPLING_RATE );
   fl_log(LOG_INFO, "corr_factor: %f", corr_factor);
@@ -489,28 +493,37 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     fl_log(LOG_ERROR, "timestamp scaling failed, correction factor (%f) is out of valid range (timestamps are returned unscaled)", corr_factor);
     corr_factor = 1.0;
   }
-  // parse and write data
-  while (fread(&sample, 4, 1, data_file)) {
-    if (prev_sample == 0xffffffff) {
-      prev_sample = ~sample & 0xff;
-    }
+  // reset file pointer and variables
+  parsed_size = ftell(data_file) - 4;
+  fseek(data_file, 0, SEEK_END);
+  file_size = ftell(data_file);
+  fseek(data_file, 0, SEEK_SET);
+  timestamp_ticks = 0;
+  sample_cnt = 0;
+
+  // go through the whole file again, this time parse and write the data into the csv file
+  // read the first sample
+  fread(&sample, 4, 1, data_file);
+  prev_sample = ~sample & 0xff;
+  do {
     // data valid? -> at least the cycle counter must be > 0
     if (sample == 0) {
-      long int pos = ftell(data_file);
-      fseek(data_file, 0, SEEK_END);
-      long int size = ftell(data_file);
-      fl_log(LOG_INFO, "%ld of %ld bytes parsed", pos, size);
       break;
     }
     // update the timestamp
     timestamp_ticks += (sample >> 8);
-    double currtime = (double)starttime_s + (double)timestamp_ticks / SAMPLING_RATE * corr_factor;
+    double realtime_time = (double)starttime_s + (double)timestamp_ticks / SAMPLING_RATE * corr_factor;
+    double monotonic_time = (double)timestamp_ticks / SAMPLING_RATE;
     // go through all pins and check whether there has been a change
     uint32_t i = 0;
     while (i < 8) {
       if ((prev_sample & (1 << i)) != (sample & (1 << i))) {
-        // format: timestamp,obs_id,node_id,pin,state(0/1)
-        sprintf(buffer, "%.7f,%s,%u\r", currtime, pin_mapping[i], (sample & (1 << i)) > 0);
+        uint32_t pin_state = (sample & (1 << i)) > 0;
+        // format: timestamp,ticks,obs_id,node_id,pin,state(0/1)
+        if (i == 7 && sample_cnt > 0 && sample_cnt < ((uint32_t)parsed_size / 4 - 1)) {
+          i = 8;
+        }
+        sprintf(buffer, "%.7f,%.7f,%s,%u\r", realtime_time, monotonic_time, pin_mapping[i], pin_state);
         fwrite(buffer, strlen(buffer), 1, csv_file);
         line_cnt++;
       }
@@ -518,9 +531,11 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     }
     prev_sample = sample;
     sample_cnt++;
-  }
+  } while (fread(&sample, 4, 1, data_file));
+
   fclose(data_file);
   fclose(csv_file);
+  fl_log(LOG_DEBUG, "%ld of %ld bytes parsed", parsed_size, file_size);
   fl_log(LOG_INFO, "tracing data parsed and stored in %s.csv (%u samples, %u lines)", filename, sample_cnt, line_cnt);
 }
 
