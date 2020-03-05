@@ -32,7 +32,7 @@
 
 
 HOMEDIR="/home/flocklab"
-DBDIR="/home/flocklab/db"
+RESULTSDIR="/home/flocklab/data/results"
 LOGDIR="/var/log/flocklab"
 CONFIGDIR="/etc/flocklab"
 TESTDIR="/home/flocklab/data/curtest";
@@ -86,10 +86,10 @@ ln -sf /media/card $SDCARDLINK
 ln -sf $LOGDIR $HOMEDIR/log
 
 # create various directories
-[ -d $DBDIR ]    || (mkdir -p $DBDIR && chown flocklab:flocklab $DBDIR)
-[ -d $TESTDIR ]  || (mkdir -p $TESTDIR && chown flocklab:flocklab $TESTDIR)
-[ -d $LOGDIR ]   || (mkdir -p $LOGDIR && chown flocklab:flocklab $LOGDIR)
-[ -d $CONFIGDIR ] || (mkdir -p $CONFIGDIR && chown flocklab:flocklab $CONFIGDIR)
+[ -d $RESULTSDIR ] || (mkdir -p $RESULTSDIR && chown flocklab:flocklab $RESULTSDIR)
+[ -d $TESTDIR ]    || (mkdir -p $TESTDIR && chown flocklab:flocklab $TESTDIR)
+[ -d $LOGDIR ]     || (mkdir -p $LOGDIR && chown flocklab:flocklab $LOGDIR)
+[ -d $CONFIGDIR ]  || (mkdir -p $CONFIGDIR && chown flocklab:flocklab $CONFIGDIR)
 check_retval "Failed to create directories." "Directories created."
 
 # add script directory to path
