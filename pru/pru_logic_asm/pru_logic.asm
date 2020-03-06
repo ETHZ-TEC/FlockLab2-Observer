@@ -163,9 +163,9 @@ skip_use_default_mask:
         CLR     TMP, TMP, 4               ; clear bit 4 (STANDBY_INIT)
         SBCO    &TMP, PRUSS_CFG, PRUSS_SYSCFG_OFS, 4
 
-        ; wait for status bit (host event), then signal to host processor that PRU is ready by generating an event
-        WBS     GPI, 31                   ; wait until bit set
-        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
+        ; --- handshake ---
+        ; wait for status bit (host event)
+        WBS     GPI, 31
 
         ; clear event status bit (R31.t31)
         LDI     TMP, 22
@@ -174,6 +174,9 @@ skip_use_default_mask:
         ; wait for the next rising edge of the PPS signal
         WBC     GPI, PPS_PIN
         WBS     GPI, PPS_PIN
+
+        ; signal to host processor that PRU is ready by generating an event
+        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
 
         ; release target reset (P8.40)
         SET     GPO.t7
@@ -246,21 +249,33 @@ done:
 exit:
         ; store current cycle counter before continuing to avoid an overflow
         LSL     SCNT, SCNT, 8
-        OR      TMP, CVAL, SCNT
+        OR      PVAL, CVAL, SCNT          ; use PVAL register since it is not needed anymore at this point
         LDI     SCNT, 1                   ; reset sample counter to value 1
-        SBBO    &TMP, ADDR, OFS, 4        ; copy into RAM buffer
+        SBBO    &PVAL, ADDR, OFS, 4       ; copy into RAM buffer
         ADD     OFS, OFS, 4               ; increment buffer offset
         AND     OFS, OFS, SIZE            ; keep offset in the range 0..SIZE
 
         ; wait for next rising edge of PPS signal
         ; note: WBC/WBS won't work here, since we need to count the number of cycles
 wait_for_pps_low:
-        DELAYI  (200000000/SAMPLING_FREQ - 2)       ; one loop pass takes 2 cycles
-        ADD     SCNT, SCNT, 1
-        QBBS    wait_for_pps_low, GPI, PPS_PIN
-wait_for_pps_high:
         DELAYI  (200000000/SAMPLING_FREQ - 2)
         ADD     SCNT, SCNT, 1
+        QBBS    wait_for_pps_low, GPI, PPS_PIN
+
+        LDI32   TMP2, 0xFFFFFF
+wait_for_pps_high:
+        DELAYI  (200000000/SAMPLING_FREQ - 6)
+        QBEQ    reset_counter, SCNT, TMP2
+        ADD     SCNT, SCNT, 1
+        NOP
+        NOP
+        JMP     end_reset_counter
+reset_counter:
+        SBBO    &PVAL, ADDR, OFS, 4       ; copy into RAM buffer
+        ADD     OFS, OFS, 4               ; increment buffer offset
+        AND     OFS, OFS, SIZE            ; keep offset in the range 0..SIZE
+        LDI     SCNT, 1                   ; reset sample counter to value 1
+end_reset_counter:
         QBBC    wait_for_pps_high, GPI, PPS_PIN
 
         ; actuate the target reset pin

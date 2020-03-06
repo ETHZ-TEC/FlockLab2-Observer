@@ -73,6 +73,7 @@
 #endif
 #define SAMPLING_RATE         10000000              // must match the sampling rate of the PRU
 #define MAX_TIME_SCALING_DEV  0.01                  // max deviation for time scaling (1 +/- x)
+#define MAX_PRU_DELAY         10000000              // max delay for the PRU startup / stop handshake (in us)
 #define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"     // must be a binary file
 #define DATA_FILENAME_PREFIX  "tracing_data"
 #define OUTPUT_DIR            "/home/flocklab/data/"                // with last slash
@@ -324,13 +325,13 @@ int pru1_handshake(void)
   prussdrv_pru_send_event(ARM_PRU1_INTERRUPT);   // event #22
 
   // wait for PRU event (returns 0 on timeout, -1 on error with errno)
-  int res = prussdrv_pru_wait_event_timeout(PRU_EVTOUT_1, 2000000); // needs to be > 1s
+  int res = prussdrv_pru_wait_event_timeout(PRU_EVTOUT_1, MAX_PRU_DELAY); // needs to be > 1s
   if (res < 0) {
     // error checking interrupt occurred
     fl_log(LOG_ERROR, "an error occurred while waiting for the PRU event");
     return 1;
   } else if (res == 0) {
-    fl_log(LOG_ERROR, "failed to synchronize with PRU (not responding)");
+    fl_log(LOG_ERROR, "failed to synchronize with PRU (timeout)");
     return 2;
   }
 
@@ -341,16 +342,28 @@ int pru1_handshake(void)
 }
 
 
-int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
+int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* stoptime)
 {
   uint32_t readout_count = 0;
+  time_t currtime = 0;
 
-  if (!pru_buffer || !data_file || !running) {
+  // check arguments
+  if (!pru_buffer || !data_file || !running || !starttime || !stoptime) {
     return 1;
   }
 
+  // wait for the start timestamp
+  wait_for_start(*starttime);
+
+  // do the handshake with the PRU
   if (pru1_handshake() != 0) {
     return 2;
+  }
+  // adjust the start time if necessary
+  currtime = time(NULL);
+  if (currtime > *starttime) {
+    fl_log(LOG_INFO, "start time adjusted to %lu", currtime);
+    *starttime = currtime;
   }
 
   // start sampling
@@ -360,7 +373,7 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
   while (running) {
     // check whether it is time to stop
     if (stoptime) {
-      if (time(NULL) >= stoptime) {
+      if (time(NULL) >= *stoptime) {
         break;
       }
     }
@@ -412,14 +425,20 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, long int stoptime)
   if (pru1_handshake() != 0) {
     return 4;
   }
+  // adjust the stop time if necessary
+  currtime = time(NULL) - 1;
+  if (currtime > *stoptime) {
+    fl_log(LOG_INFO, "stop time adjusted to %lu", currtime);
+    *stoptime = currtime;
+  }
   __sync_synchronize();
 
-  // copy the remaining data (add 4 bytes in case there is a buffer wrap around on the PRU)
+  // copy the remaining data (add a few more bytes in case there is a buffer wrap around on the PRU)
   if (readout_count & 1) {
     fwrite(&pru_buffer[BUFFER_SIZE / 2], (BUFFER_SIZE / 2), 1, data_file);
-    fwrite(pru_buffer, 4, 1, data_file);
+    fwrite(pru_buffer, 32, 1, data_file);
   } else {
-    fwrite(pru_buffer, (BUFFER_SIZE / 2) + 4, 1, data_file);
+    fwrite(pru_buffer, (BUFFER_SIZE / 2) + 32, 1, data_file);
   }
 
   fl_log(LOG_DEBUG, "collected %u samples", readout_count * BUFFER_SIZE / 8);
@@ -490,7 +509,7 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
   corr_factor = ( (stoptime_s - starttime_s) + 1.0 ) / ( (double)(timestamp_end_ticks - timestamp_start_ticks)/SAMPLING_RATE );
   fl_log(LOG_INFO, "corr_factor: %f", corr_factor);
   if (corr_factor < (1.0 - MAX_TIME_SCALING_DEV) || (corr_factor > (1.0 + MAX_TIME_SCALING_DEV))) {
-    fl_log(LOG_ERROR, "timestamp scaling failed, correction factor (%f) is out of valid range (timestamps are returned unscaled)", corr_factor);
+    fl_log(LOG_ERROR, "timestamp scaling failed, correction factor %f is out of valid range (timestamps are returned unscaled)", corr_factor);
     corr_factor = 1.0;
   }
   // reset file pointer and variables
@@ -611,11 +630,8 @@ int main(int argc, char** argv)
   // --- configure used pins ---
   config_pins(true);
 
-  // --- wait for the start ---
-  wait_for_start(starttime);
-
   // --- start sampling ---
-  int rs = pru1_run(prubuffer, datafile, stoptime);
+  int rs = pru1_run(prubuffer, datafile, &starttime, &stoptime);
   if (rs != 0) {
     fl_log(LOG_ERROR, "pru1_run() returned with error code %d", rs);
   }
