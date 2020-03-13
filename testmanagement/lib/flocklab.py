@@ -585,10 +585,10 @@ def tg_set_vcc(v=tg_vcc_default):
     R12         = 11.5    # kOhm
     R13         = 4.7     # kOhm
     
-    R11R12      = R11 / R12
+    R12R11      = R12 / R11
     R11R13      = (R11 + R13) / R13
     
-    v_dac  = VREF - (R11R12 * (v * 1000 - VREF * R11R13))
+    v_dac  = VREF - (R12R11 * (v * 1000 - VREF * R11R13))
     cfgval = int(v_dac * 255 / VDD)
     try:
         bus.write_word_data(DEVICE_ADDR, DEVICE_REG, (cfgval * 256) & 0xffff)

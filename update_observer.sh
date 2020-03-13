@@ -26,7 +26,7 @@ sleep 2   # give the user time to abort, just in case
 for OBS in $OBSIDS
 do
     # get a list of modified files (-c option to use checksum to determine changes)
-    RES=$(rsync ${RSYNCPARAMS} -i --dry-run --exclude=".git" -e "ssh -q -p ${PORT}" ${SRCDIR} ${USER}@${HOSTPREFIX}${OBS}:${DESTDIR}  2>&1)
+    RES=$(rsync ${RSYNCPARAMS} -i --dry-run -e "ssh -q -p ${PORT}" ${SRCDIR} ${USER}@${HOSTPREFIX}${OBS}:${DESTDIR}  2>&1)
     if [ $? -ne 0 ]; then
         if [[ $RES = *timeout* ]] || [[ $RES = *"connection unexpectedly closed"* ]]; then
             echo "FlockLab observer ${HOSTPREFIX}${OBS} not responsive (skipped)."
