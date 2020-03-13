@@ -372,7 +372,7 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* st
   // continuous sampling loop
   while (running) {
     // check whether it is time to stop
-    if (stoptime) {
+    if (*stoptime) {
       if (time(NULL) >= *stoptime) {
         break;
       }
@@ -542,7 +542,7 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
         if (i == 7 && sample_cnt > 0 && sample_cnt < ((uint32_t)parsed_size / 4 - 1)) {
           i = 8;
         }
-        sprintf(buffer, "%.7f,%.7f,%s,%u\r", realtime_time, monotonic_time, pin_mapping[i], pin_state);
+        sprintf(buffer, "%.7f,%.7f,%s,%u\n", realtime_time, monotonic_time, pin_mapping[i], pin_state);
         fwrite(buffer, strlen(buffer), 1, csv_file);
         line_cnt++;
       }
