@@ -96,6 +96,7 @@ def main(argv):
     imagefile       = None
     slotnr          = None
     platform        = None
+    ssport          = None
     operatingsystem = None
     noimage         = False
     teststarttime   = 0
@@ -188,9 +189,14 @@ def main(argv):
         if slotnr:
             logger.debug("Serial socket port: %d" % serialport)
             cmd.append('--socketport=%d' % (serialport))
-        if (tree.find('obsSerialConf/baudrate') != None):
-            logger.debug("Baudrate: %s" % (tree.find('obsSerialConf/baudrate').text))
-            cmd.append('--baudrate=%s' % (tree.find('obsSerialConf/baudrate').text))
+        br = tree.findtext('obsSerialConf/baudrate')
+        if br != None:
+            logger.debug("Baudrate: %s" % (br))
+            cmd.append('--baudrate=%s' % (br))
+        ssport = tree.findtext('obsSerialConf/port')
+        if ssport != None:
+            logger.debug("Port: %s" % (ssport))
+            cmd.append('--port=%s' % (ssport))
         cmd.append('--daemon')
         if debug:
             cmd.append('--debug')
@@ -279,9 +285,11 @@ def main(argv):
             logger.debug("GDB server is listening on port %d." % port)
         logger.debug("Started and configured debug service.")
     else:
-        # disable MUX for more accurate current measurements
-        flocklab.tg_mux_en(False)
         logger.debug("No config for debug service found.")
+        # disable MUX for more accurate current measurements only if serial port is not USB
+        if ssport != "usb":
+            flocklab.tg_mux_en(False)
+            logger.debug("Disabling MUX.")
 
     # GPIO tracing ---
     if tree.find('obsGpioMonitorConf'):
