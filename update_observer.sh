@@ -9,7 +9,7 @@ HOSTPREFIX="fl-"
 OBSIDS="02 04 05 06 07 08 09 10 11 12"
 SRCDIR="."
 DESTDIR="observer"
-RSYNCPARAMS=" -a -z -c --timeout=5 --exclude=.git"  # --delete
+RSYNCPARAMS=" -a -z -c --timeout=5 --exclude=.git --no-perms --no-owner --no-group"  # --delete
 
 # check arguments
 if [ $# -gt 0 ]; then
@@ -41,7 +41,7 @@ do
     fi
     # filter, keep only changed files
     RES=$(echo "${RES}" | grep '^<fc' | cut -d' ' -f2)
-    #printf "changed files:\n$RES\n"
+    #echo "Changed files: $RES"
     printf "Updating files on FlockLab observer ${HOSTPREFIX}${OBS}... "
     # copy modified files (quiet mode, compress data during file transfer)
     rsync ${RSYNCPARAMS} -q -e "ssh -q -p ${PORT}" ${SRCDIR} ${USER}@${HOSTPREFIX}${OBS}:${DESTDIR}
@@ -56,6 +56,13 @@ do
         if [[ $RES = *fl_logic/* ]]; then
             echo "Installing new fl_logic binary and PRU firmware... "
             ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/pru/fl_logic && sudo make install'
+            if [ $? -ne 0 ]; then
+                echo "Failed!"
+            fi
+        fi
+        if [[ $RES = *fl_act/* ]]; then
+            echo "Installing new fl_act binary... "
+            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/various/fl_act && sudo make install'
             if [ $? -ne 0 ]; then
                 echo "Failed!"
             fi

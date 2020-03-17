@@ -135,6 +135,7 @@ def main(argv):
     if (p.returncode not in (flocklab.SUCCESS, errno.ENOPKG)):
         flocklab.error_logandexit("Error %d when trying to stop a potentially running serial service script: %s" % (p.returncode, str(err).strip()))
     flocklab.stop_gpio_tracing()
+    flocklab.stop_gpio_actuation()
     flocklab.stop_pwr_measurement()
     flocklab.stop_gdb_server()
 
@@ -307,6 +308,8 @@ def main(argv):
         logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x)." % (tracingfile, pins))
     else:
         logger.debug("No config for GPIO monitoring service found.")
+        # make sure the reset pin is actuated
+        flocklab.start_gpio_actuation(teststarttime, teststoptime)
 
     # Power profiling ---
     if tree.find('obsPowerprofConf'):

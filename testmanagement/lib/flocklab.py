@@ -754,6 +754,33 @@ def stop_gpio_tracing():
 
 ##############################################################################
 #
+# start_gpio_actuation
+#
+##############################################################################
+def start_gpio_actuation(start_time=0, stop_time=0):
+    cmd = ["fl_act", "%d" % start_time, "%d" % stop_time]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    # do not call communicate(), it will block
+    return SUCCESS
+### END start_gpio_actuation()
+
+
+##############################################################################
+#
+# stop_gpio_actuation
+#
+##############################################################################
+def stop_gpio_actuation():
+    pid = get_pid("fl_act")
+    if pid > 0:
+        os.kill(int(pid), signal.SIGTERM)
+        logger.debug("SIGTERM sent to fl_act.")
+    return SUCCESS
+### END stop_gpio_actuation()
+
+
+##############################################################################
+#
 # start_gdb_server
 #
 ##############################################################################

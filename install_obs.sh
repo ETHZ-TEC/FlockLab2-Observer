@@ -113,6 +113,11 @@ cd ${HOMEDIR}/observer/pru/fl_logic && make install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install fl_logic software." "fl_logic software installed."
 
 ##########################################################
+# install binary for GPIO actuation
+cd ${HOMEDIR}/observer/various/fl_act && make install > /dev/null 2>> $ERRORLOG
+check_retval "Failed to install fl_act software." "fl_act software installed."
+
+##########################################################
 # extract JLink files
 JLINK=$(ls -1 ${HOMEDIR}/observer/jlink | grep JLink_Linux | sort | tail -n 1)
 JLINKDIR=${JLINK::-4}
