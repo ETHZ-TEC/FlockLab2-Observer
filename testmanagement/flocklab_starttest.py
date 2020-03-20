@@ -279,10 +279,11 @@ def main(argv):
         # make sure mux is enabled and target is released from reset state!
         flocklab.tg_mux_en(True)
         flocklab.tg_reset()
-        if flocklab.start_gdb_server(platform, port) != flocklab.SUCCESS:
+        # start GDB server 10s after test start
+        if flocklab.start_gdb_server(platform, port, int(teststarttime - time.time() + 10)) != flocklab.SUCCESS:
             flocklab.error_logandexit("Failed to start debug service.")
         else:
-            logger.debug("GDB server is listening on port %d." % port)
+            logger.debug("GDB server will be listening on port %d." % port)
         logger.debug("Started and configured debug service.")
     else:
         logger.debug("No config for debug service found.")
@@ -305,9 +306,6 @@ def main(argv):
         if pinlist:
             for pin in pinlist.strip().split():
                 pins = pins | flocklab.pin_abbr2num(pin)
-        pinconfs = list(subtree.getiterator("pinConf"))
-        for pinconf in pinconfs:
-            pins = pins | flocklab.pin_abbr2num(pinconf.find('pin').text)
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins) != flocklab.SUCCESS:
             logger.error
@@ -330,10 +328,6 @@ def main(argv):
         # Get time and bring it into right format:
         starttime = flocklab.parse_int(tree.findtext('obsPowerprofConf/starttime'))
         samplingrate = flocklab.parse_int(tree.findtext('obsPowerprofConf/samplingRate'))
-        if samplingrate == 0:
-            samplingdiv = flocklab.parse_int(tree.findtext('obsPowerprofConf/samplingDivider'))
-            if samplingdiv > 0:
-                samplingrate = flocklab.rl_max_rate / samplingdiv
         if samplingrate == 0:
             samplingrate = flocklab.rl_default_rate
         # Start profiling

@@ -201,7 +201,7 @@ def main(argv):
             rs = p.returncode
             if (rs != flocklab.SUCCESS):
                 if not optional_reprogramming:
-                    errors.append("Could not flash target with default image because error %d occurred (%s)." % (rs, err.strip()))
+                    errors.append("Could not flash target with default image for core %d because error %d occurred (%s)." % (core, rs, err.strip()))
             else:
                 logger.debug("Reprogrammed target with default image.")
             core = core + 1

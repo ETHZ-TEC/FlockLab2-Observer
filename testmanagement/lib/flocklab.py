@@ -658,12 +658,33 @@ def get_pid(process_name=None):
 
 ##############################################################################
 #
+# get_pids - returns a list of PIDs of which the command matches a certain string
+#
+##############################################################################
+def get_pids(process_name=None):
+    if not process_name:
+        return None
+    cmd = ['pgrep', '-f', process_name]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
+    pids, err = p.communicate()
+    if p.returncode != 0:
+        return FAILED
+    if pids:
+        pid_list = map(int, pids.split('\n'))
+        return pid_list
+    return None
+### END get_pids()
+
+
+##############################################################################
+#
 # start_pwr_measurement
 #
 ##############################################################################
 def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samples=0, start_time=0):
     if sampling_rate not in rl_samp_rates:
-        logger.warn("Invalid sampling rate '%s'" % str(sampling_rate))
+        if logger:
+            logger.warn("Invalid sampling rate '%s'" % str(sampling_rate))
         return errno.EINVAL
     if not out_file:
         out_file = "%s/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
@@ -736,7 +757,8 @@ def stop_gpio_tracing():
             return SUCCESS      # process does probably not exist
         if pid:
             os.kill(int(pid), signal.SIGTERM)
-            logger.debug("Waiting for gpio tracing service to stop...")
+            if logger:
+                logger.debug("Waiting for gpio tracing service to stop...")
             timeout = 30
             rs = 0
             while rs == 0 and timeout:
@@ -774,7 +796,8 @@ def stop_gpio_actuation():
     pid = get_pid("fl_act")
     if pid > 0:
         os.kill(int(pid), signal.SIGTERM)
-        logger.debug("SIGTERM sent to fl_act.")
+        if logger:
+            logger.debug("SIGTERM sent to fl_act.")
     return SUCCESS
 ### END stop_gpio_actuation()
 
@@ -784,7 +807,7 @@ def stop_gpio_actuation():
 # start_gdb_server
 #
 ##############################################################################
-def start_gdb_server(platform=None, port=2331):
+def start_gdb_server(platform=None, port=2331, delay=0):
     if not platform or platform not in tg_platforms:
         return FAILED
     platform = jlink_mcu_str(platform)
@@ -792,12 +815,17 @@ def start_gdb_server(platform=None, port=2331):
         return FAILED
     if get_pid("JLinkGDBServer") >= 0:
         return FAILED     # already running!
-    os.system("JLinkGDBServer -device %s -if SWD -speed 4000 -port %d > %s 2>&1 &" % (platform, port, gdblog))
-    time.sleep(5)
+    if logger:
+        logger.debug("Will start GDBServer in %ds..." % delay)
+    #os.system("sleep %d > /dev/null 2>&1 && JLinkGDBServer -device %s -if SWD -speed 4000 -port %d > %s 2>&1 &" % (delay, platform, port, gdblog))
+    args = "sleep %d; JLinkGDBServer -device %s -if SWD -speed 4000 -port %d > %s 2>&1 &" % (delay, platform, port, gdblog)
+    p = subprocess.Popen(["/bin/bash", "-c", args], stdout=subprocess.PIPE)
+    return SUCCESS
+    #time.sleep(5)
     # check if process is still running
-    if get_pid("JLinkGDBServer") >= 0:
-        return SUCCESS
-    return FAILED
+    #if get_pid("JLinkGDBServer") >= 0:
+    #    return SUCCESS
+    #return FAILED
 ### END start_gdb_server()
 
 
@@ -808,7 +836,7 @@ def start_gdb_server(platform=None, port=2331):
 ##############################################################################
 def stop_gdb_server():
     gdbpid = get_pid("JLinkGDBServer")
-    if gdbpid >= 0:
+    if gdbpid > 0:
         os.kill(gdbpid, signal.SIGTERM)
     return SUCCESS
 ### END stop_gdb_server()

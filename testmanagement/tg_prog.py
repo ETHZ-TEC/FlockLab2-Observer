@@ -122,7 +122,8 @@ def prog_telosb(imagefile, speed=38400):
 #
 ##############################################################################
 def prog_stm32l4(imagefile, port, speed=115200):
-
+    tries = 2
+    
     # stm32loader expects a binary file
     if "hex" in os.path.splitext(imagefile)[1]:
         hex2bin(imagefile, imagefile + ".binary")
@@ -137,36 +138,45 @@ def prog_stm32l4(imagefile, port, speed=115200):
         flocklab.log_error("stm32loader expects a binary file")
         return errno.EINVAL
 
-    # BSL entry sequence
-    flocklab.set_pin(flocklab.gpio_tg_nrst, 1)    # reset high
-    flocklab.set_pin(flocklab.gpio_tg_prog, 0)    # prog low
-    flocklab.set_pin(flocklab.gpio_tg_nrst, 0)    # reset low
-    time.sleep(0.001)
-    flocklab.set_pin(flocklab.gpio_tg_prog, 1)    # prog high
-    time.sleep(0.001)
-    flocklab.set_pin(flocklab.gpio_tg_nrst, 1)    # reset high
-    time.sleep(0.1)
+    while tries:
+        # BSL entry sequence
+        flocklab.set_pin(flocklab.gpio_tg_nrst, 1)    # reset high
+        flocklab.set_pin(flocklab.gpio_tg_prog, 0)    # prog low
+        flocklab.set_pin(flocklab.gpio_tg_nrst, 0)    # reset low
+        time.sleep(0.001)
+        flocklab.set_pin(flocklab.gpio_tg_prog, 1)    # prog high
+        time.sleep(0.001)
+        flocklab.set_pin(flocklab.gpio_tg_nrst, 1)    # reset high
+        time.sleep(0.1)
 
-    # call the bootloader script
-    loader = Stm32Loader()
-    loader.configuration['family'] = 'L4'
-    loader.configuration['data_file'] = imagefile
-    loader.configuration['port'] = port
-    loader.configuration['baud'] = 115200
-    loader.configuration['parity'] = serial.PARITY_EVEN
-    loader.configuration['erase'] = True
-    loader.configuration['write'] = True
-    loader.configuration['verify'] = True
-    loader.configuration['hide_progress_bar'] = True
-    if debug:
-        loader.verbosity = 10
-    else:
-        loader.verbosity = 0
-    loader.connect()
-    loader.read_device_id()
-    if loader.stm32.get_id() != 0x435:
-        return 2
-    loader.perform_commands()
+        # call the bootloader script
+        loader = Stm32Loader()
+        loader.configuration['family'] = 'L4'
+        loader.configuration['data_file'] = imagefile
+        loader.configuration['port'] = port
+        loader.configuration['baud'] = 115200
+        loader.configuration['parity'] = serial.PARITY_EVEN
+        loader.configuration['erase'] = True
+        loader.configuration['write'] = True
+        loader.configuration['verify'] = True
+        loader.configuration['hide_progress_bar'] = True
+        if debug:
+            loader.verbosity = 10
+        else:
+            loader.verbosity = 0
+        loader.connect()
+        loader.read_device_id()
+        if loader.stm32.get_id() != 0x435:
+            return 2
+        try:
+            loader.perform_commands()
+            break
+        except:
+            if tries <= 1:
+                raise
+            else:
+                flocklab.log_debug("Failed, trying again...")
+        tries = tries - 1
 
     return flocklab.SUCCESS
 ### END prog_stm32l4()
