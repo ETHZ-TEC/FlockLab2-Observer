@@ -153,7 +153,7 @@ def main(argv):
                 flocklab.tg_en(False)
                 flocklab.error_logandexit("Unknown platform %s. Not known how to program this platform." % platform)
             if cmd:
-                logger.debug("Going to flash user image to %s..." % platform)
+                logger.debug("Going to flash image to platform %s (core %d)..." % (platform, core))
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                 (out, err) = p.communicate()
                 if (p.returncode != flocklab.SUCCESS):

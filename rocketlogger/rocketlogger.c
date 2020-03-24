@@ -165,6 +165,9 @@ static struct argp_option options[] = {
     {"tstart", 't', "TIMESTAMP", 0, "Unix timestamp of "
      " the sampling start.", 0},
 
+    {"offset", 'x', "OFFSET", 0, "Time correction offset in seconds, applies"
+     " to the realtime timer only.", 0},
+
     {0, 0, 0, OPTION_DOC, "Optional arguments for status and config actions:",
      6},
     {"json", OPT_JSON, 0, 0,
@@ -494,6 +497,15 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             config->t_start = starttime;
         } else {
             config->t_start = 0;
+        }
+        break;
+    case 'x':
+        /* define sampling start: optional UNIX timestamp */
+        if (arg != NULL) {
+            float timeofs = strtof(arg, NULL, 10);
+            config->t_offset = timeofs;
+        } else {
+            config->t_offset = 0;
         }
         break;
 
