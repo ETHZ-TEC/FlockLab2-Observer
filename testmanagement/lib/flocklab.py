@@ -69,6 +69,7 @@ rl_max_rate     = 64000
 rl_default_rate = 1000
 rl_samp_rates   = [1, 10, 100, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
 rl_max_samples  = 100000000
+rl_time_offset  = -0.0037          # rocketlogger is about ~3.7ms behind the actual time
 
 # paths
 configfile   = '/home/flocklab/observer/testmanagement/config.ini'
@@ -688,7 +689,7 @@ def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samp
         return errno.EINVAL
     if not out_file:
         out_file = "%s/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-    cmd = ["rocketlogger", "start", "-b", "--channel=V1,V2,I1L,I1H", "--output=%s" % out_file, "--rate=%d" % int(sampling_rate)]
+    cmd = ["rocketlogger", "start", "-b", "--channel=V1,V2,I1L,I1H", "--output=%s" % out_file, "--rate=%d" % int(sampling_rate), "--offset=%f" % rl_time_offset]
     if num_samples:
         if num_samples > rl_max_samples:
             num_samples = rl_max_samples

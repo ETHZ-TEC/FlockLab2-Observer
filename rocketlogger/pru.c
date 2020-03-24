@@ -543,6 +543,14 @@ int pru_sample(FILE *data_file, FILE *ambient_file,
         // timestamp received data
         create_time_stamp(&timestamp_realtime, &timestamp_monotonic);
 
+        // adjust the timestamp in case a correction offset is given
+        if (config->t_offset) {
+            int secs = (int)config->t_offset;
+            timestamp_realtime.sec += secs;
+            int nsecs = (int)((config->t_offset - secs) * 1000000000);
+            timestamp_realtime.nsec += nsecs;
+        }
+
         // adjust time with buffer latency
         timestamp_realtime.nsec -= (uint64_t)1e9 / config->update_rate;
         if (timestamp_realtime.nsec < 0) {
