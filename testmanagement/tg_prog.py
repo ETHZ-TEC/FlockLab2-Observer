@@ -73,26 +73,37 @@ def prog_msp430(imagefile, port, speed=38400):
 #
 ##############################################################################
 def prog_msp432(imagefile, port, speed):
+    # for some reason, programming of the msp432 'randomly' fails on some observers; try multiple times as a workaround
+    tries = 10
 
-    # both low
-    flocklab.gpio_clr(flocklab.gpio_tg_nrst)
-    flocklab.gpio_clr(flocklab.gpio_tg_prog)
-    time.sleep(0.001)
-    # prog high
-    flocklab.gpio_set(flocklab.gpio_tg_prog)
-    time.sleep(0.001)
-    # release reset
-    flocklab.gpio_set(flocklab.gpio_tg_nrst)
-    time.sleep(0.1)
+    while tries:
+        # both low
+        flocklab.gpio_clr(flocklab.gpio_tg_nrst)
+        flocklab.gpio_clr(flocklab.gpio_tg_prog)
+        time.sleep(0.001)
+        # prog high
+        flocklab.gpio_set(flocklab.gpio_tg_prog)
+        time.sleep(0.001)
+        # release reset
+        flocklab.gpio_set(flocklab.gpio_tg_nrst)
+        # note: do not add delays here!
 
-    # currently only runs with python2.7 (note: for some reason does not work when adding '--no-start' flag)
-    cmd = ["python2.7", "-m", "msp430.bsl32.uart", "-p", port, "-e", "-S", "-V", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
-    if debug:
-        cmd.append("-v")
-        cmd.append("--debug")
-    rs = subprocess.call(cmd)
-    if rs != 0:
-        return flocklab.FAILED
+        # currently only runs with python2.7
+        cmd = ["python2.7", "-m", "msp430.bsl32.uart", "-p", port, "-e", "-S", "-V", "--no-start", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
+        if debug:
+            cmd.append("-v")
+            cmd.append("--debug")
+        rs = subprocess.call(cmd)
+        if rs != 0:
+            if tries <= 1:
+                return flocklab.FAILED
+        else:
+            break
+        tries = tries - 1
+
+    if tries < 10:
+        flocklab.log_info("Took %d tries to flash the target via BSL." % (11 - tries))
+
     return flocklab.SUCCESS
 ### END prog_msp432()
 
@@ -167,7 +178,7 @@ def prog_stm32l4(imagefile, port, speed=115200):
         loader.connect()
         loader.read_device_id()
         if loader.stm32.get_id() != 0x435:
-            return 2
+            return flocklab.FAILED
         try:
             loader.perform_commands()
             break
