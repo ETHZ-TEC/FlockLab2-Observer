@@ -14,7 +14,7 @@ RSYNCPARAMS=" -a -z -c --timeout=5 --exclude=.git --no-perms --no-owner --no-gro
 # check arguments
 if [ $# -gt 0 ]; then
     if [[ ! $OBSIDS = *"$1"* ]] || [ ${#1} -ne 2 ]; then
-        echo "Invalid observer $1"
+        echo "Invalid observer $1. Valid options are: ${OBSIDS}."
         exit 1
     fi
     OBSIDS=$1
