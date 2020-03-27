@@ -465,6 +465,8 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
   double   corr_factor              = 0; // time correction factor
   bool     timestamp_start_obtained = false; // flag for to ensure first occurence of nRST=0 is obtained
 
+  running = true;
+
   // open files
   data_file = fopen(filename, "rb");      // binary mode
   sprintf(buffer, "%s.csv", filename);
@@ -500,7 +502,7 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     }
     prev_sample = sample;
     sample_cnt++;
-  } while (fread(&sample, 4, 1, data_file));
+  } while (fread(&sample, 4, 1, data_file) && running);
 
   fl_log(LOG_DEBUG, "sample_cnt: %lu", sample_cnt);
   fl_log(LOG_DEBUG, "timestamp_start_ticks: %llu, timestamp_end_ticks: %llu", (long long unsigned)timestamp_start_ticks, (long long unsigned)timestamp_end_ticks);
@@ -550,7 +552,7 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     }
     prev_sample = sample;
     sample_cnt++;
-  } while (fread(&sample, 4, 1, data_file));
+  } while (fread(&sample, 4, 1, data_file) && running);
 
   fclose(data_file);
   fclose(csv_file);
