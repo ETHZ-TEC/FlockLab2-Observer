@@ -124,9 +124,9 @@ def main(argv):
 
     # Activate interface, turn power on ---
     if slotnr:
-        if flocklab.tg_select(slotnr) != flocklab.SUCCESS or flocklab.tg_pwr_en() != flocklab.SUCCESS or flocklab.tg_en() != flocklab.SUCCESS:
-            flocklab.error_logandexit("Failed to select / enable target %d!" % (slotnr))
-        logger.debug("Target %d selected and enabled." % (slotnr))
+        if flocklab.tg_select(slotnr) != flocklab.SUCCESS:
+            flocklab.error_logandexit("Failed to select target %d!" % (slotnr))
+        logger.debug("Target %d selected." % (slotnr))
     else:
         flocklab.error_logandexit("Slot number could not be determined.")
 
@@ -140,29 +140,33 @@ def main(argv):
     flocklab.stop_pwr_measurement()
     flocklab.stop_gdb_server()
 
+    # Enable target and power (note: tg_pwr_en should be after tg_en)
+    if flocklab.tg_en() != flocklab.SUCCESS or flocklab.tg_pwr_en() != flocklab.SUCCESS:
+        flocklab.tg_off()
+        flocklab.error_logandexit("Failed to enable target!")
+
     # Pull down GPIO setting lines ---
     if flocklab.gpio_clr(flocklab.gpio_tg_sig1) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2) != flocklab.SUCCESS:
+        flocklab.tg_off()
         flocklab.error_logandexit("Failed to set GPIO lines")
 
     # Flash target (will set target voltage to 3.3V) ---
     if not noimage:
         for core, image in imagefile.items():
-            if (platform in (flocklab.tg_platforms)):
-                cmd = [config.get("observer", "progscript"), '--image=%s' % image, '--target=%s' % (platform), '--core=%d' % core]
-            else:
-                flocklab.tg_en(False)
+            if platform not in flocklab.tg_platforms:
+                flocklab.tg_off()
                 flocklab.error_logandexit("Unknown platform %s. Not known how to program this platform." % platform)
-            if cmd:
-                logger.debug("Going to flash image to platform %s (core %d)..." % (platform, core))
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                (out, err) = p.communicate()
-                if (p.returncode != flocklab.SUCCESS):
-                    flocklab.tg_en(False)
-                    shutil.move(image, '/tmp/failed_image_%s' % os.path.basename(image))
-                    logger.debug("Moved file to /tmp. Command was: %s." % cmd)
-                    logger.debug("Error: %s" % (err))
-                    flocklab.error_logandexit("Error %d when programming target image:\n%s" % (p.returncode, out.strip()))
-                logger.debug("Programmed target with image %s" % (image))
+            cmd = [config.get("observer", "progscript"), '--image=%s' % image, '--target=%s' % (platform), '--core=%d' % core]
+            logger.debug("Going to flash image to platform %s (core %d)..." % (platform, core))
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            (out, err) = p.communicate()
+            if (p.returncode != flocklab.SUCCESS):
+                flocklab.tg_off()
+                #shutil.move(image, '/tmp/failed_image_%s' % os.path.basename(image))
+                #logger.debug("Moved file to /tmp. Command was: %s." % cmd)
+                logger.debug("Programming failed. Output of script:\n%s" % (out.strip()))
+                flocklab.error_logandexit("Error %d when programming target image:\n%s" % (p.returncode, err.strip()))
+            logger.debug("Programmed target with image %s" % (image))
 
     # Hold target in reset state
     flocklab.tg_reset(False)
@@ -170,6 +174,7 @@ def main(argv):
     # Set voltage ---
     msg = None
     if flocklab.tg_set_vcc(voltage) != flocklab.SUCCESS:
+        flocklab.tg_off()
         flocklab.error_logandexit("Failed to set target voltage to %.1fV" % (voltage))
     logger.debug("Target voltage set to %.1fV" % voltage)
 
@@ -178,6 +183,7 @@ def main(argv):
     try:
         os.makedirs(resfolder)
     except Exception as e:
+        flocklab.tg_off()
         flocklab.error_logandexit("Failed to create directory: %s" % str(e))
     logger.debug("Test results folder '%s' created" % resfolder)
 
@@ -197,12 +203,16 @@ def main(argv):
         if ssport != None:
             logger.debug("Port: %s" % (ssport))
             cmd.append('--port=%s' % (ssport))
+        # note: force serial port 'usb' for target tmote
+        if platform == 'tmote':
+            ssport = 'usb'
         cmd.append('--daemon')
         if debug:
             cmd.append('--debug')
         p = subprocess.Popen(cmd)
         rs = p.wait()
         if (rs != flocklab.SUCCESS):
+            flocklab.tg_off()
             flocklab.error_logandexit("Error %d when trying to start serial service." % (rs))
         else:
             # Wait some time to let all threads start
@@ -244,11 +254,9 @@ def main(argv):
         #p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         #(out, err) = p.communicate()
         #if (p.returncode != flocklab.SUCCESS):
-        if False:
+        if False:   # TODO
+            flocklab.tg_off()
             flocklab.error_logandexit("Error %d when trying to configure GPIO setting service: %s" % (p.returncode, str(err).strip()))
-            if debug:
-                logger.error(msg)
-                logger.error("Tried to configure with: %s" % (str(cmd)))
         else:
             # Remove batch file:
             os.remove(batchfile)
@@ -265,6 +273,7 @@ def main(argv):
 
     # Make sure the test start time is in the future ---
     if int(time.time()) > teststarttime:
+        flocklab.tg_off()
         flocklab.error_logandexit("Test start time %d is in the past." % (teststarttime))
 
     # Debug ---
@@ -281,6 +290,7 @@ def main(argv):
         flocklab.tg_reset()
         # start GDB server 10s after test start
         if flocklab.start_gdb_server(platform, port, int(teststarttime - time.time() + 10)) != flocklab.SUCCESS:
+            flocklab.tg_off()
             flocklab.error_logandexit("Failed to start debug service.")
         else:
             logger.debug("GDB server will be listening on port %d." % port)
@@ -308,7 +318,8 @@ def main(argv):
                 pins = pins | flocklab.pin_abbr2num(pin)
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins) != flocklab.SUCCESS:
-            logger.error
+            flocklab.tg_off()
+            flocklab.error_logandexit("Failed to start GPIO tracing service.")
         # touch the file
         open(tracingfile + ".csv", 'a').close()
         logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x)." % (tracingfile, pins))
@@ -333,6 +344,7 @@ def main(argv):
         # Start profiling
         outputfile = "%s/%d/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         if flocklab.start_pwr_measurement(out_file=outputfile, sampling_rate=samplingrate, start_time=starttime, num_samples=int((duration + 1) * samplingrate)) != flocklab.SUCCESS:
+            flocklab.tg_off()
             flocklab.error_logandexit("Failed to start power measurement.")
         logger.debug("Power measurement will start at %s (output: %s, sampling rate: %dHz, duration: %ds)." % (str(starttime), outputfile, samplingrate, duration))
     else:
@@ -343,6 +355,7 @@ def main(argv):
         flocklab.log_timesync_info(testid=testid)
         flocklab.store_pps_count(testid)
     except:
+        flocklab.tg_off()
         flocklab.error_logandexit("Failed to collect timesync info (%s, %s)." % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
 
     flocklab.gpio_clr(flocklab.gpio_led_error)

@@ -63,8 +63,8 @@ def main(argv):
     # Parse arguments and execute commands
     for opt, arg in opts:
         if opt in ("-e", "--enable"):
-            flocklab.tg_pwr_en(True)
             flocklab.tg_en(True)
+            flocklab.tg_pwr_en(True)
         elif opt in ("-d", "--disable"):
             flocklab.tg_pwr_en(False)
             flocklab.tg_en(False)

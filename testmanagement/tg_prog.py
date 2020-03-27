@@ -114,6 +114,9 @@ def prog_msp432(imagefile, port, speed):
 #
 ##############################################################################
 def prog_telosb(imagefile, speed=38400):
+    if "hex" not in os.path.splitext(imagefile)[1]:
+        flocklab.log_error("Invalid file format, Intel hex file expected.")
+        return -1
 
     # currently only runs with python2.7
     cmd = ["python2.7", "-m", "msp430.bsl.target.telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "-V", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
@@ -309,15 +312,12 @@ def main(argv):
         flocklab.error_logandexit("Image file '%s' not found." % imagefile, errno.ENOENT)
 
     # Set target voltage to default value and make sure power, MUX and actuation are enabled
-    flocklab.tg_set_vcc()
+    flocklab.tg_set_vcc(3.3)
     flocklab.log_debug("Target voltage set to 3.3V.")
-    flocklab.tg_pwr_en()
-    flocklab.tg_mux_en()
-    flocklab.tg_act_en()
 
-    # Enable and reset the target (also ensures the PROG pin is low)
-    flocklab.tg_en()
+    flocklab.tg_on()
     flocklab.tg_reset()
+    time.sleep(0.5)
 
     # Flash the target:
     logger.info("Programming target %s with image %s..." % (target, imagefile))
@@ -336,6 +336,15 @@ def main(argv):
         rs = prog_swd(imagefile, "nRF52840_xxAA", 4000)
     elif target in ('tmote', 'telosb', 'sky'):
         rs = prog_telosb(imagefile)
+        if rs == flocklab.FAILED:
+            logger.info("Resetting USB hub and power cycling target...")
+            # try to reset the USB hub and try again
+            flocklab.usb_reset()
+            flocklab.tg_off()
+            time.sleep(0.1)
+            flocklab.tg_on()
+            time.sleep(0.5)
+            rs = prog_telosb(imagefile)
     else:
         logger.error("Unknown target '%s'" % target)
 
@@ -344,7 +353,6 @@ def main(argv):
 
     # Reset
     flocklab.tg_reset()
-    #flocklab.gpio_clr(flocklab.gpio_tg_prog)  -> already done in tg_reset()
 
     # Return an error if there was one while flashing:
     if (rs != 0):

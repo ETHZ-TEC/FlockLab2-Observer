@@ -251,6 +251,19 @@ def init_gpio():
 
 ##############################################################################
 #
+# usb_reset - reset USB hub
+#
+##############################################################################
+def usb_reset():
+    if gpio_clr(gpio_usb_nrst) != SUCCESS or gpio_set(gpio_usb_nrst) != SUCCESS:
+        return FAILED
+    time.sleep(1)     # give some time for initialization
+    return SUCCESS
+### END usb_reset()
+
+
+##############################################################################
+#
 # gpio_set - set an output pin high
 #
 ##############################################################################
@@ -343,7 +356,7 @@ def tg_pwr_en(enable=True):
 
 ##############################################################################
 #
-# tg_en - enable target
+# tg_en - enable target (note: this also enables 3.3V and 5V supply!)
 #
 ##############################################################################
 def tg_en(enable=True):
@@ -391,6 +404,32 @@ def tg_act_en(enable=True):
         gpio_set(gpio_tg_act_nen)
     return SUCCESS
 ### END tg_mux_en()
+
+
+##############################################################################
+#
+# tg_off - turns off all power rails and cuts all lines to the selected target
+#
+##############################################################################
+def tg_off():
+    tg_pwr_en(False)
+    tg_en(False)
+    tg_mux_en(False)
+    tg_act_en(False)
+### END tg_off()
+
+
+##############################################################################
+#
+# tg_on - turns on all power rails and connects all lines to the selected target
+#
+##############################################################################
+def tg_on():
+    tg_act_en(True)
+    tg_mux_en(True)
+    tg_en(True)
+    tg_pwr_en(True)
+### END tg_on()
 
 
 ##############################################################################
