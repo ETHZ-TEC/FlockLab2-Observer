@@ -140,10 +140,8 @@ def main(argv):
     flocklab.stop_pwr_measurement()
     flocklab.stop_gdb_server()
 
-    # Enable target and power (note: tg_pwr_en should be after tg_en)
-    if flocklab.tg_en() != flocklab.SUCCESS or flocklab.tg_pwr_en() != flocklab.SUCCESS:
-        flocklab.tg_off()
-        flocklab.error_logandexit("Failed to enable target!")
+    # Enable MUX and power
+    flocklab.tg_on()
 
     # Pull down GPIO setting lines ---
     if flocklab.gpio_clr(flocklab.gpio_tg_sig1) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2) != flocklab.SUCCESS:

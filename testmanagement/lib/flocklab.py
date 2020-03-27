@@ -414,8 +414,8 @@ def tg_act_en(enable=True):
 def tg_off():
     tg_pwr_en(False)
     tg_en(False)
-    tg_mux_en(False)
     tg_act_en(False)
+    tg_mux_en(False)
 ### END tg_off()
 
 
@@ -425,8 +425,8 @@ def tg_off():
 #
 ##############################################################################
 def tg_on():
-    tg_act_en(True)
     tg_mux_en(True)
+    tg_act_en(True)
     tg_en(True)
     tg_pwr_en(True)
 ### END tg_on()
@@ -790,25 +790,25 @@ def start_gpio_tracing(out_file=None, start_time=0, stop_time=0, pins=0x0):
 #
 ##############################################################################
 def stop_gpio_tracing():
-    p = subprocess.Popen(['pgrep', '-f', 'fl_logic'], stdout=subprocess.PIPE)
-    pid, err = p.communicate()
+    pid = get_pid('fl_logic')
+    if pid <= 0:
+        return SUCCESS      # process does not exist
     try:
-        if p.returncode != 0:
-            return SUCCESS      # process does probably not exist
-        if pid:
-            os.kill(int(pid), signal.SIGTERM)
-            if logger:
-                logger.debug("Waiting for gpio tracing service to stop...")
-            timeout = 30
-            rs = 0
-            while rs == 0 and timeout:
-                time.sleep(1)
-                timeout = timeout - 1
-                p = subprocess.Popen(['pgrep', '-f', 'fl_logic'], stdout=subprocess.PIPE)
-                rs = p.wait()
-            if rs != 0:         # process does not exist anymore
-                return SUCCESS
+        os.kill(pid, signal.SIGTERM)
+        if logger:
+            logger.debug("Waiting for gpio tracing service to stop...")
+        timeout = 30
+        rs = 0
+        while rs == 0 and timeout:
+            time.sleep(1)
+            timeout = timeout - 1
+            p = subprocess.Popen(['pgrep', '-f', 'fl_logic'], stdout=subprocess.PIPE)
+            rs = p.wait()
+        if rs != 0:         # process does not exist anymore
+            return SUCCESS
     except:
+        if logger:
+            logger.error("An error occurred in stop_gpio_tracing(): %s, %s", str(sys.exc_info()[0]), str(sys.exc_info()[1]))
         pass
     return FAILED
 ### END stop_gpio_tracing()

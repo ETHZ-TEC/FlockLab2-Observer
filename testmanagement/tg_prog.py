@@ -119,7 +119,9 @@ def prog_telosb(imagefile, speed=38400):
         return -1
 
     # currently only runs with python2.7
-    cmd = ["python2.7", "-m", "msp430.bsl.target.telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "-V", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
+    #cmd = ["msp430-bsl-telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "-V", "-i", "ihex", "-P", imagefile]
+    # note: verify option ("-V") removed since it takes too much time (up to 25s)
+    cmd = ["python2.7", "-m", "msp430.bsl.target.telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
     if debug:
         cmd.append("-v")
         cmd.append("--debug")
@@ -340,10 +342,11 @@ def main(argv):
             logger.info("Resetting USB hub and power cycling target...")
             # try to reset the USB hub and try again
             flocklab.usb_reset()
+            time.sleep(1)
             flocklab.tg_off()
             time.sleep(0.1)
             flocklab.tg_on()
-            time.sleep(0.5)
+            time.sleep(1)
             rs = prog_telosb(imagefile)
     else:
         logger.error("Unknown target '%s'" % target)
