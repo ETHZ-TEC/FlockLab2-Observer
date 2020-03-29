@@ -767,7 +767,7 @@ def stop_pwr_measurement():
 # start_gpio_tracing
 #
 ##############################################################################
-def start_gpio_tracing(out_file=None, start_time=0, stop_time=0, pins=0x0):
+def start_gpio_tracing(out_file=None, start_time=0, stop_time=0, pins=0x0, offset=0):
     if not out_file:
         out_file = "%s/gpiotracing_%s.dat" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     cmd = ["fl_logic", out_file]
@@ -778,6 +778,10 @@ def start_gpio_tracing(out_file=None, start_time=0, stop_time=0, pins=0x0):
             cmd.append("%d" % stop_time)
             if pins != 0x0:
                 cmd.append("0x%x" % pins)
+                if offset != 0:
+                    cmd.append(str(offset))
+    #if logger:
+    #    logger.debug("Starting GPIO tracing service with command: %s" % " ".join(cmd))
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     # do not call communicate(), it will block
     return SUCCESS
@@ -789,23 +793,25 @@ def start_gpio_tracing(out_file=None, start_time=0, stop_time=0, pins=0x0):
 # stop_gpio_tracing
 #
 ##############################################################################
-def stop_gpio_tracing():
+def stop_gpio_tracing(timeout=30):
     pid = get_pid('fl_logic')
     if pid <= 0:
         return SUCCESS      # process does not exist
     try:
-        os.kill(pid, signal.SIGTERM)
+        os.kill(pid, signal.SIGINT)   # note: send SIGINT to tell the process to stop, SIGTERM will force termination
         if logger:
             logger.debug("Waiting for gpio tracing service to stop...")
-        timeout = 30
         rs = 0
         while rs == 0 and timeout:
             time.sleep(1)
             timeout = timeout - 1
             p = subprocess.Popen(['pgrep', '-f', 'fl_logic'], stdout=subprocess.PIPE)
             rs = p.wait()
-        if rs != 0:         # process does not exist anymore
+        if rs != 0:
             return SUCCESS
+        else:
+            # force process to stop
+            os.kill(pid, signal.SIGTERM)
     except:
         if logger:
             logger.error("An error occurred in stop_gpio_tracing(): %s, %s", str(sys.exc_info()[0]), str(sys.exc_info()[1]))

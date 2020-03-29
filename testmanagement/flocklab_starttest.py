@@ -314,13 +314,18 @@ def main(argv):
         if pinlist:
             for pin in pinlist.strip().split():
                 pins = pins | flocklab.pin_abbr2num(pin)
+        offset = subtree.findtext("offset")
+        if offset:
+            offset = flocklab.parse_int(offset)
+        else:
+            offset = 0
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins) != flocklab.SUCCESS:
+        if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset) != flocklab.SUCCESS:
             flocklab.tg_off()
             flocklab.error_logandexit("Failed to start GPIO tracing service.")
         # touch the file
         open(tracingfile + ".csv", 'a').close()
-        logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x)." % (tracingfile, pins))
+        logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x, offset: %u)." % (tracingfile, pins, offset))
     else:
         logger.debug("No config for GPIO monitoring service found.")
         # make sure the reset pin is actuated

@@ -16,6 +16,7 @@
 #else
  #define BUFFER_SIZE    0
 #endif
+#define CPU_FREQ        200000000
 #define SAMPLING_FREQ   10000000    /* in Hz (1 - 10000000) */
 
 /* parameter check */

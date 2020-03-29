@@ -33,9 +33,10 @@ SYSEVT_GEN_VALID_BIT    .set    0x20
 PRU_EVTOUT_2            .set    0x04
 PRU_CRTL_CTR_ON         .set    0x0B
 PRU_CRTL_CTR_OFF        .set    0x03
-BUFFER_ADDR_OFS         .set    0x0            ; buffer address offset in config structure
-BUFFER_SIZE_OFS         .set    0x4            ; buffer size offset in config structure
-PIN_MASK_OFS            .set    0x8            ; pin mask offset in config structure (defines which pins are sampled)
+BUFFER_ADDR_OFS         .set    0              ; buffer address offset in config structure
+BUFFER_SIZE_OFS         .set    4              ; buffer size offset in config structure
+START_DELAY_OFS         .set    8              ; delay for the sampling start after releasing the reset pin
+PIN_MASK_OFS            .set    12             ; pin mask offset in config structure (defines which pins are sampled)
 
 
 ; Register mapping
@@ -125,7 +126,7 @@ PIN_CLR .macro  pin_bit
 main:
         ; init
         LDI     CVAL, 0
-        LDI     PVAL, 0x0                 ; choose a value that is unlikely to be the initial GPIO state
+        LDI     PVAL, 0x0                 ; GPIO initial state
         LDI     SCNT, 1
         LDI     OFS, 0
         LDI32   CTRL, PRU1_CTRL           ; address of CFG register
@@ -138,6 +139,7 @@ main:
         LBBO    &ADDR, TMP, BUFFER_ADDR_OFS, 4
         LBBO    &SIZE, TMP, BUFFER_SIZE_OFS, 4
         LBBO    &PINMASK, TMP, PIN_MASK_OFS, 1      ; apply a custom pin mask if given
+        LBBO    &TMP2, TMP, START_DELAY_OFS, 4
 
         ; if tracing pin mask is invalid (0x0), use the default mask
         QBEQ    use_default_mask, PINMASK, 0
@@ -185,7 +187,23 @@ skip_use_default_mask:
         JMP     main_loop_alt
     .endif
 
-        ; sampling loop
+        ; delay (time offset to sampling start, in seconds)
+        ; note: assume at this point that the buffer is large enough to hold all samples during this delay period!
+        QBEQ    main_loop, TMP2, 0
+        LDI     TMP, 0x0180               ; all pins low, reset high
+        SBBO    &TMP, ADDR, OFS, 4        ; copy into RAM buffer
+        ADD     OFS, OFS, 4               ; increment buffer offset
+        LDI32   CCNT, ((SAMPLING_FREQ << 8) | 0x80)    ; all pins low, reset high (use CCNT register here to temporarily hold the value)
+wait_start:
+        DELAYI  (CPU_FREQ - 7)            ; wait 1s
+        SUB     TMP2, TMP2, 1
+        SBBO    &CCNT, ADDR, OFS, 4        ; copy into RAM buffer
+        ADD     OFS, OFS, 4               ; increment buffer offset
+        AND     OFS, OFS, SIZE            ; keep offset in the range 0..SIZE
+        QBNE    wait_start, TMP2, 0
+
+
+        ; --- sampling loop ---
 main_loop:
 
         ; sample pins
@@ -243,7 +261,7 @@ done:
         NOP
 
         ; stall the loop to achieve the desired sampling frequency
-        DELAYI  (200000000/SAMPLING_FREQ - 20)      ; one loop pass takes ~20 cycles
+        DELAYI  (CPU_FREQ/SAMPLING_FREQ - 20)      ; one loop pass takes ~20 cycles
         JMP     main_loop
 
 exit:
@@ -258,13 +276,13 @@ exit:
         ; wait for next rising edge of PPS signal
         ; note: WBC/WBS won't work here, since we need to count the number of cycles
 wait_for_pps_low:
-        DELAYI  (200000000/SAMPLING_FREQ - 2)
+        DELAYI  (CPU_FREQ/SAMPLING_FREQ - 2)
         ADD     SCNT, SCNT, 1
         QBBS    wait_for_pps_low, GPI, PPS_PIN
 
         LDI32   TMP2, 0xFFFFFF
 wait_for_pps_high:
-        DELAYI  (200000000/SAMPLING_FREQ - 6)
+        DELAYI  (CPU_FREQ/SAMPLING_FREQ - 6)
         QBEQ    reset_counter, SCNT, TMP2
         ADD     SCNT, SCNT, 1
         NOP
@@ -403,7 +421,7 @@ done_alt2:
         NOP
         NOP
 
-        DELAYI  (200000000/SAMPLING_FREQ - 20)  ; one loop pass takes 20 cycles
+        DELAYI  (CPU_FREQ/SAMPLING_FREQ - 20)  ; one loop pass takes 20 cycles
         JMP     main_loop_alt
 
 exit_alt:
