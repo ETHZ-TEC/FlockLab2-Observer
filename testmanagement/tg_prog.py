@@ -114,6 +114,13 @@ def prog_msp432(imagefile, port, speed):
 #
 ##############################################################################
 def prog_telosb(imagefile, speed=38400):
+    if os.path.splitext(imagefile)[1] in (".exe", ".sky"):
+        ret = os.system("objcopy -O ihex %s %s.ihex" % (imagefile, imagefile))
+        if ret != 0:
+            flocklab.log_warning("Failed to convert elf file to Intel hex.")
+        else:
+            flocklab.log_debug("File '%s' converted to Intel hex format." % imagefile)
+            imagefile = imagefile + ".ihex"
     if "hex" not in os.path.splitext(imagefile)[1]:
         flocklab.log_error("Invalid file format, Intel hex file expected.")
         return -1
@@ -149,6 +156,7 @@ def prog_stm32l4(imagefile, port, speed=115200):
         if ret != 0:
             flocklab.log_warning("Failed to convert elf file to binary.")
         else:
+            flocklab.log_debug("File '%s' converted to binary format." % imagefile)
             imagefile = imagefile + ".binary"
     if not "bin" in os.path.splitext(imagefile)[1]:
         flocklab.log_error("stm32loader expects a binary file")
@@ -245,20 +253,29 @@ def prog_swd(imagefile, device, speed='auto'):
         if ret != 0:
             flocklab.log_warning("Failed to convert file '%s' to Intel hex format." % imagefile)
         else:
+            flocklab.log_debug("File '%s' converted to Intel hex format." % imagefile)
             imagefile = imagefile + ".hex"
+    # note: file ending must be .hex, JLink doesn't recognize .ihex
+    if "ihex" in os.path.splitext(imagefile)[1]:
+        os.rename(imagefile, os.path.splitext(imagefile)[0] + ".hex")
+        imagefile = os.path.splitext(imagefile)[0] + ".hex"
     # flash to target
     # note: JRunExe expects an ELF file and needs to be aborted (does not terminate automatically)
     #cmd = ['JRunExe', '-device', device, '-if', 'SWD', '-speed', str(speed), '--quit', imagefile]
     #p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     cmd = ['JLinkExe', '-device', device, '-if', 'SWD', '-speed', str(speed), '-autoconnect', '1']
-    jlinkcmd = 'loadfile %s\nr\nq\n' % imagefile
+    jlinkcmd = 'erase\nloadfile %s\nr\nq\n' % imagefile
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     out, err = p.communicate(input=jlinkcmd)
     if "Core found" not in out:
         flocklab.log_error("Failed to connect to target via SWD. JLink output: %s" % out)
         return flocklab.FAILED
-    if (out.find("Programming flash [100%] Done") != -1) and ("Skipped. Contents already match" not in out):
-        flocklab.log_error("Failed to program target via SWD. JLink output: %s" % out)
+    #if out.find("Programming flash [100%] Done") < 0:
+    if out.find("Verifying flash") < 0:
+        dbg_pos = out.find("Cortex-M4 identified")
+        if dbg_pos < 0:
+             dbg_pos = 0
+        flocklab.log_error("Failed to program target via SWD. JLink output:\n%s" % out[dbg_pos:])
         return flocklab.FAILED
     if debug:
         flocklab.log_debug(out)
@@ -335,7 +352,7 @@ def main(argv):
             except:     # use except here to also catch sys.exit()
                 rs = 1
     elif target == 'nrf5':
-        rs = prog_swd(imagefile, "nRF52840_xxAA", 4000)
+        rs = prog_swd(imagefile, "nRF52840_xxAA")
     elif target in ('tmote', 'telosb', 'sky'):
         rs = prog_telosb(imagefile)
         if rs == flocklab.FAILED:

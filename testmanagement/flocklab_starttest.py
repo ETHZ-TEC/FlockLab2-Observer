@@ -201,9 +201,6 @@ def main(argv):
         if ssport != None:
             logger.debug("Port: %s" % (ssport))
             cmd.append('--port=%s' % (ssport))
-        # note: force serial port 'usb' for target tmote
-        if platform == 'tmote':
-            ssport = 'usb'
         cmd.append('--daemon')
         if debug:
             cmd.append('--debug')
