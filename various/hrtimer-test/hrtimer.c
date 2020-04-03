@@ -1,5 +1,5 @@
 /**
- * High resolution kernel module example for the BeagleBone Green (tested with kernel 4.14).
+ * High resolution kernel kernel module example for the BeagleBone Green (tested with kernel 4.14).
  *
  * Creates a periodic timer and toggles a GPIO pin when the timer expires (P9.12 by default).
  * The GPIO pin is actuated using direct memory-mapped IO access (bus / file system independent).
