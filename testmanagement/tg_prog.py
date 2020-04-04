@@ -217,6 +217,9 @@ def prog_dpp(imagefile, core):
     # select core
     flocklab.set_pin(flocklab.gpio_tg_sig1, core2sig[core][0])
     flocklab.set_pin(flocklab.gpio_tg_sig2, core2sig[core][1])
+    # TODO remove (for backwards compatibility only
+    flocklab.set_pin(flocklab.gpio_tg_sig1_old, core2sig[core][0])
+    flocklab.set_pin(flocklab.gpio_tg_sig2_old, core2sig[core][1])
 
     # program
     ret = 1

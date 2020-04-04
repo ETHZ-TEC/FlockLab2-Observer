@@ -128,7 +128,9 @@ def main(argv):
         else:
             errors.append("Could not find element <obsTargetConf> in %s" % xmlfilename)
     except (IOError) as err:
-        errors.append("Could not find or open XML file '%s'." % (xmlfilename))
+        # most likely the test has not yet been started
+        logger.warning("Could not find or open XML file '%s'." % (xmlfilename))
+        sys.exit(flocklab.SUCCESS)
     
     # Activate interface ---
     if slotnr:
@@ -153,11 +155,15 @@ def main(argv):
         logger.debug("Stopped serial service.")
     
     # Reset all remaining services, regardless of previous errors ---
-    flocklab.stop_gpio_actuation()
+    flocklab.stop_reset_actuation()
     if flocklab.stop_gpio_tracing() != flocklab.SUCCESS:
         errors.append("Failed to stop GPIO tracing service.")
     else:
         logger.debug("Stopped GPIO tracing.")
+    if flocklab.stop_gpio_actuation() != flocklab.SUCCESS:
+        errors.append("Failed to stop GPIO actuation service.")
+    else:
+        logger.debug("Stopped GPIO actuation.")
     if flocklab.stop_pwr_measurement() != flocklab.SUCCESS:
         errors.append("Failed to stop power measurement.")
     else:

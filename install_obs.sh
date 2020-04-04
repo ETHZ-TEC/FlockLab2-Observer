@@ -113,9 +113,18 @@ cd ${HOMEDIR}/observer/pru/fl_logic && make install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install fl_logic software." "fl_logic software installed."
 
 ##########################################################
-# install binary for GPIO actuation
+# install binary for reset actuation
 cd ${HOMEDIR}/observer/various/fl_act && make install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install fl_act software." "fl_act software installed."
+
+##########################################################
+# install kernel module for GPIO actuation
+cd ${HOMEDIR}/observer/various/actuation && make install > /dev/null 2>> $ERRORLOG
+check_retval "Failed to install fl_actuation software." "fl_actuation software installed."
+echo "fl_actuation" > /etc/modules-load.d/fl_actuation.conf
+depmod
+# add udev rule
+[ -e /etc/udev/rules.d/99-flocklab-act.rules ] || echo "KERNEL==\"flocklab_act\", OWNER=\"root\", GROUP=\"dialout\", MODE=\"0660\"" > /etc/udev/rules.d/99-flocklab-act.rules
 
 ##########################################################
 # extract JLink files

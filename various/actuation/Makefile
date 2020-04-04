@@ -1,12 +1,16 @@
-obj-m:=fl_actuation.o
-PWD:=$(shell pwd)
-KERNELPATH:=/lib/modules/$(shell uname -r)/build
+
+obj-m := fl_actuation.o
+MODNAME = fl_actuation
+PWD := $(shell pwd)
+KDIR := /lib/modules/$(shell uname -r)/build
+KVER := $(shell uname -r)
+
+.PHONY: all
 all:
-	make -C $(KERNELPATH) M=$(PWD) modules
+	make -C $(KDIR) M=$(PWD) modules
 clean:
-	sudo rmmod fl_actuation
-	make -C $(KERNELPATH) M=$(PWD) clean
-load:
-	sudo insmod fl_actuation.ko
-unload:
-	sudo rmmod fl_actuation
+	make -C $(KDIR) M=$(PWD) clean
+
+.PHONY: install
+install: all
+	install -D $(MODNAME).ko /lib/modules/$(KVER)/extra/

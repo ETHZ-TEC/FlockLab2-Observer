@@ -75,24 +75,27 @@
 // --- TYPEDEFS ---
 
 typedef struct {
-  uint32_t      ofs;     /* offset relative to the start time */
-  unsigned char pin;     /* pin number */
-  unsigned char lvl;     /* level (0 or 1) */
+  uint32_t ofs;     /* offset relative to the start time */
+  uint8_t  pin;     /* pin number */
+  uint8_t  lvl;     /* logic level (0 or 1) */
 } act_event_t;
 
 
 
 // --- GLOBAL VARIABLES ---
 
-static struct hrtimer   timer;
-static struct semaphore queue_sem;    // protects access to the event queue
-static act_event_t      event_queue[EVENT_QUEUE_SIZE];  // array to hold all events
-static unsigned int     read_idx  = 0;                  // read index for the event queue
-static unsigned int     write_idx = 0;                  // write index for the event queue
+static struct hrtimer     timer;                          // the timer handle
+static struct semaphore   queue_sem;                      // protects access to the event queue
+static act_event_t        event_queue[EVENT_QUEUE_SIZE];  // array to hold all events
+static unsigned int       read_idx  = 0;                  // read index for the event queue
+static unsigned int       write_idx = 0;                  // write index for the event queue
+static const act_event_t* next_evt = NULL;
+static bool               timer_running = false;
 
-static struct class* hrtimer_dev_class;
-static int           hrtimer_dev_major;
-static char          hrtimer_dev_data[DEVICE_BUFFER_SIZE];
+static struct class* timer_dev_class;
+static int           timer_dev_major;
+static char          timer_dev_data_in[DEVICE_BUFFER_SIZE];
+static char          timer_dev_data_out[32];              // buffer to hold the last response to a command
 
 static volatile unsigned int* gpio_set_addr = NULL;
 static volatile unsigned int* gpio_clr_addr = NULL;
@@ -102,14 +105,14 @@ static volatile unsigned int* gpio_clr_addr = NULL;
 
 static void gpio_set(uint32_t pin)
 {
-  if (gpio_set_addr) {
+  if (gpio_set_addr && pin) {
     *gpio_set_addr = PIN_TO_BITMASK(pin);
   }
 }
 
 static void gpio_clr(uint32_t pin)
 {
-  if (gpio_clr_addr) {
+  if (gpio_clr_addr && pin) {
     *gpio_clr_addr = PIN_TO_BITMASK(pin);
   }
 }
@@ -133,23 +136,39 @@ static void map_gpio(void)
 
 // ------------------------------------------
 
-uint32_t queue_size(void)
+static inline uint32_t queue_size(void)
 {
   return (read_idx > write_idx) ? (EVENT_QUEUE_SIZE - read_idx + write_idx) : (write_idx - read_idx);
 }
 
-// adds a GPIO actuation event to the queue
-static void add_event(uint32_t ofs, uint32_t pin, uint32_t level)
+static inline bool queue_empty(void)
 {
-  // offset must be at least MIN_PERIOD
-  if (ofs < MIN_PERIOD) {
-    LOG("WARNING offset too small, event dropped\n");
-    return;
+  return (write_idx == read_idx);
+}
+
+static inline bool queue_full(void)
+{
+  return ((write_idx + 1) & (EVENT_QUEUE_SIZE - 1)) == read_idx;
+}
+
+// adds a GPIO actuation event to the queue
+static bool add_event(uint32_t ofs, uint32_t pin, uint32_t level)
+{
+  // timer must be stopped
+  if (timer_running) {
+    LOG("WARNING cannot add events while timer is running");
+    return false;
   }
   // check if there is still space in the queue
-  if (((write_idx + 1) & (EVENT_QUEUE_SIZE - 1)) == read_idx) {
+  if (queue_full()) {
     LOG("ERROR queue is full, event dropped\n");
-    return;
+    return false;
+  }
+  // offset must be at least MIN_PERIOD (or zero)
+  if (ofs > 0 && ofs < MIN_PERIOD) {
+    // set offset to 0, i.e. execute it together with the previous event
+    ofs = 0;
+    LOG("WARNING offset too small\n");
   }
   // acquire queue access
   if (down_interruptible(&queue_sem) == 0) {
@@ -163,28 +182,25 @@ static void add_event(uint32_t ofs, uint32_t pin, uint32_t level)
 
   } else {
     LOG("ERROR failed to get semaphore\n");
+    return false;
   }
+  return true;
 }
 
-const act_event_t* get_next_event(void)
+static inline const act_event_t* get_next_event(void)
 {
-  act_event_t* ev = NULL;
+  const act_event_t* ev = NULL;
 
   // offset must be at least MIN_PERIOD
-  if (write_idx == read_idx) {
-    // queue empty
+  if (queue_empty()) {
     return NULL;
   }
-  if (down_interruptible(&queue_sem) == 0) {
-    ev = &event_queue[read_idx];
-    read_idx = (read_idx + 1) & (EVENT_QUEUE_SIZE - 1);
-    // release semaphore
-    up(&queue_sem);
-  }
+  ev = &event_queue[read_idx];
+  read_idx = (read_idx + 1) & (EVENT_QUEUE_SIZE - 1);
   return ev;
 }
 
-void clear_queue(void)
+static void clear_queue(void)
 {
   if (down_interruptible(&queue_sem) == 0) {
     read_idx = write_idx = 0;
@@ -199,41 +215,46 @@ void clear_queue(void)
 
 static void timer_reset(struct hrtimer* tim, uint32_t period_us)
 {
-  hrtimer_forward(tim, tim->_softexpires, period_us * 1000);      // _softexpires: time that was set for this timer expiration
+  hrtimer_forward(tim, tim->_softexpires, (uint64_t)(period_us) * 1000);      // _softexpires: time that was set for this timer expiration
   //hrtimer_forward(tim, tim->base->get_time(), period_us * 1000);  // base->get_time() returns current timer value
 }
 
 // timer callback function
 static enum hrtimer_restart timer_expired(struct hrtimer* tim)
 {
-  static const act_event_t* curr_evt = NULL;
-
-  if (curr_evt) {
-    if (curr_evt->lvl) {
-      gpio_set(curr_evt->pin);
-    } else {
-      gpio_clr(curr_evt->pin);
+  do {
+    if (next_evt) {
+      if (next_evt->lvl) {
+        gpio_set(next_evt->pin);
+      }
+      if ((next_evt->lvl & 1) == 0) {
+        gpio_clr(next_evt->pin);
+      }
+      LOG_DEBUG("GPIO level set\n");
     }
-    LOG_DEBUG("GPIO level set\n");
-  }
+    /* check if there are more actuations events that should happen now */
+    next_evt = get_next_event();
+  } while (next_evt && next_evt->ofs == 0);
 
   /* if there are more events in the queue, then restart the timer */
-  curr_evt = get_next_event();
-  if (curr_evt) {
-    timer_reset(tim, curr_evt->ofs);
+  if (next_evt) {
+    timer_reset(tim, next_evt->ofs);
     return HRTIMER_RESTART;
   } else {
     LOG("timer stopped\n");
+    timer_running = false;
     return HRTIMER_NORESTART;
   }
 }
 
 // set one shot timer
-static void timer_set_abs(ktime_t t_exp)
+static void timer_set(ktime_t t_exp)
 {
   // make sure the timer is not running anymore
   hrtimer_cancel(&timer);
   timer.function = timer_expired;
+  timer_running = true;
+  next_evt = NULL;
   hrtimer_start(&timer, t_exp, TIMER_MODE);
 }
 
@@ -257,6 +278,7 @@ static uint32_t parse_uint32(const char* str)
 
 static void parse_argument(const char* arg)
 {
+  static uint32_t errcnt = 0;
   struct timespec now;
   uint32_t val;
 
@@ -266,113 +288,131 @@ static void parse_argument(const char* arg)
 
     if (*arg == 'S' || *arg == 's') {
       // start command
-      LOG_DEBUG("start command received\n");
-      // get the start time (UNIX timestamp, in seconds)
-      val = parse_uint32(arg + 1);
-      // is start time in the future?
-      TIMER_NOW_TS(now);
-      if (val > 0) {
-        if (val < 1000) {
-          val += now.tv_sec;
-        }
-        if (val > now.tv_sec) {
-          timer_set_abs(ktime_set(val, 0));
-          LOG("start time set to %u, queue size is %u\n", val, queue_size());
-        }
+      if (queue_size() == 0) {
+        LOG("WARNING start command ignored, queue is empty\n");
+        errcnt++;
       } else {
-        LOG("WARNING start time must be in the future\n");
+        LOG_DEBUG("start command received\n");
+        // get the start time (UNIX timestamp, in seconds)
+        val = parse_uint32(arg + 1);
+        // is start time in the future?
+        TIMER_NOW_TS(now);
+        if (val > 0) {
+          if (val < 1000) {
+            // treat as relative start time
+            val += now.tv_sec;
+          }
+          if (val > now.tv_sec) {
+            timer_set(ktime_set(val, 0));
+            LOG("start time set to %u, queue size is %u\n", val, queue_size());
+          }
+        } else {
+          LOG("WARNING start time must be in the future\n");
+        }
       }
-
-    } else if (*arg == 'T' || *arg == 't') {
-      // terminate / stop command
-      LOG("stop command received\n");
-      hrtimer_cancel(&timer);
-      // clear event queue
-      clear_queue();
-
     } else if (*arg == 'C' || *arg == 'c') {
-      // clear command
-      LOG("clear command received\n");
+      // cancel / clear command
+      LOG("cancel command received\n");
+      hrtimer_cancel(&timer);
       clear_queue();
+      timer_running = false;
+      errcnt = 0;
 
     } else if (*arg == 'L' || *arg == 'l') {
       // set pin low
       // an offset in microseconds is expected (max offset: ~4200s)
       val = parse_uint32(arg + 1);
-      add_event((uint32_t)val, (*arg == 'L') ? FLOCKLAB_SIG1_PIN : FLOCKLAB_SIG2_PIN, 0);
-
+      if (!add_event((uint32_t)val, (*arg == 'L') ? FLOCKLAB_SIG1_PIN : FLOCKLAB_SIG2_PIN, 0)) {
+        errcnt++;
+      }
     } else if (*arg == 'H' || *arg == 'h') {
       // set pin high
       // an offset in microseconds is expected (max offset: ~4200s)
       val = parse_uint32(arg + 1);
-      add_event((uint32_t)val, (*arg == 'H') ? FLOCKLAB_SIG1_PIN : FLOCKLAB_SIG2_PIN, 1);
+      if (!add_event((uint32_t)val, (*arg == 'H') ? FLOCKLAB_SIG1_PIN : FLOCKLAB_SIG2_PIN, 1)) {
+        errcnt++;
+      }
+    } else if (*arg == 'T' || *arg == 't') {
+      // toggle pin
+      // an offset in microseconds is expected (max offset: ~4200s)
+      val = parse_uint32(arg + 1);
+      if (!add_event((uint32_t)val, (*arg == 'T') ? FLOCKLAB_SIG1_PIN : FLOCKLAB_SIG2_PIN, 2)) {
+        errcnt++;
+      }
     }
     arg++;
+  }
+
+  // write response into output buffer
+  if (errcnt) {
+    snprintf(timer_dev_data_out, sizeof(timer_dev_data_out), "ERROR count: %u", errcnt);
+  } else {
+    snprintf(timer_dev_data_out, sizeof(timer_dev_data_out), "OK %u", queue_size());
   }
 }
 
 // ------------------------------------------
 
-static int hrtimer_dev_open(struct inode *inode, struct file *filp)
+static int timer_dev_open(struct inode *inode, struct file *filp)
 {
   return 0;
 }
 
-static int hrtimer_dev_release(struct inode *inode, struct file *filp)
+static int timer_dev_release(struct inode *inode, struct file *filp)
 {
   return 0;
 }
 
-static ssize_t hrtimer_dev_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
+static ssize_t timer_dev_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
-  if (strnlen(hrtimer_dev_data,sizeof(hrtimer_dev_data)) < count) {
-    count = strnlen(hrtimer_dev_data,sizeof(hrtimer_dev_data));
+  if (strnlen(timer_dev_data_out, sizeof(timer_dev_data_out)) < count) {
+    count = strnlen(timer_dev_data_out, sizeof(timer_dev_data_out));
   }
   // copy data from kernel space to user space
-  __copy_to_user(buf, hrtimer_dev_data, count);
-  hrtimer_dev_data[0] = 0;
+  __copy_to_user(buf, timer_dev_data_out, count);
+  timer_dev_data_out[0] = 0;
   return count;
 }
 
-static ssize_t hrtimer_dev_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
+static ssize_t timer_dev_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
 {
-  if (sizeof(hrtimer_dev_data) < count) {
-    count = sizeof(hrtimer_dev_data) - 1;
+  if (sizeof(timer_dev_data_in) < count) {
+    count = sizeof(timer_dev_data_in) - 1;
     LOG("ERROR input data dropped\n");
   }
   // copy user data into kernel space
-  __copy_from_user(hrtimer_dev_data, buf, count);
-  hrtimer_dev_data[count] = 0;
-  parse_argument(hrtimer_dev_data);
+  __copy_from_user(timer_dev_data_in, buf, count);
+  timer_dev_data_in[count] = 0;
+  parse_argument(timer_dev_data_in);
   return count;
 }
 
 static void regist_char_device(void)
 {
   // define file operations
-  static struct file_operations hrtimer_dev_fops = {
+  static struct file_operations timer_dev_fops = {
     .owner   = THIS_MODULE,
-    .read    = hrtimer_dev_read,
-    .write   = hrtimer_dev_write,
-    .open    = hrtimer_dev_open,
-    .release = hrtimer_dev_release,
+    .read    = timer_dev_read,
+    .write   = timer_dev_write,
+    .open    = timer_dev_open,
+    .release = timer_dev_release,
   };
   // dynamically allocate a major
-  hrtimer_dev_major = register_chrdev(0, DEVICE_NAME, &hrtimer_dev_fops);
-  if (hrtimer_dev_major < 0) {
+  timer_dev_major = register_chrdev(0, DEVICE_NAME, &timer_dev_fops);
+  if (timer_dev_major < 0) {
     LOG("ERROR cannot register the character device\n");
   } else {
-    hrtimer_dev_class = class_create(THIS_MODULE, DEVICE_NAME);
-    device_create(hrtimer_dev_class, NULL, MKDEV(hrtimer_dev_major, 0), NULL, DEVICE_NAME);
+    timer_dev_class = class_create(THIS_MODULE, DEVICE_NAME);
+    device_create(timer_dev_class, NULL, MKDEV(timer_dev_major, 0), NULL, DEVICE_NAME);
   }
 }
 
 static void unregister_char_device(void)
 {
-  unregister_chrdev(hrtimer_dev_major, DEVICE_NAME);
-  device_destroy(hrtimer_dev_class, MKDEV(hrtimer_dev_major,0));
-  class_unregister(hrtimer_dev_class);
-  class_destroy(hrtimer_dev_class);
+  unregister_chrdev(timer_dev_major, DEVICE_NAME);
+  device_destroy(timer_dev_class, MKDEV(timer_dev_major,0));
+  class_unregister(timer_dev_class);
+  class_destroy(timer_dev_class);
 }
 
 // ------------------------------------------
@@ -383,7 +423,8 @@ static int __init mod_init(void)
   regist_char_device();
 
   // create the timers
-  hrtimer_init(&timer, TIMER_ID, HRTIMER_MODE_ABS);
+  hrtimer_init(&timer, TIMER_ID, TIMER_MODE);
+  timer_running = false;
   // get memory-mapped access to the actuation GPIOs
   map_gpio();
   // create semaphore for the queue

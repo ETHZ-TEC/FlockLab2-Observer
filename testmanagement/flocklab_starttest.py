@@ -99,6 +99,7 @@ def main(argv):
     ssport          = None
     operatingsystem = None
     noimage         = False
+    actuationused   = False
     teststarttime   = 0
 
     imagefiles_to_process = tree.findall('obsTargetConf/image')
@@ -136,7 +137,7 @@ def main(argv):
     if (p.returncode not in (flocklab.SUCCESS, errno.ENOPKG)):
         flocklab.error_logandexit("Error %d when trying to stop a potentially running serial service script: %s" % (p.returncode, str(err).strip()))
     flocklab.stop_gpio_tracing()
-    flocklab.stop_gpio_actuation()
+    flocklab.stop_reset_actuation()
     flocklab.stop_pwr_measurement()
     flocklab.stop_gdb_server()
 
@@ -220,42 +221,21 @@ def main(argv):
     flocklab.tg_act_en()  # make sure actuation is enabled
     if (tree.find('obsGpioSettingConf') != None):
         logger.debug("Found config for GPIO setting.")
-        # Cycle trough all configurations and write them to a file which is then fed to the service.
-        # Create temporary file:
-        (fd, batchfile) = tempfile.mkstemp()
-        f = os.fdopen(fd, 'w')
-        # Cycle through all configs and insert them into file:
         subtree = tree.find('obsGpioSettingConf')
         pinconfs = list(subtree.getiterator("pinConf"))
         settingcount = 0
         resets = []
+        act_events = []
         for pinconf in pinconfs:
-            pin = flocklab.pin_abbr2num(pinconf.find('pin').text)
-            tstart = flocklab.timeformat_xml2timestamp(pinconf.find('absoluteTime/absoluteDateTime').text)
+            pin = pinconf.find('pin').text
             if pinconf.find('pin').text == 'RST':
-                resets.append(tstart)
+                # reset pin comes with absolute timestamps and determine the test start / stop
+                resets.append(flocklab.timeformat_xml2timestamp(pinconf.find('absoluteTime/absoluteDateTime').text))
+                continue
             settingcount = settingcount + 1
-            level = flocklab.level_str2abbr(pinconf.find('level').text)
-            interval = pinconf.find('intervalMicrosecs').text
-            count = pinconf.find('count').text
-            # Get time and bring it into right format:
-            microsecs = pinconf.find('absoluteTime/absoluteMicrosecs').text
-            f.write("%s;%s;%s;%s;%s;%s;\n" %(pin, level, tstart, microsecs, interval, count))
-        f.close()
-        # Feed service with batchfile:
-        #cmd = ['flocklab_gpiosetting', '-addbatch', '--file=%s'%batchfile]
-        #if not debug:
-        #    cmd.append('--quiet')
-        #p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #(out, err) = p.communicate()
-        #if (p.returncode != flocklab.SUCCESS):
-        if False:   # TODO
-            flocklab.tg_off()
-            flocklab.error_logandexit("Error %d when trying to configure GPIO setting service: %s" % (p.returncode, str(err).strip()))
-        else:
-            # Remove batch file:
-            os.remove(batchfile)
-            logger.debug("Configured GPIO setting service.")
+            cmd = flocklab.level_str2abbr(pinconf.find('level').text, pin)
+            microsecs = int(flocklab.parse_float(pinconf.find('offset').text) * 1000000)
+            act_events.append([cmd, microsecs])
         # determine test start
         try:
             teststarttime = int(resets[0])   # 1st reset actuation is the reset release = start of test
@@ -263,6 +243,13 @@ def main(argv):
             logger.debug("Test will run from %s to %s." % (teststarttime, teststoptime))
         except:
             logger.error("Could not determine test start time.")
+        # actuation service required?
+        if settingcount > 0:
+            actuationused = True
+            if flocklab.start_gpio_actuation(teststarttime, act_events) != flocklab.SUCCESS:
+                flocklab.tg_off()
+                flocklab.error_logandexit("Failed to start GPIO actuation service.")
+            logger.debug("GPIO actuation service configured (%u actuations scheduled)." % settingcount)
     else:
         logger.debug("No config for GPIO setting service found.")
 
@@ -303,8 +290,6 @@ def main(argv):
         # move the old log file
         if os.path.isfile(flocklab.tracinglog):
             os.replace(flocklab.tracinglog, flocklab.tracinglog + ".old")
-        # Cycle trough all configurations and write them to a file which is then fed to the service.
-        # Cycle through all configs and insert them into file:
         subtree = tree.find('obsGpioMonitorConf')
         pins = 0x0
         pinlist = subtree.findtext("pins")
@@ -316,6 +301,9 @@ def main(argv):
             offset = flocklab.parse_int(offset)
         else:
             offset = 0
+        # if GPIO actuation service is used, then also trace the SIG pins
+        if actuationused:
+            pins = pins | flocklab.pin_abbr2num("SIG1") | flocklab.pin_abbr2num("SIG2")
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset) != flocklab.SUCCESS:
             flocklab.tg_off()
@@ -326,7 +314,7 @@ def main(argv):
     else:
         logger.debug("No config for GPIO monitoring service found.")
         # make sure the reset pin is actuated
-        flocklab.start_gpio_actuation(teststarttime, teststoptime)
+        flocklab.start_reset_actuation(teststarttime, teststoptime)
 
     # Power profiling ---
     if tree.find('obsPowerprofConf'):

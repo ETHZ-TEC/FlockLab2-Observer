@@ -10,8 +10,10 @@ import sys, os, errno, signal, time, configparser, logging, logging.config, subp
 # pin numbers
 gpio_tg_nrst    = 77
 gpio_tg_prog    = 81
-gpio_tg_sig1    = 75
-gpio_tg_sig2    = 76
+gpio_tg_sig1    = 89
+gpio_tg_sig2    = 88
+gpio_tg_sig1_old= 75  # TODO remove
+gpio_tg_sig2_old= 76  # TODO remove
 gpio_tg_sel0    = 47
 gpio_tg_sel1    = 27
 gpio_tg_nen     = 46
@@ -74,6 +76,7 @@ rl_time_offset  = -0.0037          # rocketlogger is about ~3.7ms behind the act
 # paths
 configfile   = '/home/flocklab/observer/testmanagement/config.ini'
 loggerconf   = '/home/flocklab/observer/testmanagement/logging.conf'
+actuationdev = '/dev/flocklab_act'
 gmtimerstats = '/sys/devices/platform/ocp/ocp:pps_gmtimer/stats'
 tracinglog   = '/home/flocklab/log/fl_logic.log'
 rllog        = '/home/flocklab/log/rocketlogger.log'
@@ -503,16 +506,16 @@ def tg_reset(release=True):
 def pin_abbr2num(abbr=""):
     if not abbr:
         return 0x0
-    abbrdict =    {
-                    'LED1': 0x01,
-                    'LED2': 0x02,
-                    'LED3': 0x04,
-                    'INT1': 0x08,
-                    'INT2': 0x10,
-                    'SIG1': 0x20,
-                    'SIG2': 0x40,
-                    'RST' : 0x80
-                }
+    abbrdict = {
+                'LED1': 0x01,
+                'LED2': 0x02,
+                'LED3': 0x04,
+                'INT1': 0x08,
+                'INT2': 0x10,
+                'SIG1': 0x20,
+                'SIG2': 0x40,
+                'RST' : 0x80
+               }
     try:
         pinnum = abbrdict[abbr.upper()]
     except KeyError:
@@ -526,64 +529,22 @@ def pin_abbr2num(abbr=""):
 # level_str2abbr - Convert a pin level string to its abbreviation
 #
 ##############################################################################
-def level_str2abbr(levelstr=""):
+def level_str2abbr(levelstr="", pin="SIG1"):
     if not levelstr:
         return FAILED
-    strdict =    {
-                    'LOW'   : 'L',
-                    'HIGH'  : 'H',
-                    'TOGGLE': 'T'
-                }
+    strdict = {
+                'LOW'   : 'L',
+                'HIGH'  : 'H',
+                'TOGGLE': 'T',
+              }
     try:
         abbr = strdict[levelstr.upper()]
     except KeyError:
         return ""
-    
+    if pin == "SIG2":
+        abbr = abbr.lower()
     return abbr
 ### END level_str2abbr()
-
-
-##############################################################################
-#
-# edge_str2abbr - Convert a pin edge string to its abbreviation
-#
-##############################################################################
-def edge_str2abbr(edgestr=""):
-    if not edgestr:
-        return FAILED
-    strdict =    {
-                    'RISING' : 'R',
-                    'FALLING': 'F',
-                    'BOTH'   : 'B'
-                }
-    try:
-        abbr = strdict[edgestr.upper()]
-    except KeyError:
-        return ""
-    
-    return abbr
-### END edge_str2abbr()
-
-
-##############################################################################
-#
-# gpiomon_mode_str2abbr - Convert a GPIO monitoring mode string to its abbreviation
-#
-##############################################################################
-def gpiomon_mode_str2abbr(modestr=""):
-    if not modestr:
-        return FAILED
-    strdict =    {
-                    'CONTINUOUS' : 'C',
-                    'SINGLE'     : 'S'
-                }
-    try:
-        abbr = strdict[modestr.upper()]
-    except KeyError:
-        return ""
-    
-    return abbr
-### END gpiomon_mode_str2abbr()
 
 
 ##############################################################################
@@ -825,10 +786,41 @@ def stop_gpio_tracing(timeout=30):
 # start_gpio_actuation
 #
 ##############################################################################
-def start_gpio_actuation(start_time=0, stop_time=0):
-    cmd = ["fl_act", "%d" % start_time, "%d" % stop_time]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    # do not call communicate(), it will block
+def start_gpio_actuation(start_time=None, act_events=[]):
+    if not start_time or not isinstance(act_events, list) or len(act_events) == 0 or not isinstance(act_events[0], list):
+        return FAILED
+    # check whether the kernel module is loaded
+    if not os.path.exists(actuationdev):
+        if logger:
+            logger.warning("GPIO actuation kernel module is not running.")
+        return FAILED
+    # Sort the events
+    act_events.sort(key=lambda pair: pair[1])
+    act_cmd = ""
+    last_event = 0
+    for evt in act_events:
+        if len(evt) != 2:
+            if logger:
+                logger.warning("Invalid argument in act_events.")
+            return FAILED
+        act_cmd += "%c%u " % (evt[0], (evt[1] - last_event))    # only send the time difference to the previous event
+        last_event = evt[1]
+    # Append the start command
+    act_cmd += "S%u" % (start_time)
+    if logger:
+        logger.debug("Configuring GPIO actuation service with command: '%s'" % act_cmd);
+    # write the command string into the actuation device
+    with open(actuationdev, 'w') as f:
+        f.write(act_cmd)
+    time.sleep(0.1)
+    # check return code
+    ret = ""
+    with open(actuationdev, 'r') as f:
+        ret = f.read()
+    if "OK" not in ret:
+        if logger:
+            logger.error("Configuration of GPIO actuation service failed.")
+        return FAILED
     return SUCCESS
 ### END start_gpio_actuation()
 
@@ -839,13 +831,49 @@ def start_gpio_actuation(start_time=0, stop_time=0):
 #
 ##############################################################################
 def stop_gpio_actuation():
+    if not os.path.exists(actuationdev):
+        return SUCCESS    # treat as success since service is not running anymore
+    with open(actuationdev, 'w') as f:
+        f.write("C")
+    time.sleep(0.1)
+    # check return code
+    ret = ""
+    with open(actuationdev, 'r') as f:
+        ret = f.read()
+    if "OK" not in ret:
+        if logger:
+            logger.error("Failed to stop GPIO actuation service.")
+        return FAILED
+    return SUCCESS
+### END stop_gpio_actuation()
+
+
+##############################################################################
+#
+# start_reset_actuation
+#
+##############################################################################
+def start_reset_actuation(start_time=0, stop_time=0):
+    cmd = ["fl_act", "%d" % start_time, "%d" % stop_time]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    # do not call communicate(), it will block
+    return SUCCESS
+### END start_reset_actuation()
+
+
+##############################################################################
+#
+# stop_reset_actuation
+#
+##############################################################################
+def stop_reset_actuation():
     pid = get_pid("fl_act")
     if pid > 0:
         os.kill(int(pid), signal.SIGTERM)
         if logger:
             logger.debug("SIGTERM sent to fl_act.")
     return SUCCESS
-### END stop_gpio_actuation()
+### END stop_reset_actuation()
 
 
 ##############################################################################
@@ -956,3 +984,20 @@ def parse_int(s):
                 logger.warn("Could not parse %s to int." % (str(s)))
     return res
 ### END parse_int()
+
+
+##############################################################################
+#
+# parse_float()   parses a string to float
+#
+##############################################################################
+def parse_float(s):
+    res = 0.0
+    if s:
+        try:
+            res = float(s.strip())
+        except ValueError:
+            if logger:
+                logger.warn("Could not parse %s to float." % (str(s)))
+    return res
+### END parse_float()
