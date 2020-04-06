@@ -370,7 +370,7 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* st
   // adjust the start time if necessary
   currtime = time(NULL);
   if (currtime > *starttime) {
-    fl_log(LOG_INFO, "start time adjusted to %lu", currtime);
+    fl_log(LOG_WARNING, "start time adjusted to %lu", currtime);
     *starttime = currtime;
   }
 
@@ -436,7 +436,7 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* st
   // adjust the stop time if necessary
   currtime = time(NULL) - 1;
   if (currtime > *stoptime) {
-    fl_log(LOG_INFO, "stop time adjusted to %lu", currtime);
+    fl_log(LOG_WARNING, "stop time adjusted to %lu", currtime);
     *stoptime = currtime;
   }
   __sync_synchronize();

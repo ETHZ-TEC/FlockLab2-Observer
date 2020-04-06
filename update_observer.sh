@@ -67,6 +67,20 @@ do
                 echo "Failed!"
             fi
         fi
+        if [[ $RES = *actuation* ]]; then
+            echo "Installing new actuation service module... "
+            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/various/actuation && sudo make install'
+            if [ $? -ne 0 ]; then
+                echo "Failed!"
+            fi
+        fi
+        if [[ $RES = *device_tree_overlay* ]]; then
+            echo "Installing new device tree overlay... "
+            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/device_tree_overlay && sudo ./install'
+            if [ $? -ne 0 ]; then
+                echo "Failed!"
+            fi
+        fi
         if [[ $RES = *rocketlogger/* ]]; then
             echo "Compiling and installing new RocketLogger software... "
             ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/rocketlogger && sudo make install'

@@ -19,31 +19,32 @@
 
 // --- CONFIG ---
 
-#define MODULE_NAME         "[FlockLab act] "  // prefix for log printing
-#define DEVICE_NAME         "flocklab_act"     // name of the device in '/dev/'
-#define TIMER_MODE          HRTIMER_MODE_ABS   // absolute or relative
-#define TIMER_ID            CLOCK_REALTIME     // realtime or monotonic
-#define MIN_PERIOD          10                 // minimum time between two consecutive actuation events, in microseconds
-#define DEVICE_BUFFER_SIZE  4096               // max. buffer size for character device
-#define EVENT_QUEUE_SIZE    256                // limits the max. number of actuations that can be registered at a time; must be a power of 2
-#define FLOCKLAB_SIG1_PIN   89                 // P8.30
-#define FLOCKLAB_SIG2_PIN   88                 // P8.28
+#define MODULE_NAME         "[FlockLab act] "   // prefix for log printing
+#define DEVICE_NAME         "flocklab_act"      // name of the device in '/dev/'
+#define TIMER_MODE          HRTIMER_MODE_ABS    // absolute or relative
+#define TIMER_ID            CLOCK_REALTIME      // realtime or monotonic
+#define MIN_PERIOD          10                  // minimum time between two consecutive actuation events, in microseconds
+#define DEVICE_BUFFER_SIZE  4096                // max. buffer size for character device
+#define EVENT_QUEUE_SIZE    256                 // limits the max. number of actuations that can be registered at a time; must be a power of 2
+#define FLOCKLAB_SIG1_PIN   89                  // P8.30
+#define FLOCKLAB_SIG2_PIN   88                  // P8.28
 #define DEBUG               0
 
 
 // --- MACROS / DEFINES ---
 
-#define TIMER_NOW_NS()      ktime_get_ns()        // = ktime_to_ns(ktime_get())
-#define TIMER_NOW_TS(t)     getnstimeofday(&t);   // returns a timespec struct
+#define TIMER_NOW_NS()      ktime_get_ns()      // = ktime_to_ns(ktime_get())
+#define TIMER_NOW_TS(t)     getnstimeofday(&t); // returns a timespec struct
 
-#define GPIO0_START_ADDR    0x44E07000            // see am335x RM p.180
+#define GPIO0_START_ADDR    0x44E07000          // see am335x RM p.180
 #define GPIO1_START_ADDR    0x4804C000
 #define GPIO2_START_ADDR    0x481AC000
 #define GPIO3_START_ADDR    0x481AE000
 #define GPIO_MEM_SIZE       0x2000
-#define GPIO_OE_OFS         0x134
-#define GPIO_SET_OFS        0x194
-#define GPIO_CLR_OFS        0x190
+#define GPIO_OE_OFS         0x134               // output enable
+#define GPIO_DI_OFS         0x138               // read data input
+#define GPIO_CLR_OFS        0x190               // set data output low
+#define GPIO_SET_OFS        0x194               // set data output high
 #define PIN_TO_BITMASK(p)   (1 << ((p) & 31))
 
 #if FLOCKLAB_SIG1_PIN < 32
@@ -99,6 +100,7 @@ static char          timer_dev_data_out[32];              // buffer to hold the 
 
 static volatile unsigned int* gpio_set_addr = NULL;
 static volatile unsigned int* gpio_clr_addr = NULL;
+static volatile unsigned int* gpio_di_addr  = NULL;
 
 
 // --- FUNCTIONS ---
@@ -117,20 +119,30 @@ static void gpio_clr(uint32_t pin)
   }
 }
 
+static void gpio_toggle(uint32_t pin)
+{
+  uint32_t pinmask;
+  if (gpio_di_addr && pin) {
+    pinmask = PIN_TO_BITMASK(pin);
+    if (*gpio_di_addr & pinmask) {
+      *gpio_clr_addr = pinmask;
+    } else {
+      *gpio_set_addr = pinmask;
+    }
+  }
+}
+
 static void map_gpio(void)
 {
-  volatile void*         gpio_addr_mapped;
-  volatile unsigned int* gpio_oe_addr;
-
+  volatile void* gpio_addr_mapped;
   gpio_addr_mapped = ioremap(GPIO_ADDR, GPIO_MEM_SIZE);
-  gpio_oe_addr     = gpio_addr_mapped + GPIO_OE_OFS;
-  gpio_set_addr    = gpio_addr_mapped + GPIO_SET_OFS;
-  gpio_clr_addr    = gpio_addr_mapped + GPIO_CLR_OFS;
-
   if (gpio_addr_mapped == 0) {
     LOG("ERROR unable to map GPIO\n");
     return;
   }
+  gpio_set_addr = gpio_addr_mapped + GPIO_SET_OFS;
+  gpio_clr_addr = gpio_addr_mapped + GPIO_CLR_OFS;
+  gpio_di_addr  = gpio_addr_mapped + GPIO_DI_OFS;
   LOG_DEBUG("GPIO peripheral address mapped to 0x%p\n", gpio_addr_mapped);
 }
 
@@ -224,11 +236,12 @@ static enum hrtimer_restart timer_expired(struct hrtimer* tim)
 {
   do {
     if (next_evt) {
-      if (next_evt->lvl) {
+      if (next_evt->lvl == 1) {
         gpio_set(next_evt->pin);
-      }
-      if ((next_evt->lvl & 1) == 0) {
+      } else if (next_evt->lvl == 0) {
         gpio_clr(next_evt->pin);
+      } else if (next_evt->lvl == 2) {
+        gpio_toggle(next_evt->pin);
       }
       LOG_DEBUG("GPIO level set\n");
     }
