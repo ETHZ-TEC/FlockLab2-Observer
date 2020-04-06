@@ -41,8 +41,7 @@
 #define GPIO2_START_ADDR    0x481AC000
 #define GPIO3_START_ADDR    0x481AE000
 #define GPIO_MEM_SIZE       0x2000
-#define GPIO_OE_OFS         0x134               // output enable
-#define GPIO_DI_OFS         0x138               // read data input
+#define GPIO_DO_OFS         0x13C               // data output register
 #define GPIO_CLR_OFS        0x190               // set data output low
 #define GPIO_SET_OFS        0x194               // set data output high
 #define PIN_TO_BITMASK(p)   (1 << ((p) & 31))
@@ -100,7 +99,6 @@ static char          timer_dev_data_out[32];              // buffer to hold the 
 
 static volatile unsigned int* gpio_set_addr = NULL;
 static volatile unsigned int* gpio_clr_addr = NULL;
-static volatile unsigned int* gpio_di_addr  = NULL;
 
 
 // --- FUNCTIONS ---
@@ -121,10 +119,11 @@ static void gpio_clr(uint32_t pin)
 
 static void gpio_toggle(uint32_t pin)
 {
+  // note: reading the GPIO_SETDATAOUT or CLEARDATAOUT returns the value of the data output register (GPIO_DATAOUT)
   uint32_t pinmask;
-  if (gpio_di_addr && pin) {
+  if (gpio_set_addr && pin) {
     pinmask = PIN_TO_BITMASK(pin);
-    if (*gpio_di_addr & pinmask) {
+    if (*gpio_set_addr & pinmask) {
       *gpio_clr_addr = pinmask;
     } else {
       *gpio_set_addr = pinmask;
@@ -142,7 +141,6 @@ static void map_gpio(void)
   }
   gpio_set_addr = gpio_addr_mapped + GPIO_SET_OFS;
   gpio_clr_addr = gpio_addr_mapped + GPIO_CLR_OFS;
-  gpio_di_addr  = gpio_addr_mapped + GPIO_DI_OFS;
   LOG_DEBUG("GPIO peripheral address mapped to 0x%p\n", gpio_addr_mapped);
 }
 

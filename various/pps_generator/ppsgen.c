@@ -24,7 +24,6 @@
 // --- CONFIG / DEFINES ---
 
 #define MODULE_NAME         "[ppsgen] "  // prefix for log printing
-#define DEVICE_NAME         "ppsgen"     // name of the device in '/dev/'
 #define PIN_NUMBER          60           // pin to toggle, 60 = P9.12
 
 
