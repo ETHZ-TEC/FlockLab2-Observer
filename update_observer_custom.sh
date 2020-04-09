@@ -29,10 +29,10 @@ do
     REMOVE_FILES="sudo rm -r /usr/local/lib/python2.7/dist-packages/python_msp430_tools-0.6.egg-info"
 
     # choose the command to execute
-    COMMAND=$UPDATE_REPO_FILES
-    ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
+    #COMMAND=$LIST_DIR
+    #ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
     # or update repository files:
-    #rsync ${RSYNCPARAMS} -q -e "ssh -q -p ${PORT}" . ${USER}@${HOSTPREFIX}${OBS}:observer 2>&1
+    rsync ${RSYNCPARAMS} -q -e "ssh -q -p ${PORT}" . ${USER}@${HOSTPREFIX}${OBS}:observer 2>&1
     if [ $? -eq 0 ]; then
         echo "successfully updated observer ${OBS}"
     else

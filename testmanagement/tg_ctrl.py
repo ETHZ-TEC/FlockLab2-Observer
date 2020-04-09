@@ -75,6 +75,7 @@ def main(argv):
         elif opt in ("-p", "--power"):
             if flocklab.tg_pwr_state() > 0:
                 print("power state: ON")
+                print("target voltage: %.3fV" % flocklab.tg_get_vcc())
             else:
                 print("power state: OFF")
         elif opt in ("-r", "--reset"):
