@@ -65,9 +65,11 @@ def main(argv):
         if opt in ("-e", "--enable"):
             flocklab.tg_en(True)
             flocklab.tg_pwr_en(True)
+            print("target enabled")
         elif opt in ("-d", "--disable"):
             flocklab.tg_pwr_en(False)
             flocklab.tg_en(False)
+            print("target disabled")
         elif opt in ("-p", "--power"):
             if flocklab.tg_pwr_state() > 0:
                 print("power state: ON")
@@ -75,6 +77,7 @@ def main(argv):
                 print("power state: OFF")
         elif opt in ("-r", "--reset"):
             flocklab.tg_reset()
+            print("target reset")
         elif opt in ("-t", "--target"):
             print("active target slot: %d" % flocklab.tg_get_selected())
         elif opt in ("-s", "--select", "--sel"):
@@ -83,25 +86,32 @@ def main(argv):
                 if ((target < 1) or (target > 4)):
                     raise ValueError
                 flocklab.tg_select(target)
+                print("target %d selected" % target)
             except:
-                print("Invalid target slot")
+                print("invalid target slot")
         elif opt in ("-v", "--vcc", "--voltage"):
             try:
                 vcc = float(arg)
                 if flocklab.tg_set_vcc(vcc) != flocklab.SUCCESS:
                     print("Failed to set target voltage.")
+                else:
+                    print("target voltage set to %.3fV" % vcc)
             except:
-                print("Invalid voltage")
+                print("invalid voltage")
         elif opt in ("-m", "--mux"):
             if arg.lower() in ("e", "en", "enable", "1", "on"):
                 flocklab.tg_mux_en(True)
+                print("MUX enabled")
             else:
                 flocklab.tg_mux_en(False)
+                print("MUX disabled")
         elif opt in ("-a", "--act", "--actuation"):
             if arg.lower() in ("e", "en", "enable", "1", "on"):
                 flocklab.tg_act_en(True)
+                print("actuation enabled")
             else:
                 flocklab.tg_act_en(False)
+                print("actuation disabled")
         elif opt in ("-h", "--help"):
             usage()
             sys.exit(flocklab.SUCCESS)
