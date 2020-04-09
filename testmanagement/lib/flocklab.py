@@ -578,14 +578,13 @@ def tg_set_vcc(v=tg_vcc_default):
       
     bus = smbus.SMBus(2)  # I2C2
     
-    DEVICE_ADDR = 0x60
+    DEVICE_ADDR = 0x60    # device part number: MCP47CVB01-E/MF
     DEVICE_REG  = 0x0
     VREF        = 800     # mV
-    VDD         = 3375    # mV
+    VDD         = 3300    # mV
     R11         = 12      # kOhm
     R12         = 11.5    # kOhm
     R13         = 4.7     # kOhm
-    
     R12R11      = R12 / R11
     R11R13      = (R11 + R13) / R13
     
@@ -598,6 +597,32 @@ def tg_set_vcc(v=tg_vcc_default):
     
     return SUCCESS
 ### END tg_set_vcc()
+
+
+##############################################################################
+#
+# tg_get_vcc - read the configured target voltage value
+#
+##############################################################################
+def tg_get_vcc():
+    bus = smbus.SMBus(2)  # I2C2
+    DEVICE_ADDR = 0x60    # device part number: MCP47CVB01-E/MF
+    DEVICE_REG  = 0x0
+    VREF        = 800     # mV
+    VDD         = 3300    # mV
+    R11         = 12      # kOhm
+    R12         = 11.5    # kOhm
+    R13         = 4.7     # kOhm
+    R12R11      = R12 / R11
+    R11R13      = (R11 + R13) / R13
+    try:
+        res = bus.read_word_data(DEVICE_ADDR, DEVICE_REG)
+    except (IOError) as e:
+        return FAILED
+    v_dac = ((float(res) / 256) * VDD) / 255
+    vcc = int((VREF - v_dac) / R12R11 + (VREF * R11R13)) / 1000
+    return vcc
+### END tg_get_vcc()
 
 
 ##############################################################################
