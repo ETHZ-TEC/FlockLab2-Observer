@@ -214,10 +214,9 @@ def main(argv):
     elif len(imagepath) > 0:
         logger.warn("Could not flash target with default image because slot number and/or platform could not be determined.")
     
-    # Set voltage to 3.3V, turn target off ---
+    # Set voltage to 3.3V, turn target off (cut all connections) ---
     flocklab.tg_set_vcc()
-    flocklab.tg_pwr_en(False)
-    flocklab.tg_en(False)
+    flocklab.tg_off()
     
     # Remove config directory ---
     testconfigpath = "%s/%d" % (config.get("observer", "testconfigfolder"), testid)

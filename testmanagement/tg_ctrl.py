@@ -68,8 +68,10 @@ def main(argv):
             print("target enabled")
         elif opt in ("-d", "--disable"):
             flocklab.tg_pwr_en(False)
+            flocklab.tg_act_en(False)
             flocklab.tg_en(False)
             print("target disabled")
+            print("actuation disabled")
         elif opt in ("-p", "--power"):
             if flocklab.tg_pwr_state() > 0:
                 print("power state: ON")
