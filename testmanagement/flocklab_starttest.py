@@ -161,8 +161,8 @@ def main(argv):
             (out, err) = p.communicate()
             if (p.returncode != flocklab.SUCCESS):
                 flocklab.tg_off()
-                #shutil.move(image, '/tmp/failed_image_%s' % os.path.basename(image))
-                #logger.debug("Moved file to /tmp. Command was: %s." % cmd)
+                shutil.move(image, '/tmp/failed_image_%s' % os.path.basename(image))
+                logger.debug("Moved file to /tmp. Command was: %s" % (" ".join(cmd)))
                 logger.debug("Programming failed. Output of script:\n%s" % (out.strip()))
                 flocklab.error_logandexit("Error %d when programming target image:\n%s" % (p.returncode, err.strip()))
             logger.debug("Programmed target with image %s" % (image))

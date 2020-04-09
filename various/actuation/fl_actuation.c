@@ -23,11 +23,13 @@
 #define DEVICE_NAME         "flocklab_act"      // name of the device in '/dev/'
 #define TIMER_MODE          HRTIMER_MODE_ABS    // absolute or relative
 #define TIMER_ID            CLOCK_REALTIME      // realtime or monotonic
+#define TIMER_OFS_US        -100                // timer offset compensation in microseconds, applies to the start marker only
 #define MIN_PERIOD          10                  // minimum time between two consecutive actuation events, in microseconds
 #define DEVICE_BUFFER_SIZE  4096                // max. buffer size for character device
 #define EVENT_QUEUE_SIZE    256                 // limits the max. number of actuations that can be registered at a time; must be a power of 2
-#define FLOCKLAB_SIG1_PIN   89                  // P8.30
-#define FLOCKLAB_SIG2_PIN   88                  // P8.28
+#define FLOCKLAB_SIG1_PIN   89                  // P8.30 -> must be configured as GPIO output
+#define FLOCKLAB_SIG2_PIN   88                  // P8.28 -> must be configured as GPIO output
+#define FLOCKLAB_nRST_PIN   77                  // P8.40 -> must be configured as GPIO output
 #define DEBUG               0
 
 
@@ -64,8 +66,8 @@
 #endif /* DEBUG */
 
 // error checking
-#if FLOCKLAB_SIG1_PIN / 32 != FLOCKLAB_SIG2_PIN / 32
-  #error "SIG1 and SIG2 must be on the same GPIO port"
+#if (FLOCKLAB_SIG1_PIN / 32 != FLOCKLAB_SIG2_PIN / 32) || (FLOCKLAB_SIG1_PIN / 32 != FLOCKLAB_nRST_PIN / 32)
+  #error "SIG1, SIG2 and nRST must be on the same GPIO port"
 #endif
 #if (EVENT_QUEUE_SIZE & (EVENT_QUEUE_SIZE - 1))
   #error "EVENT_QUEUE_SIZE must be a power of 2"
@@ -314,7 +316,9 @@ static void parse_argument(const char* arg)
             val += now.tv_sec;
           }
           if (val > now.tv_sec) {
-            timer_set(ktime_set(val, 0));
+            ktime_t t_start;
+            t_start = ktime_set(val, 0) + (TIMER_OFS_US * 1000);
+            timer_set(t_start);
             LOG("start time set to %u, queue size is %u\n", val, queue_size());
           }
         } else {
@@ -326,6 +330,9 @@ static void parse_argument(const char* arg)
       LOG("cancel command received\n");
       hrtimer_cancel(&timer);
       clear_queue();
+      // set SIG pins back to default state
+      gpio_clr(FLOCKLAB_SIG1_PIN);
+      gpio_clr(FLOCKLAB_SIG2_PIN);
       timer_running = false;
       errcnt = 0;
 
@@ -348,6 +355,13 @@ static void parse_argument(const char* arg)
       // an offset in microseconds is expected (max offset: ~4200s)
       val = parse_uint32(arg + 1);
       if (!add_event((uint32_t)val, (*arg == 'T') ? FLOCKLAB_SIG1_PIN : FLOCKLAB_SIG2_PIN, 2)) {
+        errcnt++;
+      }
+    } else if (*arg == 'R' || *arg == 'r') {
+      // reset pin actuation
+      // an offset in microseconds is expected (max offset: ~4200s)
+      val = parse_uint32(arg + 1);
+      if (!add_event((uint32_t)val, FLOCKLAB_nRST_PIN, (*arg == 'R'))) {
         errcnt++;
       }
     }
@@ -433,7 +447,7 @@ static int __init mod_init(void)
 {
   regist_char_device();
 
-  // create the timers
+  // create the timer
   hrtimer_init(&timer, TIMER_ID, TIMER_MODE);
   timer_running = false;
   // get memory-mapped access to the actuation GPIOs
