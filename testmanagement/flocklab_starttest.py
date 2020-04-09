@@ -145,7 +145,7 @@ def main(argv):
     flocklab.tg_on()
 
     # Pull down GPIO setting lines ---
-    if flocklab.gpio_clr(flocklab.gpio_tg_sig1) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2) != flocklab.SUCCESS:
+    if (flocklab.gpio_clr(flocklab.gpio_tg_sig1) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2) != flocklab.SUCCESS) and (flocklab.gpio_clr(flocklab.gpio_tg_sig1_old) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2_old) != flocklab.SUCCESS):   #TODO remove old pins
         flocklab.tg_off()
         flocklab.error_logandexit("Failed to set GPIO lines")
 
