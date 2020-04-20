@@ -65,7 +65,6 @@
 
 static struct hrtimer timer;      // realtime timer
 static ktime_t        t_period;   // timer period, only used for the monotonic timer
-static ktime_t        t_prev;
 
 static volatile unsigned int* gpio_set_addr = NULL;
 static volatile unsigned int* gpio_clr_addr = NULL;
@@ -106,7 +105,9 @@ static void map_gpio(void)
 // timer callback function
 static enum hrtimer_restart timer_expired(struct hrtimer *tim)
 {
-  static bool prev_state = false;
+  static bool    prev_state = false;
+  static ktime_t t_prev = 0;
+
   struct   timespec ts_now;
   ktime_t  t_next;
   uint32_t delta;
@@ -134,9 +135,11 @@ static enum hrtimer_restart timer_expired(struct hrtimer *tim)
     int32_t deviation;
     ktime_t t_now;
     t_now = ktime_set(ts_now.tv_sec, ts_now.tv_nsec);
-    deviation = (int32_t)(t_now - t_prev - t_period) / 1000;  /* convert to us */
-    /* calc diff to next full second */
-    printk(PRINT_PREFIX "%dus deviation, wait time: %uns\n", deviation, delta);
+    if (t_prev) {
+      deviation = (int32_t)(t_now - t_prev - t_period) / 1000;  /* convert to us */
+      /* calc diff to next full second */
+      printk(PRINT_PREFIX "%dus deviation, wait time: %uns\n", deviation, delta);
+    }
     t_prev = t_now;
     t_next = (DUTY_CYCLE * 10000000);   /* convert to ns */
   } else {
@@ -154,10 +157,10 @@ static void timer_start(void)
   // make sure the timer is not running anymore
   hrtimer_cancel(&timer);
   timer.function = timer_expired;
-  getnstimeofday(&t_start);
-  t_prev = ktime_set(t_start.tv_sec, 0) + TIME_OFFSET;
+  ktime_get_real_ts(&t_start);
   t_period = ktime_set(1, 0);
-  hrtimer_start(&timer, t_prev, HRTIMER_MODE_ABS);
+  // wait for the next full second
+  hrtimer_start(&timer, ktime_set(t_start.tv_sec + 1, 0) + TIME_OFFSET, HRTIMER_MODE_ABS);
 }
 
 // ------------------------------------------
