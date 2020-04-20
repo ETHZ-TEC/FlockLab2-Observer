@@ -14,12 +14,13 @@
 #include <linux/uaccess.h>
 #include <linux/device.h>
 #include <linux/semaphore.h>
+#include <linux/delay.h>
 #include <asm/io.h>
 
 
 // --- CONFIG ---
 
-#define MODULE_NAME         "[FlockLab act] "   // prefix for log printing
+#define MODULE_NAME         "FlockLab act: "    // prefix for log printing
 #define DEVICE_NAME         "flocklab_act"      // name of the device in '/dev/'
 #define TIMER_MODE          HRTIMER_MODE_ABS    // absolute or relative
 #define TIMER_ID            CLOCK_REALTIME      // realtime or monotonic
@@ -30,13 +31,12 @@
 #define FLOCKLAB_SIG1_PIN   89                  // P8.30 -> must be configured as GPIO output
 #define FLOCKLAB_SIG2_PIN   88                  // P8.28 -> must be configured as GPIO output
 #define FLOCKLAB_nRST_PIN   77                  // P8.40 -> must be configured as GPIO output
+#define FLOCKLAB_PPS_PIN    66                  // P8.07 -> must be configured as GPIO output
+#define PPS_MAX_WAIT_TIME   0 //220000              // max. time to wait before actuating the PPS pin, in ns (set to 0 to disable this feature)
 #define DEBUG               0
 
 
 // --- MACROS / DEFINES ---
-
-#define TIMER_NOW_NS()      ktime_get_ns()      // = ktime_to_ns(ktime_get())
-#define TIMER_NOW_TS(t)     getnstimeofday(&t); // returns a timespec struct
 
 #define GPIO0_START_ADDR    0x44E07000          // see am335x RM p.180
 #define GPIO1_START_ADDR    0x4804C000
@@ -66,7 +66,7 @@
 #endif /* DEBUG */
 
 // error checking
-#if (FLOCKLAB_SIG1_PIN / 32 != FLOCKLAB_SIG2_PIN / 32) || (FLOCKLAB_SIG1_PIN / 32 != FLOCKLAB_nRST_PIN / 32)
+#if (FLOCKLAB_SIG1_PIN / 32 != FLOCKLAB_SIG2_PIN / 32) || (FLOCKLAB_SIG1_PIN / 32 != FLOCKLAB_nRST_PIN / 32) || (FLOCKLAB_SIG1_PIN / 32 != FLOCKLAB_PPS_PIN / 32)
   #error "SIG1, SIG2 and nRST must be on the same GPIO port"
 #endif
 #if (EVENT_QUEUE_SIZE & (EVENT_QUEUE_SIZE - 1))
@@ -105,21 +105,21 @@ static volatile unsigned int* gpio_clr_addr = NULL;
 
 // --- FUNCTIONS ---
 
-static void gpio_set(uint32_t pin)
+static inline void gpio_set(uint32_t pin)
 {
   if (gpio_set_addr && pin) {
     *gpio_set_addr = PIN_TO_BITMASK(pin);
   }
 }
 
-static void gpio_clr(uint32_t pin)
+static inline void gpio_clr(uint32_t pin)
 {
   if (gpio_clr_addr && pin) {
     *gpio_clr_addr = PIN_TO_BITMASK(pin);
   }
 }
 
-static void gpio_toggle(uint32_t pin)
+static inline void gpio_toggle(uint32_t pin)
 {
   // note: reading the GPIO_SETDATAOUT or CLEARDATAOUT returns the value of the data output register (GPIO_DATAOUT)
   uint32_t pinmask;
@@ -130,6 +130,17 @@ static void gpio_toggle(uint32_t pin)
     } else {
       *gpio_set_addr = pinmask;
     }
+  }
+}
+
+static void gpio_update(uint32_t pin, uint32_t level)
+{
+  if (level == 1) {
+    gpio_set(pin);
+  } else if (level == 0) {
+    gpio_clr(pin);
+  } else if (level == 2) {
+    gpio_toggle(pin);
   }
 }
 
@@ -202,14 +213,20 @@ static bool add_event(uint32_t ofs, uint32_t pin, uint32_t level)
 static inline const act_event_t* get_next_event(void)
 {
   const act_event_t* ev = NULL;
-
-  // offset must be at least MIN_PERIOD
   if (queue_empty()) {
     return NULL;
   }
   ev = &event_queue[read_idx];
   read_idx = (read_idx + 1) & (EVENT_QUEUE_SIZE - 1);
   return ev;
+}
+
+static inline uint32_t get_next_event_offset(void)
+{
+  if (queue_empty()) {
+    return 0xffffffff;
+  }
+  return event_queue[read_idx].ofs;
 }
 
 static void clear_queue(void)
@@ -227,31 +244,66 @@ static void clear_queue(void)
 
 static void timer_reset(struct hrtimer* tim, uint32_t period_us)
 {
-  hrtimer_forward(tim, tim->_softexpires, (uint64_t)(period_us) * 1000);      // _softexpires: time that was set for this timer expiration
-  //hrtimer_forward(tim, tim->base->get_time(), period_us * 1000);  // base->get_time() returns current timer value
+  hrtimer_forward(tim, tim->_softexpires, (uint64_t)(period_us) * 1000);
 }
 
 // timer callback function
 static enum hrtimer_restart timer_expired(struct hrtimer* tim)
 {
+  uint32_t extra_ofs = 0;
+
   do {
     if (next_evt) {
-      if (next_evt->lvl == 1) {
-        gpio_set(next_evt->pin);
-      } else if (next_evt->lvl == 0) {
-        gpio_clr(next_evt->pin);
-      } else if (next_evt->lvl == 2) {
-        gpio_toggle(next_evt->pin);
+
+#if PPS_MAX_WAIT_TIME
+
+      /* is it the PPS pin? */
+      if (next_evt->pin == FLOCKLAB_PPS_PIN) {
+        struct   timespec ts_now;
+        uint32_t delta;
+        bool     pps_lvl = next_evt->lvl;
+        // get current UNIX timestamp in nanoseconds
+        ktime_get_real_ts(&ts_now);    // same as getnstimeofday()
+        // calculate time delta to the next full second
+        delta = 1000000000 - (uint32_t)ts_now.tv_nsec;
+        if (delta < PPS_MAX_WAIT_TIME) {
+          // check if the next event is within this time frame
+          uint64_t next_ofs = get_next_event_offset() * 1000;
+          while (next_ofs < delta) {
+            next_evt = get_next_event();
+            // busy wait
+            ndelay(next_evt->ofs);
+            // actuate pin
+            gpio_update(next_evt->pin, next_evt->lvl);
+            // update delta / offset
+            delta     -= next_ofs;
+            extra_ofs += next_evt->ofs;
+            next_ofs   = get_next_event_offset() * 1000;
+          }
+          // busy wait for the remaining time
+          ndelay(delta);
+          gpio_update(FLOCKLAB_PPS_PIN, pps_lvl);
+        }
+        // else: skip this event
+
+      } else {
+        /* regular pin */
+        gpio_update(next_evt->pin, next_evt->lvl);
       }
+#else /* PPS_MAX_WAIT_TIME */
+
+      gpio_update(next_evt->pin, next_evt->lvl);
+
+#endif /* PPS_MAX_WAIT_TIME */
       LOG_DEBUG("GPIO level set\n");
     }
-    /* check if there are more actuations events that should happen now */
+    /* check if there are more actuation events that should happen now */
     next_evt = get_next_event();
   } while (next_evt && next_evt->ofs == 0);
 
   /* if there are more events in the queue, then restart the timer */
   if (next_evt) {
-    timer_reset(tim, next_evt->ofs);
+    timer_reset(tim, next_evt->ofs + extra_ofs);
     return HRTIMER_RESTART;
   } else {
     LOG("timer stopped\n");
@@ -309,7 +361,7 @@ static void parse_argument(const char* arg)
         // get the start time (UNIX timestamp, in seconds)
         val = parse_uint32(arg + 1);
         // is start time in the future?
-        TIMER_NOW_TS(now);
+        getnstimeofday(&now);
         if (val > 0) {
           if (val < 1000) {
             // treat as relative start time
@@ -362,6 +414,13 @@ static void parse_argument(const char* arg)
       // an offset in microseconds is expected (max offset: ~4200s)
       val = parse_uint32(arg + 1);
       if (!add_event((uint32_t)val, FLOCKLAB_nRST_PIN, (*arg == 'R'))) {
+        errcnt++;
+      }
+    } else if (*arg == 'P' || *arg == 'p') {
+      // PPS pin actuation
+      // an offset in microseconds is expected (max offset: ~4200s)
+      val = parse_uint32(arg + 1);
+      if (!add_event((uint32_t)val, FLOCKLAB_PPS_PIN, (*arg == 'P'))) {
         errcnt++;
       }
     }
