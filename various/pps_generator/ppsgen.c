@@ -18,18 +18,23 @@
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/device.h>
+#include <linux/delay.h>
 #include <asm/io.h>
 
 
 // --- CONFIG / DEFINES ---
 
-#define MODULE_NAME         "[ppsgen] "  // prefix for log printing
-#define PIN_NUMBER          60           // pin to toggle, 60 = P9.12
+#define PRINT_PREFIX        "PPS generator: " // prefix for log printing
+#define PIN_NUMBER          60                // pin to toggle, 60 = P9.12
+#define DUTY_CYCLE          10                // in percent
+#define TIME_OFFSET         -130000           // offset in nanoseconds
+#define MAX_WAIT            100000            // max. time to wait for the full second, in nanoseconds
 
 
 // --- MACROS ---
 
-#define TIMER_NOW_NS()      ktime_get_ns()        // = ktime_to_ns(ktime_get())
+#define TIMER_NOW_NS()      ktime_get_ns()        // ktime_to_ns(ktime_get())
+#define TIMER_NOW_NS_REAL() ktime_get_real_ns()   // ktime_to_ns(ktime_get_real())
 
 #define GPIO0_START_ADDR    0x44E07000            // see am335x RM p.180
 #define GPIO1_START_ADDR    0x4804C000
@@ -48,6 +53,11 @@
   #define GPIO_ADDR         GPIO2_START_ADDR
 #else
   #define GPIO_ADDR         GPIO3_START_ADDR
+#endif
+
+// error check
+#if DUTY_CYCLE == 0 || DUTY_CYCLE >= 100
+#error "Invalid DUTY_CYCLE"
 #endif
 
 
@@ -79,16 +89,16 @@ static void gpio_clr(void)
 
 static void map_gpio(void)
 {
-  volatile void*         gpio_addr_mapped;
+  volatile void* gpio_addr_mapped;
   gpio_addr_mapped = ioremap(GPIO_ADDR, GPIO_MEM_SIZE);
 
   if (gpio_addr_mapped == 0) {
-    printk(MODULE_NAME "Unable to map GPIO\n");
+    printk(PRINT_PREFIX "Unable to map GPIO\n");
     return;
   }
   gpio_set_addr = gpio_addr_mapped + GPIO_SET_OFS;
   gpio_clr_addr = gpio_addr_mapped + GPIO_CLR_OFS;
-  printk(MODULE_NAME "GPIO peripheral address mapped to %p\n", gpio_addr_mapped);
+  printk(PRINT_PREFIX "GPIO peripheral address mapped to %p\n", gpio_addr_mapped);
 }
 
 // ------------------------------------------
@@ -97,19 +107,43 @@ static void map_gpio(void)
 static enum hrtimer_restart timer_expired(struct hrtimer *tim)
 {
   static bool prev_state = false;
-  ktime_t t_now;
+  struct   timespec ts_now;
+  ktime_t  t_next;
+  uint32_t delta;
 
-  t_now = TIMER_NOW_NS();
+  ktime_get_real_ts(&ts_now);
+  if (!prev_state) {
+    delta = 1000000000 - (uint32_t)ts_now.tv_nsec;
+    if (delta > MAX_WAIT) {
+      delta = MAX_WAIT;
+    }
+    ndelay(delta);  /* busy wait */
+  }
+
+  /* change the GPIO state */
   prev_state = !prev_state;
   if (prev_state) {
-    gpio_set();
+    gpio_set();   /* rising edge */
   } else {
-    gpio_clr();
+    gpio_clr();   /* falling edge */
   }
-  printk(MODULE_NAME "PPS deviation: %dus\n", (int32_t)(t_now - t_prev - t_period) / 1000);
-  t_prev = t_now;
+
+  /* calculate next wakeup and print some stats */
+  if (prev_state) {
+    /* calc deviation compared to last interrupt */
+    int32_t deviation;
+    ktime_t t_now;
+    t_now = ktime_set(ts_now.tv_sec, ts_now.tv_nsec);
+    deviation = (int32_t)(t_now - t_prev - t_period) / 1000;  /* convert to us */
+    /* calc diff to next full second */
+    printk(PRINT_PREFIX "%dus deviation, wait time: %uns\n", deviation, delta);
+    t_prev = t_now;
+    t_next = (DUTY_CYCLE * 10000000);   /* convert to ns */
+  } else {
+    t_next = t_period - (DUTY_CYCLE * 10000000);
+  }
   // set next expiration time
-  hrtimer_forward(tim, tim->_softexpires, t_period);
+  hrtimer_forward(tim, tim->_softexpires, t_next);
   return HRTIMER_RESTART;
 }
 
@@ -121,7 +155,7 @@ static void timer_start(void)
   hrtimer_cancel(&timer);
   timer.function = timer_expired;
   getnstimeofday(&t_start);
-  t_prev = ktime_set(t_start.tv_sec, 0);
+  t_prev = ktime_set(t_start.tv_sec, 0) + TIME_OFFSET;
   t_period = ktime_set(1, 0);
   hrtimer_start(&timer, t_prev, HRTIMER_MODE_ABS);
 }
@@ -136,7 +170,7 @@ static int __init mod_init(void)
   // create and start the timer
   hrtimer_init(&timer, CLOCK_REALTIME, HRTIMER_MODE_ABS);
   timer_start();
-  printk(MODULE_NAME "module loaded\n");
+  printk(PRINT_PREFIX "module loaded\n");
   return 0;
 }
 
@@ -144,7 +178,7 @@ static int __init mod_init(void)
 static void __exit mod_exit(void)
 {
   hrtimer_cancel(&timer);
-  printk(MODULE_NAME "module removed\n");
+  printk(PRINT_PREFIX "module removed\n");
 }
 
 module_init(mod_init);
