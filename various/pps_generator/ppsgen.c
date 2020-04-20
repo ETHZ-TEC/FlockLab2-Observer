@@ -27,8 +27,8 @@
 #define PRINT_PREFIX        "PPS generator: " // prefix for log printing
 #define PIN_NUMBER          60                // pin to toggle, 60 = P9.12
 #define DUTY_CYCLE          10                // in percent
-#define TIME_OFFSET         -130000           // offset in nanoseconds
-#define MAX_WAIT            100000            // max. time to wait for the full second, in nanoseconds
+#define MAX_WAIT            210000            // max. time to wait for the full second, in nanoseconds
+#define TIME_OFFSET         -(130000 + MAX_WAIT / 2)  // offset in nanoseconds (average offset is ~120us)
 
 
 // --- MACROS ---
