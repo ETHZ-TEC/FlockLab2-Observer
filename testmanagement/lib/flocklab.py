@@ -543,6 +543,11 @@ def level_str2abbr(levelstr="", pin="SIG1"):
         return ""
     if pin == "SIG2":
         abbr = abbr.lower()
+    elif pin == "RST":
+        if abbr == 'H':
+            abbr = 'R'
+        else:
+            abbr = 'r'
     return abbr
 ### END level_str2abbr()
 
@@ -875,34 +880,6 @@ def stop_gpio_actuation():
 
 ##############################################################################
 #
-# start_reset_actuation
-#
-##############################################################################
-def start_reset_actuation(start_time=0, stop_time=0):
-    cmd = ["fl_act", "%d" % start_time, "%d" % stop_time]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    # do not call communicate(), it will block
-    return SUCCESS
-### END start_reset_actuation()
-
-
-##############################################################################
-#
-# stop_reset_actuation
-#
-##############################################################################
-def stop_reset_actuation():
-    pid = get_pid("fl_act")
-    if pid > 0:
-        os.kill(int(pid), signal.SIGTERM)
-        if logger:
-            logger.debug("SIGTERM sent to fl_act.")
-    return SUCCESS
-### END stop_reset_actuation()
-
-
-##############################################################################
-#
 # start_gdb_server
 #
 ##############################################################################
@@ -1003,7 +980,7 @@ def parse_int(s):
     res = 0
     if s:
         try:
-            res = int(float(s.strip())) # higher success rate if first parsed to float
+            res = int(float(str(s).strip())) # higher success rate if first parsed to float
         except ValueError:
             if logger:
                 logger.warn("Could not parse %s to int." % (str(s)))
@@ -1020,7 +997,7 @@ def parse_float(s):
     res = 0.0
     if s:
         try:
-            res = float(s.strip())
+            res = float(str(s).strip())
         except ValueError:
             if logger:
                 logger.warn("Could not parse %s to float." % (str(s)))

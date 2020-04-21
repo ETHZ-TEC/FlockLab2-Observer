@@ -113,11 +113,6 @@ cd ${HOMEDIR}/observer/pru/fl_logic && make install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install fl_logic software." "fl_logic software installed."
 
 ##########################################################
-# install binary for reset actuation
-cd ${HOMEDIR}/observer/various/fl_act && make install > /dev/null 2>> $ERRORLOG
-check_retval "Failed to install fl_act software." "fl_act software installed."
-
-##########################################################
 # install kernel module for GPIO actuation
 cd ${HOMEDIR}/observer/various/actuation && make install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install fl_actuation software." "fl_actuation software installed."

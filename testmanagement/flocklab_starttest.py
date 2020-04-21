@@ -137,7 +137,6 @@ def main(argv):
     if (p.returncode not in (flocklab.SUCCESS, errno.ENOPKG)):
         flocklab.error_logandexit("Error %d when trying to stop a potentially running serial service script: %s" % (p.returncode, str(err).strip()))
     flocklab.stop_gpio_tracing()
-    flocklab.stop_reset_actuation()
     flocklab.stop_pwr_measurement()
     flocklab.stop_gdb_server()
 
@@ -220,7 +219,7 @@ def main(argv):
     # GPIO actuation ---
     flocklab.tg_act_en()  # make sure actuation is enabled
     if (tree.find('obsGpioSettingConf') != None):
-        logger.debug("Found config for GPIO setting.")
+        logger.debug("Found config for GPIO actuation.")
         subtree = tree.find('obsGpioSettingConf')
         pinconfs = list(subtree.getiterator("pinConf"))
         settingcount = 0
@@ -230,7 +229,7 @@ def main(argv):
             pin = pinconf.find('pin').text
             if pinconf.find('pin').text == 'RST':
                 # reset pin comes with absolute timestamps and determine the test start / stop
-                resets.append(flocklab.timeformat_xml2timestamp(pinconf.find('absoluteTime/absoluteDateTime').text))
+                resets.append(pinconf.find('timestamp').text)   # flocklab.timeformat_xml2timestamp()
                 continue
             settingcount = settingcount + 1
             cmd = flocklab.level_str2abbr(pinconf.find('level').text, pin)
@@ -238,11 +237,16 @@ def main(argv):
             act_events.append([cmd, microsecs])
         # determine test start
         try:
-            teststarttime = int(resets[0])   # 1st reset actuation is the reset release = start of test
-            teststoptime  = int(resets[-1])  # last reset actuation is the test stop time
-            logger.debug("Test will run from %s to %s." % (teststarttime, teststoptime))
+            teststarttime = flocklab.parse_int(resets[0])   # 1st reset actuation is the reset release = start of test
+            teststoptime  = flocklab.parse_int(resets[-1])  # last reset actuation is the test stop time
+            # note: in case the tracing service is used, it will override the reset actuation with more precise actuation
+            act_events.append(['R', 0])                                                            # reset high at offset 0
+            act_events.append(['r', flocklab.parse_int((teststoptime - teststarttime) * 1000000)]) # reset low at end of test
+            settingcount = settingcount + 2;
+            logger.debug("Test will run from %u to %u." % (teststarttime, teststoptime))
         except:
-            logger.error("Could not determine test start time.")
+            flocklab.tg_off()
+            flocklab.error_logandexit("Could not determine test start time (%s)." % str(sys.exc_info()[1]))
         # actuation service required?
         if settingcount > 0:
             actuationused = True
@@ -251,7 +255,8 @@ def main(argv):
                 flocklab.error_logandexit("Failed to start GPIO actuation service.")
             logger.debug("GPIO actuation service configured (%u actuations scheduled)." % settingcount)
     else:
-        logger.debug("No config for GPIO setting service found.")
+        flocklab.tg_off()
+        flocklab.error_logandexit("No config for GPIO setting service found. Can't determine test start or stop time.")
 
     # Make sure the test start time is in the future ---
     if int(time.time()) > teststarttime:
@@ -313,8 +318,6 @@ def main(argv):
         logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x, offset: %u)." % (tracingfile, pins, offset))
     else:
         logger.debug("No config for GPIO monitoring service found.")
-        # make sure the reset pin is actuated
-        flocklab.start_reset_actuation(teststarttime, teststoptime)
 
     # Power profiling ---
     if tree.find('obsPowerprofConf'):

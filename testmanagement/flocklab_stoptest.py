@@ -155,7 +155,6 @@ def main(argv):
         logger.debug("Stopped serial service.")
     
     # Reset all remaining services, regardless of previous errors ---
-    flocklab.stop_reset_actuation()
     if flocklab.stop_gpio_tracing() != flocklab.SUCCESS:
         errors.append("Failed to stop GPIO tracing service.")
     else:
