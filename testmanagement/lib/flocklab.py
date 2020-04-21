@@ -650,25 +650,6 @@ def is_sdcard_mounted():
 
 ##############################################################################
 #
-# timeformat_xml2timestamp - Convert between different timeformats of 
-#                            XML config file and FlockLab services
-#
-##############################################################################
-def timeformat_xml2timestamp(timestring=""):
-    if not timestring:
-        return errno.EINVAL
-    try:
-        # First convert time from xml-string to time format:
-        xmltime = time.strptime(timestring, "%Y-%m-%dT%H:%M:%S")
-    except:
-        return ""
-    
-    return time.mktime(xmltime)
-### END timeformat_xml2service()
-
-
-##############################################################################
-#
 # get_pid - returns the PID of the first matching process
 #
 ##############################################################################

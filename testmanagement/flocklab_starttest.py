@@ -229,7 +229,7 @@ def main(argv):
             pin = pinconf.find('pin').text
             if pinconf.find('pin').text == 'RST':
                 # reset pin comes with absolute timestamps and determine the test start / stop
-                resets.append(pinconf.find('timestamp').text)   # flocklab.timeformat_xml2timestamp()
+                resets.append(pinconf.find('timestamp').text)
                 continue
             settingcount = settingcount + 1
             cmd = flocklab.level_str2abbr(pinconf.find('level').text, pin)
