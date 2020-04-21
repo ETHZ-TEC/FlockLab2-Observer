@@ -24,7 +24,7 @@
 #define DEVICE_NAME         "flocklab_act"      // name of the device in '/dev/'
 #define TIMER_MODE          HRTIMER_MODE_ABS    // absolute or relative
 #define TIMER_ID            CLOCK_REALTIME      // realtime or monotonic
-#define TIMER_OFS_US        -100                // timer offset compensation in microseconds, applies to the start marker only
+#define TIMER_OFS_US        -120                // timer offset compensation in microseconds, applies to the start marker only
 #define MIN_PERIOD          10                  // minimum time between two consecutive actuation events, in microseconds
 #define DEVICE_BUFFER_SIZE  4096                // max. buffer size for character device
 #define EVENT_QUEUE_SIZE    256                 // limits the max. number of actuations that can be registered at a time; must be a power of 2
@@ -32,7 +32,7 @@
 #define FLOCKLAB_SIG2_PIN   88                  // P8.28 -> must be configured as GPIO output
 #define FLOCKLAB_nRST_PIN   77                  // P8.40 -> must be configured as GPIO output
 #define FLOCKLAB_PPS_PIN    66                  // P8.07 -> must be configured as GPIO output
-#define PPS_MAX_WAIT_TIME   0 //220000              // max. time to wait before actuating the PPS pin, in ns (set to 0 to disable this feature)
+#define PPS_MAX_WAIT_TIME   220000              // max. time to wait before actuating the PPS pin, in ns (set to 0 to disable this feature)
 #define DEBUG               0
 
 
@@ -257,8 +257,8 @@ static enum hrtimer_restart timer_expired(struct hrtimer* tim)
 
 #if PPS_MAX_WAIT_TIME
 
-      /* is it the PPS pin? */
-      if (next_evt->pin == FLOCKLAB_PPS_PIN) {
+      /* is it the PPS pin? (rising edge only) */
+      if (next_evt->pin == FLOCKLAB_PPS_PIN && next_evt->lvl > 0) {
         struct   timespec ts_now;
         uint32_t delta;
         bool     pps_lvl = next_evt->lvl;
