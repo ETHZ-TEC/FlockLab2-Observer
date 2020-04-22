@@ -535,12 +535,13 @@ def level_str2abbr(levelstr="", pin="SIG1"):
     strdict = {
                 'LOW'   : 'L',
                 'HIGH'  : 'H',
-                'TOGGLE': 'T',
+                'TOGGLE': 'T',    # toggle is only supported for SIG1 and SIG2
               }
     try:
         abbr = strdict[levelstr.upper()]
     except KeyError:
         return ""
+    pin = pin.upper()
     if pin == "SIG2":
         abbr = abbr.lower()
     elif pin == "RST":
@@ -548,8 +549,41 @@ def level_str2abbr(levelstr="", pin="SIG1"):
             abbr = 'R'
         else:
             abbr = 'r'
+    elif pin == "PPS":
+        if abbr == 'H':
+            abbr = 'P'
+        else:
+            abbr = 'p'
     return abbr
 ### END level_str2abbr()
+
+
+##############################################################################
+#
+# generate_periodic_act_events - generates an array with periodic actuation
+#                                events, starting with the rising edge
+#
+# offset is in seconds from the test start (float)
+# period is in seconds (float)
+# duty cycle is the fraction of the period where the signal is high (float)
+# count defines how many periods there are, i.e. # rising edges (int)
+#
+##############################################################################
+def generate_periodic_act_events(pin="SIG1", offset=0.0, period=1.0, duty_cycle=0.5, count=1):
+    if count < 1 or duty_cycle == 0 or duty_cycle > 1.0 or offset < 0.0:
+        return FAILED
+    result = []
+    offset = 1000000 * offset     # convert to us
+    # get command for high and low for the requested pin
+    cmd_high = level_str2abbr('high', pin)
+    cmd_low  = level_str2abbr('low', pin)
+    for c in range(count):
+        result.append([cmd_high, offset])
+        offset = offset + period * 1000000 * duty_cycle
+        result.append([cmd_low, offset])
+        offset = offset + period * 1000000 * (1.0 - duty_cycle)
+    return result
+### END generate_periodic_act_events()
 
 
 ##############################################################################
