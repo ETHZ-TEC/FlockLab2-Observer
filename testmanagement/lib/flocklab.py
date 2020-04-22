@@ -578,9 +578,9 @@ def generate_periodic_act_events(pin="SIG1", offset=0.0, period=1.0, duty_cycle=
     cmd_high = level_str2abbr('high', pin)
     cmd_low  = level_str2abbr('low', pin)
     for c in range(count):
-        result.append([cmd_high, offset])
+        result.append([cmd_high, int(offset)])
         offset = offset + period * 1000000 * duty_cycle
-        result.append([cmd_low, offset])
+        result.append([cmd_low, int(offset)])
         offset = offset + period * 1000000 * (1.0 - duty_cycle)
     return result
 ### END generate_periodic_act_events()
