@@ -190,7 +190,7 @@ def main(argv):
     if tree.find('obsSerialConf') != None:
         logger.debug("Found config for serial service.")
         cmd = [config.get("observer", "serialservice"), '--testid=%d' % testid]
-        if slotnr:
+        if serialport:
             logger.debug("Serial socket port: %d" % serialport)
             cmd.append('--socketport=%d' % (serialport))
         br = tree.findtext('obsSerialConf/baudrate')
@@ -249,6 +249,11 @@ def main(argv):
             flocklab.error_logandexit("Could not determine test start time (%s)." % str(sys.exc_info()[1]))
         # actuation service required?
         if settingcount > 0:
+            # if only two actuations are scheduled, then it's only the reset pins -> disable actuation during the test if debugging service not used
+            if settingcount == 2 and serialport == None and tree.find('obsDebugConf') == None:
+                act_events.append(['A', 1000])    # 1ms after startup
+                act_events.append(['a', flocklab.parse_int((teststoptime - teststarttime) * 1000000) - 1000])    # reactivate actuation just before the end of the test (when the reset pin needs to be pulled low)
+                logger.debug("Actuation will be disabled during the test.")
             actuationused = True
             if flocklab.start_gpio_actuation(teststarttime, act_events) != flocklab.SUCCESS:
                 flocklab.tg_off()

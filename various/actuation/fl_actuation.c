@@ -32,6 +32,7 @@
 #define FLOCKLAB_SIG2_PIN   88                  // P8.28 -> must be configured as GPIO output
 #define FLOCKLAB_nRST_PIN   77                  // P8.40 -> must be configured as GPIO output
 #define FLOCKLAB_PPS_PIN    66                  // P8.07 -> must be configured as GPIO output
+#define FLOCKLAB_ACTnEN_PIN 65                  //
 #define PPS_MAX_WAIT_TIME   220000              // max. time to wait before actuating the PPS pin, in ns (set to 0 to disable this feature)
 #define DEBUG               0
 
@@ -421,6 +422,13 @@ static void parse_argument(const char* arg)
       // an offset in microseconds is expected (max offset: ~4200s)
       val = parse_uint32(arg + 1);
       if (!add_event((uint32_t)val, FLOCKLAB_PPS_PIN, (*arg == 'P'))) {
+        errcnt++;
+      }
+    } else if (*arg == 'A' || *arg == 'a') {
+      // actuation enable pin
+      // an offset in microseconds is expected (max offset: ~4200s)
+      val = parse_uint32(arg + 1);
+      if (!add_event((uint32_t)val, FLOCKLAB_ACTnEN_PIN, (*arg == 'A'))) {
         errcnt++;
       }
     }
