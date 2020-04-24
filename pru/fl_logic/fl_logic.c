@@ -215,20 +215,17 @@ int register_sighandler(void)
 
 void wait_for_start(unsigned long starttime)
 {
-  //struct timespec currtime;
-  unsigned long currtime = time(NULL);
+  struct timespec currtime;
 
-  if (!starttime) {
-    return;
-  }
+  starttime--;  // start 1s earlier
 
-  fl_log(LOG_DEBUG, "waiting for start time... (%lus)", (starttime - time(NULL)));
-  starttime--;
+  clock_gettime(CLOCK_REALTIME, &currtime);
+  uint32_t diff_sec  = (starttime - currtime.tv_sec);
+  uint32_t diff_usec = (1000000 - (currtime.tv_nsec / 1000));
 
-  while (currtime && (currtime < starttime) && running) {
-    // alternatively, use clock_gettime(CLOCK_REALTIME, &currtime)
-    currtime = time(NULL);
-    usleep(100000);         // must be < ~0.5s
+  if ((unsigned long)currtime.tv_sec < starttime) {
+    fl_log(LOG_DEBUG, "waiting for start time... (%us)", diff_sec);
+    usleep((diff_sec - 1) * 1000000 + diff_usec);
   }
 }
 
