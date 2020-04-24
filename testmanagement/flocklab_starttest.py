@@ -63,7 +63,7 @@ def main(argv):
             flocklab.error_logandexit("Invalid option '%s'." % (opt), errno.EINVAL)
 
     # Check for mandatory arguments:
-    if not xmlfile or not testid or not serialport:
+    if not xmlfile or not testid:
         flocklab.error_logandexit("Test ID, XML or serial port missing.", errno.EINVAL)
 
     # init logger
@@ -254,7 +254,8 @@ def main(argv):
                 act_events.append(['A', 1000])    # 1ms after startup
                 act_events.append(['a', flocklab.parse_int((teststoptime - teststarttime) * 1000000) - 1000])    # reactivate actuation just before the end of the test (when the reset pin needs to be pulled low)
                 logger.debug("Actuation will be disabled during the test.")
-            actuationused = True
+            else:
+                actuationused = True
             if flocklab.start_gpio_actuation(teststarttime, act_events) != flocklab.SUCCESS:
                 flocklab.tg_off()
                 flocklab.error_logandexit("Failed to start GPIO actuation service.")
@@ -314,6 +315,7 @@ def main(argv):
         # if GPIO actuation service is used, then also trace the SIG pins
         if actuationused:
             pins = pins | flocklab.pin_abbr2num("SIG1") | flocklab.pin_abbr2num("SIG2")
+            logger.debug("Going to trace SIG pins...")
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset) != flocklab.SUCCESS:
             flocklab.tg_off()
