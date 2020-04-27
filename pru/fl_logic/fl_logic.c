@@ -84,6 +84,7 @@
 #define SPRINTF_BUFFER_LENGTH 256
 #define PIN_NAMES             "LED1", "LED2", "LED3", "INT1", "INT2", "SIG1", "SIG2", "nRST", "PPS"
 #define TG_RST_PIN            "P840"                // GPIO77
+#define PPS_PIN_BITMASK       0x80
 
 
 // PARAMETER CHECK
@@ -493,8 +494,8 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     // update the timestamp
     timestamp_ticks += (sample >> 8);
     // look for changed nRST values
-    if ( (prev_sample & 0x80) != (sample & 0x80) ) {
-      if ((sample & 0x80) > 0) {
+    if ( (prev_sample & PPS_PIN_BITMASK) != (sample & PPS_PIN_BITMASK) ) {
+      if ((sample & PPS_PIN_BITMASK) > 0) {
         // nRST=1
         if (!timestamp_start_obtained) {
           // only store the first occurence
@@ -586,8 +587,6 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
   double   prev_corr_factor     = 0.0;
   bool     wait_for_rising_edge = false;
   bool     end_of_file_found    = false;
-
-#define PPS_PIN_BITMASK     0x80
 
   // open files
   data_file = fopen(filename, "rb");      // binary mode
@@ -681,7 +680,7 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
         wait_for_rising_edge = true;
       }
     }
-  } while (sample && fread(&sample, 4, 1, data_file) && !abort_conversion);
+  } while (!end_of_file_found && fread(&sample, 4, 1, data_file) && !abort_conversion);
 
   if ((stoptime_s + 1) != last_sync_seconds) {
     fl_log(LOG_WARNING, "calculated stop time (%lu) is != real stop time (%lu)", last_sync_seconds, stoptime_s);
