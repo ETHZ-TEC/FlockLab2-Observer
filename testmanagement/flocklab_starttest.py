@@ -311,7 +311,7 @@ def main(argv):
         if offset:
             offset = flocklab.parse_int(offset)
         else:
-            offset = 0
+            offset = 1  # default offset of 1 second to avoid tracing of the erratic toggling at MCU startup
         # if GPIO actuation service is used, then also trace the SIG pins
         if actuationused:
             pins = pins | flocklab.pin_abbr2num("SIG1") | flocklab.pin_abbr2num("SIG2")
