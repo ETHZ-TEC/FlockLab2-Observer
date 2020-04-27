@@ -74,6 +74,7 @@
 #endif
 #define SAMPLING_RATE         10000000              // must match the sampling rate of the PRU
 #define MAX_TIME_SCALING_DEV  0.01                  // max deviation for time scaling (1 +/- x)
+#define MAX_TIME_SCALE_CHANGE 0.00001               // max rate of change for the time scaling factor between two sync points (PPS pulses)
 #define MAX_PRU_DELAY         10000000              // max delay for the PRU startup / stop handshake (in us)
 #define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"     // must be a binary file
 #define DATA_FILENAME_PREFIX  "tracing_data"
@@ -217,6 +218,9 @@ void wait_for_start(unsigned long starttime)
 {
   struct timespec currtime;
 
+  if (starttime == 0) {
+    return;
+  }
   starttime--;  // start 1s earlier
 
   clock_gettime(CLOCK_REALTIME, &currtime);
@@ -564,6 +568,136 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
 }
 
 
+// convert binary tracing data to a csv file (does stepwise scaling)
+void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s, unsigned long stoptime_s)
+{
+  char     buffer[SPRINTF_BUFFER_LENGTH];
+  FILE*    data_file            = NULL;
+  FILE*    csv_file             = NULL;
+  uint32_t sample               = 0;
+  uint32_t prev_sample          = 0;
+  uint32_t line_cnt             = 0;
+  uint32_t sample_cnt           = 0;
+  uint64_t timestamp_ticks      = 0;
+  uint32_t elapsed_ticks        = 0;
+  uint32_t last_sync_filepos    = 0;
+  uint32_t last_sync_seconds    = starttime_s;
+  uint32_t samples_to_read      = 0;
+  double   prev_corr_factor     = 0.0;
+  bool     wait_for_rising_edge = false;
+  bool     end_of_file_found    = false;
+
+#define PPS_PIN_BITMASK     0x80
+
+  // open files
+  data_file = fopen(filename, "rb");      // binary mode
+  sprintf(buffer, "%s.csv", filename);
+  csv_file = fopen(buffer, "w");          // text mode
+  if (NULL == data_file || NULL == csv_file) {
+    fl_log(LOG_ERROR, "failed to open files (%s and/or %s)", filename, csv_file);
+    return;
+  }
+
+  // go through entire file to read timestamps of starting and ending nRST events (used for correction of timestamps)
+  fread(&sample, 4, 1, data_file);  // read the first sample
+  prev_sample = ~sample & 0xff;
+  do {
+    // data valid? -> at least the cycle counter must be > 0
+    if (sample != 0) {
+      elapsed_ticks += (sample >> 8);
+      samples_to_read++;
+    } else {
+      end_of_file_found = true;
+    }
+
+    if (wait_for_rising_edge) {
+      if ((sample & PPS_PIN_BITMASK) != 0 || end_of_file_found) {
+        // --- rising edge found ---
+        if (samples_to_read == 0) {
+          fl_log(LOG_WARNING, "no samples to read!");
+          break;
+        }
+        // calculate the time in seconds
+        uint32_t sec_elapsed = (elapsed_ticks + SAMPLING_RATE / 2) / SAMPLING_RATE;
+        uint32_t sec_now     = last_sync_seconds + sec_elapsed;
+        // calculate the correction factor
+        double corr_factor   = ((double)sec_elapsed / ((double)elapsed_ticks / SAMPLING_RATE));
+        // print info
+        fl_log(LOG_INFO, "correction factor from %u to %u is %.6f", last_sync_seconds, sec_now, corr_factor);
+        if (corr_factor < (1.0 - MAX_TIME_SCALING_DEV) || (corr_factor > (1.0 + MAX_TIME_SCALING_DEV))) {
+          fl_log(LOG_ERROR, "timestamp scaling failed, correction factor %.6f is out of valid range (timestamps are returned unscaled)", corr_factor);
+          corr_factor = 1.0;
+        }
+        // check for deviations in the correction factor
+        double corr_factor_change = corr_factor - prev_corr_factor;
+        if (prev_corr_factor > 0.0 && (corr_factor_change > MAX_TIME_SCALE_CHANGE || corr_factor_change < -MAX_TIME_SCALE_CHANGE)) {
+          fl_log(LOG_WARNING, "correction factor changed from %f to %f between %u and %u (lost samples?)", prev_corr_factor, corr_factor, last_sync_seconds, sec_now);
+        }
+        prev_corr_factor = corr_factor;
+        // go back in the file to the last sync point and read all samples again
+        fseek(data_file, last_sync_filepos, SEEK_SET);
+        elapsed_ticks = 0;
+        while (samples_to_read && fread(&sample, 4, 1, data_file) && !abort_conversion) {
+          // update the timestamp
+          elapsed_ticks   += (sample >> 8);     // ticks since last sync point
+          timestamp_ticks += (sample >> 8);     // total ticks since test start
+          double realtime_time  = (double)sec_now + (double)elapsed_ticks / SAMPLING_RATE * corr_factor;
+          double monotonic_time = (double)timestamp_ticks / SAMPLING_RATE;
+          // go through all pins and check whether there has been a change
+          sample = sample & 0xff;               // remove upper bits (timestamp)
+          uint32_t diff = sample ^ prev_sample; // get changed pins
+          uint32_t idx = 0;
+          bool     first_or_last_sample = (sample_cnt == 0) || (end_of_file_found && samples_to_read == 1);
+          while (diff) {
+            if (diff & 1) {
+              uint32_t pin_state = (sample >> idx) & 1;
+              if (idx == 7 && !first_or_last_sample) {
+                idx++;
+              }
+              // format: timestamp,ticks,pin,state(0/1)
+              sprintf(buffer, "%.7f,%.7f,%s,%u\n", realtime_time, monotonic_time, pin_mapping[idx], pin_state);
+              fwrite(buffer, strlen(buffer), 1, csv_file);
+              line_cnt++;   // # lines written
+            }
+            idx++;
+            diff >>= 1;
+          }
+          prev_sample = sample;
+          sample_cnt++;         // total sample count
+          samples_to_read--;
+        }
+        // update / reset state
+        last_sync_seconds    = sec_now;
+        last_sync_filepos    = ftell(data_file);
+        samples_to_read      = 0;
+        elapsed_ticks        = 0;
+        wait_for_rising_edge = false;   // wait for falling edge
+      }
+
+    } else {
+      // wait for falling edge
+      if ((sample & PPS_PIN_BITMASK) == 0) {
+        // falling edge found
+        wait_for_rising_edge = true;
+      }
+    }
+  } while (sample && fread(&sample, 4, 1, data_file) && !abort_conversion);
+
+  if ((stoptime_s + 1) != last_sync_seconds) {
+    fl_log(LOG_WARNING, "calculated stop time (%lu) is != real stop time (%lu)", last_sync_seconds, stoptime_s);
+  }
+
+  // close files
+  long int parsed_size = ftell(data_file) - 4;
+  fseek(data_file, 0, SEEK_END);
+  long int file_size = ftell(data_file);
+  fclose(data_file);
+  fclose(csv_file);
+  fl_log(LOG_DEBUG, "%ld of %ld bytes parsed", parsed_size, file_size);
+  fl_log(LOG_INFO, "tracing data parsed and stored in %s.csv (%u samples, %u lines)", filename, sample_cnt, line_cnt);
+}
+
+
 // MAIN
 int main(int argc, char** argv)
 {
@@ -659,7 +793,7 @@ int main(int argc, char** argv)
   fl_log(LOG_INFO, "samples stored in %s", filename);
 
   // --- parse data ---
-  parse_tracing_data(filename, starttime, stoptime);
+  parse_tracing_data_stepwise(filename, starttime, stoptime);
 
   fl_log(LOG_DEBUG, "terminated");
 
