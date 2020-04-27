@@ -74,7 +74,7 @@
 #endif
 #define SAMPLING_RATE         10000000              // must match the sampling rate of the PRU
 #define MAX_TIME_SCALING_DEV  0.01                  // max deviation for time scaling (1 +/- x)
-#define MAX_TIME_SCALE_CHANGE 0.00001               // max rate of change for the time scaling factor between two sync points (PPS pulses)
+#define MAX_TIME_SCALE_CHANGE 0.000005              // max rate of change for the time scaling factor between two sync points (PPS pulses)
 #define MAX_PRU_DELAY         10000000              // max delay for the PRU startup / stop handshake (in us)
 #define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"     // must be a binary file
 #define DATA_FILENAME_PREFIX  "tracing_data"
@@ -228,9 +228,11 @@ void wait_for_start(unsigned long starttime)
   uint32_t diff_sec  = (starttime - currtime.tv_sec);
   uint32_t diff_usec = (1000000 - (currtime.tv_nsec / 1000));
 
+  fl_log(LOG_DEBUG, "timestamp now: %u", time(0));
   if ((unsigned long)currtime.tv_sec < starttime) {
-    fl_log(LOG_DEBUG, "waiting for start time... (%us)", diff_sec);
-    usleep((diff_sec - 1) * 1000000 + diff_usec);
+    fl_log(LOG_DEBUG, "waiting for start time... (%us, %uus)", (diff_sec - 1), diff_usec);
+    sleep(diff_sec - 1);
+    usleep(diff_usec + 100000);
   }
 }
 
@@ -622,7 +624,7 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
         // calculate the correction factor
         double corr_factor   = ((double)sec_elapsed / ((double)elapsed_ticks / SAMPLING_RATE));
         // print info
-        fl_log(LOG_INFO, "correction factor from %u to %u is %.6f", last_sync_seconds, sec_now, corr_factor);
+        fl_log(LOG_DEBUG, "correction factor from %u to %u is %.6f", last_sync_seconds, sec_now, corr_factor);
         if (corr_factor < (1.0 - MAX_TIME_SCALING_DEV) || (corr_factor > (1.0 + MAX_TIME_SCALING_DEV))) {
           fl_log(LOG_ERROR, "timestamp scaling failed, correction factor %.6f is out of valid range (timestamps are returned unscaled)", corr_factor);
           corr_factor = 1.0;
@@ -640,7 +642,7 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
           // update the timestamp
           elapsed_ticks   += (sample >> 8);     // ticks since last sync point
           timestamp_ticks += (sample >> 8);     // total ticks since test start
-          double realtime_time  = (double)sec_now + (double)elapsed_ticks / SAMPLING_RATE * corr_factor;
+          double realtime_time  = (double)last_sync_seconds + (double)elapsed_ticks / SAMPLING_RATE * corr_factor;
           double monotonic_time = (double)timestamp_ticks / SAMPLING_RATE;
           // go through all pins and check whether there has been a change
           sample = sample & 0xff;               // remove upper bits (timestamp)
@@ -730,7 +732,12 @@ int main(int argc, char** argv)
     // 2nd argument if given is the start timestamp
     starttime = strtol(argv[2], NULL, 10);
     if (starttime < time(NULL)) {
-      starttime = time(NULL) + 2;    // invalid start time -> start in 2 seconds
+      if (starttime < 1000) {       // allow offsets of less than 1000s
+        starttime = time(NULL) + 2;    // invalid start time -> start in 2 seconds
+      } else {
+        fl_log(LOG_ERROR, "start time is in the past", argv[1]);
+        return 1;
+      }
     }
   }
   if (argc > 3) {
