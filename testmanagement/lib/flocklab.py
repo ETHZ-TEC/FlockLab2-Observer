@@ -773,7 +773,7 @@ def stop_pwr_measurement():
 # start_gpio_tracing
 #
 ##############################################################################
-def start_gpio_tracing(out_file=None, start_time=0, stop_time=0, pins=0x0, offset=0):
+def start_gpio_tracing(out_file=None, start_time=0, stop_time=0, pins=0x0, offset=0, extra_opts=0):
     if not out_file:
         out_file = "%s/gpiotracing_%s.dat" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     cmd = ["fl_logic", out_file]
@@ -786,6 +786,9 @@ def start_gpio_tracing(out_file=None, start_time=0, stop_time=0, pins=0x0, offse
                 cmd.append("0x%x" % pins)
                 if offset != 0:
                     cmd.append(str(offset))
+                    # append extra commands
+                    if extra_opts != 0:
+                        cmd.append(str(extra_opts))
     #if logger:
     #    logger.debug("Starting GPIO tracing service with command: %s" % " ".join(cmd))
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
