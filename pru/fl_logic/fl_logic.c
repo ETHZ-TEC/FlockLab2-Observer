@@ -33,16 +33,17 @@
  * initiates GPIO sampling with PRU1
  *
  * usage:
- *          ./fl_logic [filename] [starttime] [stoptime/duration] [pinmask]
+ *          ./fl_logic [filename] [starttime] [stoptime/duration] [pinmask] [offset] [extra options]
  *
  * filename           output filename
  * starttime          UNIX timestamp of the sampling start
  * stoptime/duration  UNIX timestamp of the sampling stop, or sampling duration in seconds
  * pinmask            pins to trace, in hex (e.g. 0xff to trace all 8 pins)
  * offset             time between release of the reset pin and sampling start, in seconds
+ * extra options      additional parameters encoded as single bits (32-bit hex value)
  *
- * Note: all arguments are optional, but must be used in-order (i.e. argument starttime must always be the 2nd one, etc.)
- *
+ * Note: All arguments are optional, but must be used in-order such that e.g. argument starttime is always the 2nd argument.
+ *       If for instance the last argument is used, all previous arguments must be specified as well.
  */
 
 // INCLUDES
@@ -70,21 +71,39 @@
 #if INTERACTIVE_MODE
  #define BUFFER_SIZE          8                     // in bytes (must be a power of 2, minimum is 8 bytes)
 #else
- #define BUFFER_SIZE          16384
+ #define BUFFER_SIZE          8192
 #endif
-#define SAMPLING_RATE         10000000              // must match the sampling rate of the PRU
-#define MAX_TIME_SCALING_DEV  0.01                  // max deviation for time scaling (1 +/- x)
-#define MAX_TIME_SCALE_CHANGE 0.000005              // max rate of change for the time scaling factor between two sync points (PPS pulses)
+#define SAMPLING_RATE_HIGH    10000000              // must match the sampling rate of the PRU
+#define SAMPLING_RATE_MEDIUM  1000000               // alternative, lower sampling rate
+#define SAMPLING_RATE_LOW     100000                // alternative, lowest sampling rate
+#define MAX_TIME_SCALING_DEV  0.001                 // max deviation for time scaling (1 +/- x)
+#define MAX_TIME_SCALE_CHANGE 0.000002              // max rate of change for the time scaling factor between two sync points (PPS pulses)
 #define MAX_PRU_DELAY         10000000              // max delay for the PRU startup / stop handshake (in us)
-#define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"     // must be a binary file
+#define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"       // must be a binary file
+#define PRU1_FIRMWARE_MEDRATE "/lib/firmware/fl_pru1_logic_1M.bin"    // must be a binary file
+#define PRU1_FIRMWARE_LOWRATE "/lib/firmware/fl_pru1_logic_100k.bin"  // must be a binary file
 #define DATA_FILENAME_PREFIX  "tracing_data"
-#define OUTPUT_DIR            "/home/flocklab/data/"                // with last slash
+#define OUTPUT_DIR            "/home/flocklab/data/"                  // with last slash
 #define LOG_FILENAME          "/home/flocklab/log/fl_logic.log"
 #define LOG_VERBOSITY         LOG_WARNING
 #define SPRINTF_BUFFER_LENGTH 256
 #define PIN_NAMES             "LED1", "LED2", "LED3", "INT1", "INT2", "SIG1", "SIG2", "nRST", "PPS"
 #define TG_RST_PIN            "P840"                // GPIO77
 #define PPS_PIN_BITMASK       0x80
+
+// extra options:
+#define EXTRAOPT_LOG_LEVEL_DEBUG    0x00000001      // set log level to debug
+#define EXTRAOPT_NO_RECONFIG_RST    0x00000002      // do not reconfigure the reset pin
+#define EXTRAOPT_SIMPLE_SCALING     0x00000004      // if set, time scaling will be done based on the start and stop only instead of step-wide (PPS based)
+#define EXTRAOPT_SAMPLING_RATE_LOW  0x00000008      // use a low sampling rate
+#define EXTRAOPT_SAMPLING_RATE_MED  0x00000010      // use a medium sampling rate
+#define EXTRAOPT_USE_PRU_MEMORY     0x00000020      // use the PRU shared memory (12kb) instead of DDR RAM to store the samples
+
+#ifdef PRU1_ID
+  #error "PRU1_ID is already defined"
+#else
+  #define PRU1_ID                1                     // ID of the used PRU
+#endif /* PRU1_ID */
 
 
 // PARAMETER CHECK
@@ -131,8 +150,10 @@ typedef enum log_level log_level_t;
 // GLOBALS
 
 static const char* pin_mapping[] = { PIN_NAMES };
-static bool  running = true;
-static bool  abort_conversion = false;
+static uint32_t    sampling_rate = SAMPLING_RATE_HIGH;
+static uint32_t    extra_options = 0;
+static bool        running = true;
+static bool        abort_conversion = false;
 
 
 // FUNCTIONS
@@ -154,7 +175,7 @@ void fl_log(log_level_t log_level, char const *const format, ...)
   time_info = gmtime(&time_raw);
   strftime(time_str, sizeof(time_str), "%F %T\t", time_info);
 
-  if (log_level <= LOG_VERBOSITY) {
+  if ((log_level <= LOG_VERBOSITY) || (extra_options & EXTRAOPT_LOG_LEVEL_DEBUG)) {
     // open log file
     FILE *log_fp = fopen(LOG_FILENAME, "a");
     if (log_fp == NULL) {
@@ -275,31 +296,42 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
   prucfg.pin_mask = pinmask;
   prucfg.offset = offset;
 
-  // get buffers
-  void* pru_extmem_base;
-  prussdrv_map_extmem(&pru_extmem_base);
-  uint32_t pru_extmem_size = (uint32_t)prussdrv_extmem_size();
-  // place the buffer at the end of the mapped memory
-  pru_extmem_base = (void*)((uint32_t)pru_extmem_base + pru_extmem_size - BUFFER_SIZE);
-  prucfg.buffer_addr = (uint32_t)prussdrv_get_phys_addr(pru_extmem_base);
-
-  // check max PRU buffer size
-  if (BUFFER_SIZE > pru_extmem_size) {
-    fl_log(LOG_ERROR, "insufficient PRU memory available");
-    return 2;
-  }
-
-  fl_log(LOG_DEBUG, "%d / %d bytes allocated in mapped PRU memory (physical address 0x%x)", BUFFER_SIZE, pru_extmem_size, prucfg.buffer_addr);
-
-  // get user space mapped PRU memory addresses
-  if (out_buffer_addr) {
-    *out_buffer_addr = prussdrv_get_virt_addr(prucfg.buffer_addr);
-    if (!*out_buffer_addr) {
-      fl_log(LOG_ERROR, "failed to get virtual address");
-      return 3;
+  // get sample buffer
+  if (extra_options & EXTRAOPT_USE_PRU_MEMORY) {
+    // use a buffer in the PRU data memory
+    prucfg.buffer_addr = 0x00010000;
+    if (out_buffer_addr) {
+      prussdrv_map_prumem(PRUSS0_SHARED_DATARAM, (void**)out_buffer_addr);
+      // clear buffer
+      memset(*out_buffer_addr, 0, BUFFER_SIZE);
     }
-    // clear buffer
-    memset(*out_buffer_addr, 0, BUFFER_SIZE);
+
+  } else {
+    // use a buffer in the DDR RAM
+    void* pru_extmem_base;
+    prussdrv_map_extmem(&pru_extmem_base);
+    uint32_t pru_extmem_size = (uint32_t)prussdrv_extmem_size();
+    // place the buffer at the end of the mapped memory
+    pru_extmem_base = (void*)((uint32_t)pru_extmem_base + pru_extmem_size - BUFFER_SIZE);
+    prucfg.buffer_addr = (uint32_t)prussdrv_get_phys_addr(pru_extmem_base);
+
+    // check max PRU buffer size
+    if (BUFFER_SIZE > pru_extmem_size) {
+      fl_log(LOG_ERROR, "insufficient PRU memory available");
+      return 2;
+    }
+    fl_log(LOG_DEBUG, "%d / %d bytes allocated in mapped PRU memory (physical address 0x%x)", BUFFER_SIZE, pru_extmem_size, prucfg.buffer_addr);
+
+    // get user space mapped PRU memory addresses
+    if (out_buffer_addr) {
+      *out_buffer_addr = prussdrv_get_virt_addr(prucfg.buffer_addr);
+      if (!*out_buffer_addr) {
+        fl_log(LOG_ERROR, "failed to get virtual address");
+        return 3;
+      }
+      // clear buffer
+      memset(*out_buffer_addr, 0, BUFFER_SIZE);
+    }
   }
 
   // write configuration to PRU1 data memory
@@ -309,12 +341,20 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
   __sync_synchronize();
 
   // load the PRU firmware (requires a binary file)
-  if (prussdrv_exec_program(1, PRU1_FIRMWARE) < 0) {
+  const char* pru_fw = PRU1_FIRMWARE;
+  if ((extra_options & EXTRAOPT_SAMPLING_RATE_LOW) && access(PRU1_FIRMWARE_LOWRATE, F_OK) != -1) {
+    pru_fw        = PRU1_FIRMWARE_LOWRATE;
+    sampling_rate = SAMPLING_RATE_LOW;
+  } else if ((extra_options & EXTRAOPT_SAMPLING_RATE_MED) && access(PRU1_FIRMWARE_MEDRATE, F_OK) != -1) {
+    pru_fw        = PRU1_FIRMWARE_MEDRATE;
+    sampling_rate = SAMPLING_RATE_MEDIUM;
+  }
+  if (prussdrv_exec_program(PRU1_ID, pru_fw) < 0) {
     fl_log(LOG_ERROR,"failed to start PRU (invalid or inexisting firmware file '%s')", PRU1_FIRMWARE);
     return 4;
   }
 
-  fl_log(LOG_INFO, "PRU firmware loaded");
+  fl_log(LOG_INFO, "PRU firmware '%s' loaded", pru_fw);
 
   return 0;
 }
@@ -323,7 +363,7 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
 void pru1_deinit(void)
 {
   // deinit
-  prussdrv_pru_disable(1);    // PRU1 only
+  prussdrv_pru_disable(PRU1_ID);    // PRU1 only
   prussdrv_exit();
 }
 
@@ -452,6 +492,7 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* st
   } else {
     fwrite(pru_buffer, (BUFFER_SIZE / 2) + 32, 1, data_file);
   }
+  readout_count++;
 
   fl_log(LOG_DEBUG, "collected %u samples", readout_count * BUFFER_SIZE / 8);
 
@@ -518,10 +559,10 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
   fl_log(LOG_DEBUG, "timestamp_start_ticks: %llu, timestamp_end_ticks: %llu", (long long unsigned)timestamp_start_ticks, (long long unsigned)timestamp_end_ticks);
   fl_log(LOG_DEBUG, "starttime_s: %lu, stoptime_s: %lu", starttime_s, stoptime_s);
   // calculate correction factor for time scaling timestamps
-  corr_factor = ( (stoptime_s - starttime_s) + 1.0 ) / MAX(0.000001, ( (double)(timestamp_end_ticks - timestamp_start_ticks)/SAMPLING_RATE ));
-  fl_log(LOG_INFO, "corr_factor: %f", corr_factor);
+  corr_factor = ( (stoptime_s - starttime_s) + 1.0 ) / MAX(0.000001, ( (double)(timestamp_end_ticks - timestamp_start_ticks)/sampling_rate ));
+  fl_log(LOG_INFO, "corr_factor: %.7f", corr_factor);
   if (corr_factor < (1.0 - MAX_TIME_SCALING_DEV) || (corr_factor > (1.0 + MAX_TIME_SCALING_DEV))) {
-    fl_log(LOG_ERROR, "timestamp scaling failed, correction factor %f is out of valid range (timestamps are returned unscaled)", corr_factor);
+    fl_log(LOG_ERROR, "timestamp scaling failed, correction factor %.7f is out of valid range (timestamps are returned unscaled)", corr_factor);
     corr_factor = 1.0;
   }
   // reset file pointer and variables
@@ -543,8 +584,8 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     }
     // update the timestamp
     timestamp_ticks += (sample >> 8);
-    double realtime_time = (double)starttime_s + (double)timestamp_ticks / SAMPLING_RATE * corr_factor;
-    double monotonic_time = (double)timestamp_ticks / SAMPLING_RATE;
+    double realtime_time = (double)starttime_s + (double)timestamp_ticks / sampling_rate * corr_factor;
+    double monotonic_time = (double)timestamp_ticks / sampling_rate;
     // go through all pins and check whether there has been a change
     uint32_t i = 0;
     while (i < 8) {
@@ -619,20 +660,20 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
           break;
         }
         // calculate the time in seconds
-        uint32_t sec_elapsed = (elapsed_ticks + SAMPLING_RATE / 2) / SAMPLING_RATE;
+        uint32_t sec_elapsed = (elapsed_ticks + sampling_rate / 2) / sampling_rate;
         uint32_t sec_now     = last_sync_seconds + sec_elapsed;
         // calculate the correction factor
-        double corr_factor   = ((double)sec_elapsed / ((double)elapsed_ticks / SAMPLING_RATE));
+        double corr_factor   = ((double)sec_elapsed / ((double)elapsed_ticks / sampling_rate));
         // print info
-        fl_log(LOG_DEBUG, "correction factor from %u to %u is %.6f", last_sync_seconds, sec_now, corr_factor);
+        fl_log(LOG_DEBUG, "correction factor from %u to %u is %.7f", last_sync_seconds, sec_now, corr_factor);
         if (corr_factor < (1.0 - MAX_TIME_SCALING_DEV) || (corr_factor > (1.0 + MAX_TIME_SCALING_DEV))) {
-          fl_log(LOG_ERROR, "timestamp scaling failed, correction factor %.6f is out of valid range (timestamps are returned unscaled)", corr_factor);
+          fl_log(LOG_ERROR, "timestamp scaling failed, correction factor %.7f is out of valid range (timestamps are returned unscaled)", corr_factor);
           corr_factor = 1.0;
         }
         // check for deviations in the correction factor
         double corr_factor_change = corr_factor - prev_corr_factor;
         if (prev_corr_factor > 0.0 && (corr_factor_change > MAX_TIME_SCALE_CHANGE || corr_factor_change < -MAX_TIME_SCALE_CHANGE)) {
-          fl_log(LOG_WARNING, "correction factor changed from %f to %f between %u and %u (lost samples?)", prev_corr_factor, corr_factor, last_sync_seconds, sec_now);
+          fl_log(LOG_WARNING, "correction factor changed from %.7f to %.7f between %u and %u (lost samples?)", prev_corr_factor, corr_factor, last_sync_seconds, sec_now);
         }
         prev_corr_factor = corr_factor;
         // go back in the file to the last sync point and read all samples again
@@ -642,8 +683,8 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
           // update the timestamp
           elapsed_ticks   += (sample >> 8);     // ticks since last sync point
           timestamp_ticks += (sample >> 8);     // total ticks since test start
-          double realtime_time  = (double)last_sync_seconds + (double)elapsed_ticks / SAMPLING_RATE * corr_factor;
-          double monotonic_time = (double)timestamp_ticks / SAMPLING_RATE;
+          double realtime_time  = (double)last_sync_seconds + (double)elapsed_ticks / sampling_rate * corr_factor;
+          double monotonic_time = (double)timestamp_ticks / sampling_rate;
           // go through all pins and check whether there has been a change
           sample = sample & 0xff;               // remove upper bits (timestamp)
           uint32_t diff = sample ^ prev_sample; // get changed pins
@@ -762,6 +803,11 @@ int main(int argc, char** argv)
       fl_log(LOG_DEBUG, "using offset of %us", offset);
     }
   }
+  if (argc > 6) {
+    // 6th argument if given are the extra option bits
+    extra_options = (uint32_t)strtol(argv[6], NULL, 0);
+    fl_log(LOG_DEBUG, "using extra option 0x%x", extra_options);
+  }
 
   // --- register signal handler ---
   if (register_sighandler() != 0) {
@@ -783,7 +829,9 @@ int main(int argc, char** argv)
   }
 
   // --- configure used pins ---
-  config_pins(true);
+  if (!(extra_options & EXTRAOPT_NO_RECONFIG_RST)) {
+    config_pins(true);
+  }
 
   // --- start sampling ---
   int rs = pru1_run(prubuffer, datafile, &starttime, &stoptime);
@@ -792,14 +840,20 @@ int main(int argc, char** argv)
   }
 
   // --- cleanup ---
-  config_pins(false);
+  if (!(extra_options & EXTRAOPT_NO_RECONFIG_RST)) {
+    config_pins(false);
+  }
   pru1_deinit();
   fflush(datafile);
   fclose(datafile);
   fl_log(LOG_INFO, "samples stored in %s", filename);
 
   // --- parse data ---
-  parse_tracing_data_stepwise(filename, starttime, stoptime);
+  if (extra_options & EXTRAOPT_SIMPLE_SCALING) {
+    parse_tracing_data(filename, starttime, stoptime);
+  } else {
+    parse_tracing_data_stepwise(filename, starttime, stoptime);
+  }
 
   fl_log(LOG_DEBUG, "terminated");
 
