@@ -195,7 +195,7 @@ skip_use_default_mask:
         ADD     OFS, OFS, 4               ; increment buffer offset
         LDI32   CCNT, ((SAMPLING_FREQ << 8) | 0x80)    ; all pins low, reset high (use CCNT register here to temporarily hold the value)
 wait_start:
-        DELAYI  (CPU_FREQ - 7)            ; wait 1s
+        DELAYI  (CPU_FREQ - 5)            ; wait 1s
         SUB     TMP2, TMP2, 1
         SBBO    &CCNT, ADDR, OFS, 4        ; copy into RAM buffer
         ADD     OFS, OFS, 4               ; increment buffer offset

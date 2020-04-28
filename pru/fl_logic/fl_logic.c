@@ -528,7 +528,6 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
   }
   // go through entire file to read timestamps of starting and ending nRST events (used for correction of timestamps)
   fread(&sample, 4, 1, data_file);
-  prev_sample = ~sample & 0xff;
   do {
     // data valid? -> at least the cycle counter must be > 0 (first sample after end of trace)
     if (sample == 0) {
@@ -536,22 +535,19 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     }
     // update the timestamp
     timestamp_ticks += (sample >> 8);
-    // look for changed nRST values
-    if ( (prev_sample & PPS_PIN_BITMASK) != (sample & PPS_PIN_BITMASK) ) {
-      if ((sample & PPS_PIN_BITMASK) > 0) {
-        // nRST=1
-        if (!timestamp_start_obtained) {
-          // only store the first occurence
-          timestamp_start_ticks = timestamp_ticks;
-          timestamp_start_obtained = true;
-        }
-      } else {
-        // nRST=0
-        // store last occurence
-        timestamp_end_ticks = timestamp_ticks;
+    // find first high value of nRST pin and last low value
+    if ((sample & PPS_PIN_BITMASK) > 0) {
+      // nRST=1
+      if (!timestamp_start_obtained) {
+        // only store the first occurence
+        timestamp_start_ticks = timestamp_ticks;
+        timestamp_start_obtained = true;
       }
+    } else {
+      // nRST=0
+      // store last occurence
+      timestamp_end_ticks = timestamp_ticks;
     }
-    prev_sample = sample;
     sample_cnt++;
   } while (fread(&sample, 4, 1, data_file) && !abort_conversion);
 
@@ -587,12 +583,13 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     double realtime_time = (double)starttime_s + (double)timestamp_ticks / sampling_rate * corr_factor;
     double monotonic_time = (double)timestamp_ticks / sampling_rate;
     // go through all pins and check whether there has been a change
+    bool first_or_last_sample = (sample_cnt == 0) || (sample_cnt == ((uint32_t)parsed_size / 4 - 1));
     uint32_t i = 0;
     while (i < 8) {
       if ((prev_sample & (1 << i)) != (sample & (1 << i))) {
         uint32_t pin_state = (sample & (1 << i)) > 0;
         // format: timestamp,ticks,obs_id,node_id,pin,state(0/1)
-        if (i == 7 && sample_cnt > 0 && sample_cnt < ((uint32_t)parsed_size / 4 - 1)) {
+        if (i == 7 && !first_or_last_sample) {
           i = 8;
         }
         sprintf(buffer, "%.7f,%.7f,%s,%u\n", realtime_time, monotonic_time, pin_mapping[i], pin_state);
