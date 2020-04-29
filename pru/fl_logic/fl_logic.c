@@ -82,6 +82,7 @@
 #define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"       // must be a binary file
 #define PRU1_FIRMWARE_MEDRATE "/lib/firmware/fl_pru1_logic_1M.bin"    // must be a binary file
 #define PRU1_FIRMWARE_LOWRATE "/lib/firmware/fl_pru1_logic_100k.bin"  // must be a binary file
+#define PRU_FIRMWARE_MULTI    "/lib/firmware/fl_pru1_logic_scratchpad.bin"
 #define DATA_FILENAME_PREFIX  "tracing_data"
 #define OUTPUT_DIR            "/home/flocklab/data/"                  // with last slash
 #define LOG_FILENAME          "/home/flocklab/log/fl_logic.log"
@@ -337,7 +338,9 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
 
   // load the PRU firmware (requires a binary file)
   const char* pru_fw = PRU1_FIRMWARE;
-  if ((extra_options & EXTRAOPT_SAMPLING_RATE_LOW) && access(PRU1_FIRMWARE_LOWRATE, F_OK) != -1) {
+  if (extra_options & EXTRAOPT_USE_PRU0_HELPER) {
+    pru_fw = PRU_FIRMWARE_MULTI;
+  } else if ((extra_options & EXTRAOPT_SAMPLING_RATE_LOW) && access(PRU1_FIRMWARE_LOWRATE, F_OK) != -1) {
     pru_fw        = PRU1_FIRMWARE_LOWRATE;
     sampling_rate = SAMPLING_RATE_LOW;
   } else if ((extra_options & EXTRAOPT_SAMPLING_RATE_MED) && access(PRU1_FIRMWARE_MEDRATE, F_OK) != -1) {
@@ -348,19 +351,19 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
     fl_log(LOG_ERROR,"failed to start PRU (invalid or inexisting firmware file '%s')", PRU1_FIRMWARE);
     return 4;
   }
-  fl_log(LOG_INFO, "PRU firmware '%s' loaded", pru_fw);
+  fl_log(LOG_INFO, "PRU firmware '%s' for PRU1 loaded", pru_fw);
 
   if (extra_options & EXTRAOPT_USE_PRU0_HELPER) {
     /* make sure the data memory of PRU0 is empty! */
     memset(&prucfg, 0, sizeof(prucfg));
     prussdrv_pru_write_memory(PRUSS0_PRU0_DATARAM, 0x0, (unsigned int *)&prucfg, sizeof(prucfg));
 
-    // load the PRU firmware (requires a binary file)
-    if (prussdrv_exec_program(PRU0, PRU0_FIRMWARE) < 0) {
-      fl_log(LOG_ERROR,"failed to start PRU (invalid or inexisting firmware file '%s')", PRU0_FIRMWARE);
+    // load the PRU firmware (the same firmware as for PRU1 can be used)
+    if (prussdrv_exec_program(PRU0, PRU_FIRMWARE_MULTI) < 0) {
+      fl_log(LOG_ERROR,"failed to start PRU0");
       return 5;
     }
-    fl_log(LOG_INFO, "PRU firmware '%s' loaded", PRU0_FIRMWARE);
+    fl_log(LOG_INFO, "PRU firmware '%s' for PRU0 loaded", PRU_FIRMWARE_MULTI);
   }
 
   return 0;
