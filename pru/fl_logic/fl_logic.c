@@ -71,7 +71,7 @@
 #if INTERACTIVE_MODE
  #define BUFFER_SIZE          8                     // in bytes (must be a power of 2, minimum is 8 bytes)
 #else
- #define BUFFER_SIZE          8192
+ #define BUFFER_SIZE          8192                  // must be a multiple of 128
 #endif
 #define SAMPLING_RATE_HIGH    10000000              // must match the sampling rate of the PRU
 #define SAMPLING_RATE_MEDIUM  1000000               // alternative, lower sampling rate
@@ -98,12 +98,7 @@
 #define EXTRAOPT_SAMPLING_RATE_LOW  0x00000008      // use a low sampling rate
 #define EXTRAOPT_SAMPLING_RATE_MED  0x00000010      // use a medium sampling rate
 #define EXTRAOPT_USE_PRU_MEMORY     0x00000020      // use the PRU shared memory (12kb) instead of DDR RAM to store the samples
-
-#ifdef PRU1_ID
-  #error "PRU1_ID is already defined"
-#else
-  #define PRU1_ID                1                     // ID of the used PRU
-#endif /* PRU1_ID */
+#define EXTRAOPT_USE_PRU0_HELPER    0x00000040      // utilize the PRU0 to transfer the samples to memory
 
 
 // PARAMETER CHECK
@@ -291,10 +286,10 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
   tpruss_intc_initdata pruss_intc_initdata = PRUSS_INTC_INITDATA;
   prussdrv_pruintc_init(&pruss_intc_initdata);
 
-  // PRU SETUP
+  // prepare config
   prucfg.buffer_size = BUFFER_SIZE;
-  prucfg.pin_mask = pinmask;
-  prucfg.offset = offset;
+  prucfg.pin_mask    = pinmask;
+  prucfg.offset      = offset;
 
   // get sample buffer
   if (extra_options & EXTRAOPT_USE_PRU_MEMORY) {
@@ -349,12 +344,24 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
     pru_fw        = PRU1_FIRMWARE_MEDRATE;
     sampling_rate = SAMPLING_RATE_MEDIUM;
   }
-  if (prussdrv_exec_program(PRU1_ID, pru_fw) < 0) {
+  if (prussdrv_exec_program(PRU1, pru_fw) < 0) {
     fl_log(LOG_ERROR,"failed to start PRU (invalid or inexisting firmware file '%s')", PRU1_FIRMWARE);
     return 4;
   }
-
   fl_log(LOG_INFO, "PRU firmware '%s' loaded", pru_fw);
+
+  if (extra_options & EXTRAOPT_USE_PRU0_HELPER) {
+    /* make sure the data memory of PRU0 is empty! */
+    memset(&prucfg, 0, sizeof(prucfg));
+    prussdrv_pru_write_memory(PRUSS0_PRU0_DATARAM, 0x0, (unsigned int *)&prucfg, sizeof(prucfg));
+
+    // load the PRU firmware (requires a binary file)
+    if (prussdrv_exec_program(PRU0, PRU0_FIRMWARE) < 0) {
+      fl_log(LOG_ERROR,"failed to start PRU (invalid or inexisting firmware file '%s')", PRU0_FIRMWARE);
+      return 5;
+    }
+    fl_log(LOG_INFO, "PRU firmware '%s' loaded", PRU0_FIRMWARE);
+  }
 
   return 0;
 }
@@ -363,7 +370,10 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
 void pru1_deinit(void)
 {
   // deinit
-  prussdrv_pru_disable(PRU1_ID);    // PRU1 only
+  prussdrv_pru_disable(PRU1);
+  if (extra_options & EXTRAOPT_USE_PRU0_HELPER) {
+    prussdrv_pru_disable(PRU0);
+  }
   prussdrv_exit();
 }
 
@@ -723,7 +733,7 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
   } while (!end_of_file_found && fread(&sample, 4, 1, data_file) && !abort_conversion);
 
   if ((stoptime_s + 1) != last_sync_seconds) {
-    fl_log(LOG_WARNING, "calculated stop time (%lu) is != real stop time (%lu)", last_sync_seconds, stoptime_s);
+    fl_log(LOG_WARNING, "calculated stop time (%lu) is != real stop time (%lu)", last_sync_seconds, stoptime_s + 1);
   }
 
   // close files
@@ -846,7 +856,7 @@ int main(int argc, char** argv)
   fl_log(LOG_INFO, "samples stored in %s", filename);
 
   // --- parse data ---
-  if (extra_options & EXTRAOPT_SIMPLE_SCALING) {
+  if (1 || extra_options & EXTRAOPT_SIMPLE_SCALING) {   //TODO
     parse_tracing_data(filename, starttime, stoptime);
   } else {
     parse_tracing_data_stepwise(filename, starttime, stoptime);
