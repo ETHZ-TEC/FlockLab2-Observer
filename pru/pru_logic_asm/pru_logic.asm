@@ -32,6 +32,7 @@ PIN_MASK_OFS            .set    12             ; pin mask offset in config struc
 ARM_PRU1_INTERRUPT      .set    22             ; event number (see https://github.com/beagleboard/am335x_pru_package/blob/master/pru_sw/app_loader/include/pruss_intc_mapping.h)
 PRU1_PRU0_INTERRUPT     .set    2              ; event number
 CONFIG_ADDR_PRU0        .set    0x00002000     ; on PRU0, use config stored in PRU1 data RAM
+SCRATCHPAD_ID           .set    10
 
 
 ; Register mapping
@@ -142,11 +143,7 @@ main:
 
         ; load the config
         LDI     TMP, CONFIG_ADDR
-    .if USE_SCRATCHPAD
-        LDI     IPTR0, wait_start_copy_value
-        LSR     IPTR0, IPTR0, 2           ; divide by 4 to get #instr instead of address
-        MOV     IPTR, IPTR0
-    .else
+    .if !USE_SCRATCHPAD
         LDI     OFS, 0
         LBBO    &ADDR, TMP, BUFFER_ADDR_OFS, 4
         LBBO    &SIZE, TMP, BUFFER_SIZE_OFS, 4
@@ -155,6 +152,18 @@ main:
     .endif ; USE_SCRATCHPAD
         LBBO    &CCNT, TMP, START_DELAY_OFS, 4      ; use counter register to temporarily hold the start delay
         LBBO    &PINMASK, TMP, PIN_MASK_OFS, 1      ; apply a custom pin mask if given
+
+        ; set the value for IPTR depending on the start delay
+    .if USE_SCRATCHPAD
+        QBNE    set_iptr_with_delay, CCNT, 0
+        LDI     IPTR0, copy_sample
+        JMP     set_iptr_no_delay
+set_iptr_with_delay:
+        LDI     IPTR0, wait_start_copy_value
+set_iptr_no_delay:
+        LSR     IPTR0, IPTR0, 2           ; divide by 4 to get #instr instead of address
+        MOV     IPTR, IPTR0
+    .endif ; USE_SCRATCHPAD
 
         ; if tracing pin mask is invalid (0x0), use the default mask
         QBEQ    use_default_mask, PINMASK, 0
@@ -177,8 +186,8 @@ skip_use_default_mask:
         LDI     TMP, ARM_PRU1_INTERRUPT
         SBCO    &TMP, PRUSS_INTC, PRUSS_SICR_OFS, 4
 
-    .if WAIT_FOR_PPS
         ; wait for the next rising edge of the PPS signal
+    .if WAIT_FOR_PPS
         WBC     GPI, PPS_PIN
         WBS     GPI, PPS_PIN
     .endif ; WAIT_FOR_PPS
@@ -189,7 +198,7 @@ skip_use_default_mask:
         ; release target reset (P8.40)
         SET     GPO.t7
 
-        ; delay (time offset to sampling start, in seconds)
+        ; delay time > 0? (time offset to sampling start, in seconds)
         QBEQ    main_loop, CCNT, 0
 
         ; note: assume at this point that the buffer is large enough to hold all samples during this delay period!
@@ -207,7 +216,6 @@ skip_use_default_mask:
 wait_start:
         DELAYI  (CPU_FREQ - 8)            ; wait 1s
         SUB     CCNT, CCNT, 1
-
     .if !USE_SCRATCHPAD
         SBBO    &TMP2, ADDR, OFS, 4       ; copy into RAM buffer
         ADD     OFS, OFS, 4               ; increment buffer offset
@@ -252,7 +260,7 @@ wait_start_copy_value:
         MOV     R25, TMP2
         MOV     IPTR, IPTR0
         ; when full, copy all 8 registers into the scratchpad (takes 1 cycle)
-        XOUT    10, &DATAOUT, 64
+        XOUT    SCRATCHPAD_ID, &DATAOUT, 64
         ; notify other PRU
         LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU1_PRU0_INTERRUPT
         JMP     wait_start_copy_value_done2
@@ -360,7 +368,7 @@ copy_sample:
         MOV     R25, TMP
         MOV     IPTR, IPTR0
         ; when full, copy all 8 registers into the scratchpad (takes 1 cycle)
-        XOUT    10, &DATAOUT, 64
+        XOUT    SCRATCHPAD_ID, &DATAOUT, 64
         ; notify other PRU
         LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU1_PRU0_INTERRUPT
         ; alternatively, write directly into a register on PRU0
@@ -524,7 +532,7 @@ jump_to_register:
         JMP     copy_value_done
         MOV     R25, TMP2
         MOV     IPTR, IPTR0
-        XOUT    10, &DATAOUT, 64
+        XOUT    SCRATCHPAD_ID, &DATAOUT, 64
         LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU1_PRU0_INTERRUPT    ; notify PRU0
         JMP     copy_value_done2
 copy_value_done:
@@ -584,7 +592,7 @@ main_loop_pru0:
         LDI     TMP, (PRU1_PRU0_INTERRUPT + 16)
         SBCO    &TMP, PRUSS_INTC, PRUSS_SICR_OFS, 4
         ; load 64 bytes from the scratchpad and copy the data into the buffer in memory
-        XIN     10, &DATAIN, 64
+        XIN     SCRATCHPAD_ID, &DATAIN, 64
         SBBO    &DATAIN, ADDR, OFS, 64        ; block transfer, takes ~100ns in the best case
         ; keep offset in the range 0..SIZE
         ADD     OFS, OFS, 64
