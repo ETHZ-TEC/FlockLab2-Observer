@@ -2,6 +2,7 @@
 
 import os, sys, subprocess, getopt, errno, tempfile, time, shutil, serial, xml.etree.ElementTree, traceback
 import lib.flocklab as flocklab
+import lib.dwt as dwt
 
 
 ##############################################################################
@@ -92,15 +93,17 @@ def main(argv):
         flocklab.error_logandexit("Could not find or open XML file '%s'." % str(xmlfile))
 
     # Get basic information from <obsTargetConf> ---
-    voltage         = None
-    imagefile       = None
-    slotnr          = None
-    platform        = None
-    ssport          = None
-    operatingsystem = None
-    noimage         = False
-    actuationused   = False
-    teststarttime   = 0
+    voltage             = None
+    imagefile           = None
+    slotnr              = None
+    platform            = None
+    ssport              = None
+    noimage             = False
+    actuationused       = False
+    tracingserviceused  = tree.find('obsGpioMonitorConf') != None
+    debugserviceused    = tree.find('obsDebugConf') != None
+    powerprofilingused  = tree.find('obsPowerprofConf') != None
+    teststarttime       = 0
 
     imagefiles_to_process = tree.findall('obsTargetConf/image')
     imagefile = {}
@@ -250,7 +253,7 @@ def main(argv):
         # actuation service required?
         if settingcount > 0:
             # if only two actuations are scheduled, then it's only the reset pins -> disable actuation during the test if debugging service not used
-            if settingcount == 2 and serialport == None and tree.find('obsDebugConf') == None:
+            if settingcount == 2 and serialport == None and not debugserviceused:
                 act_events.append(['A', 1000])    # 1ms after startup
                 act_events.append(['a', flocklab.parse_int((teststoptime - teststarttime) * 1000000) - 1000])    # reactivate actuation just before the end of the test (when the reset pin needs to be pulled low)
                 logger.debug("Actuation will be disabled during the test.")
@@ -270,24 +273,50 @@ def main(argv):
         flocklab.error_logandexit("Test start time %d is in the past." % (teststarttime))
 
     # Debug ---
-    if tree.find('obsDebugConf') != None:
+    if debugserviceused:
         logger.debug("Found config for debug service.")
         remoteIp = "0.0.0.0"
         if tree.find('obsDebugConf/remoteIp') != None:
             remoteIp = tree.findtext('obsDebugConf/remoteIp')
-        port = 2331
+        port = 0
         if tree.find('obsDebugConf/gdbPort') != None:
             port = int(tree.findtext('obsDebugConf/gdbPort'))
-        # make sure mux is enabled and target is released from reset state!
+        # data trace config
+        dwtconfs = list(tree.find('obsDebugConf').getiterator('dataTraceConf'))
+        if dwtconfs:
+            dwtvars = []
+            for dwtconf in dwtconfs:
+                trackpc = False
+                mode    = dwtconf.findtext('mode').lower()
+                if mode == 'pc':
+                    trackpc = True
+                    mode = 'rw'
+                dwtvars.append([int(dwtconf.findtext('variable'), 0), mode, trackpc])
+                logger.debug("Found data trace config (addr: %s, mode: %s, track PC: %s)" % (dwtconf.findtext('variable'), mode, str(trackpc)))
+            if len(dwtvars) > 0:
+                while len(dwtvars) < 4:
+                    dwtvars.append([None, None, None])
+                dwt.config_dwt_for_data_trace(device_name=flocklab.jlink_mcu_str(platform), ts_prescaler=64,
+                                              trace_address0=dwtvars[0][0], access_mode0=dwtvars[0][1], trace_pc0=dwtvars[0][2],
+                                              trace_address1=dwtvars[1][0], access_mode1=dwtvars[1][1], trace_pc1=dwtvars[1][2],
+                                              trace_address2=dwtvars[2][0], access_mode2=dwtvars[2][1], trace_pc2=dwtvars[2][2],
+                                              trace_address3=dwtvars[3][0], access_mode3=dwtvars[3][1], trace_pc3=dwtvars[3][2])
+                datatracefile = "%s/%d/datatrace_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+                # TODO make the following call non-blocking
+                #dwt.read_swo_buffer(device_name=flocklab.jlink_mcu_str(platform), loop_delay_in_ms=2, output_file=datatracefile)
+                # put the target back into reset state
+                flocklab.tg_reset(False)
+                logger.debug("Data trace configured.")
+        # make sure mux is enabled
         flocklab.tg_mux_en(True)
-        flocklab.tg_reset()
-        # start GDB server 10s after test start
-        if flocklab.start_gdb_server(platform, port, int(teststarttime - time.time() + 10)) != flocklab.SUCCESS:
-            flocklab.tg_off()
-            flocklab.error_logandexit("Failed to start debug service.")
-        else:
-            logger.debug("GDB server will be listening on port %d." % port)
-        logger.debug("Started and configured debug service.")
+        if port > 0:
+            # start GDB server 10s after test start
+            if flocklab.start_gdb_server(platform, port, int(teststarttime - time.time() + 10)) != flocklab.SUCCESS:
+                flocklab.tg_off()
+                flocklab.error_logandexit("Failed to start debug service.")
+            else:
+                logger.debug("GDB server will be listening on port %d." % port)
+        logger.debug("Debug service configured.")
     else:
         logger.debug("No config for debug service found.")
         # disable MUX for more accurate current measurements only if serial port is not USB
@@ -296,7 +325,7 @@ def main(argv):
             logger.debug("Disabling MUX.")
 
     # GPIO tracing ---
-    if tree.find('obsGpioMonitorConf'):
+    if tracingserviceused:
         logger.debug("Found config for GPIO monitoring.")
         # move the old log file
         if os.path.isfile(flocklab.tracinglog):
@@ -318,8 +347,8 @@ def main(argv):
             logger.debug("Going to trace SIG pins...")
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         extra_options = 0x00000004
-        if tree.find('obsPowerprofConf') is None:
-            extra_options = extra_options | 0x00000040
+        if not powerprofilingused:
+            extra_options = extra_options | 0x00000040    # use PRU0 to assist with GPIO tracing
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset, extra_options) != flocklab.SUCCESS:
             flocklab.tg_off()
             flocklab.error_logandexit("Failed to start GPIO tracing service.")
@@ -330,7 +359,7 @@ def main(argv):
         logger.debug("No config for GPIO monitoring service found.")
 
     # Power profiling ---
-    if tree.find('obsPowerprofConf'):
+    if powerprofilingused:
         logger.debug("Found config for power profiling.")
         # move the old log file
         if os.path.isfile(flocklab.rllog):
