@@ -317,12 +317,15 @@ def main(argv):
             pins = pins | flocklab.pin_abbr2num("SIG1") | flocklab.pin_abbr2num("SIG2")
             logger.debug("Going to trace SIG pins...")
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset) != flocklab.SUCCESS:
+        extra_options = 0x00000004
+        if tree.find('obsPowerprofConf') is None:
+            extra_options = extra_options | 0x00000040
+        if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset, extra_options) != flocklab.SUCCESS:
             flocklab.tg_off()
             flocklab.error_logandexit("Failed to start GPIO tracing service.")
         # touch the file
         open(tracingfile + ".csv", 'a').close()
-        logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x, offset: %u)." % (tracingfile, pins, offset))
+        logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x, offset: %u, options: 0x%x)." % (tracingfile, pins, offset, extra_options))
     else:
         logger.debug("No config for GPIO monitoring service found.")
 
