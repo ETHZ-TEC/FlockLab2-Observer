@@ -64,6 +64,9 @@ $M?:    SUB     TMP, TMP, 1
 
 DELAYI  .macro cycles   ; delay cycles (pass immediate value)
     .if cycles >= 4
+    .if cycles & 1      ; odd number?
+        NOP
+    .endif
         LDI32   TMP, (cycles - 2)/2     ; LDI32 takes 2 cycles
 $M?:    SUB     TMP, TMP, 1             ; 1
         QBNE    $M?, TMP, 0             ; 1
@@ -191,12 +194,12 @@ skip_use_default_mask:
 
         ; note: assume at this point that the buffer is large enough to hold all samples during this delay period!
         ; copy the initial state into the buffer
-        LDI     PVAL, 0x0180              ; all pins low, reset high, cycle count = 1
+        LDI     TMP2, 0x0180              ; all pins low, reset high, cycle count = 1
     .if !USE_SCRATCHPAD
-        SBBO    &PVAL, ADDR, OFS, 4       ; copy into RAM buffer
+        SBBO    &TMP2, ADDR, OFS, 4       ; copy into RAM buffer
         ADD     OFS, OFS, 4               ; increment buffer offset
     .else
-        MOV     R10, PVAL
+        MOV     DATAOUT, TMP2
         ADD     IPTR, IPTR, 2             ; increment instruction pointer
     .endif ; USE_SCRATCHPAD
         LDI32   TMP2, ((SAMPLING_RATE << 8) | 0x80)    ; all pins low, reset high
@@ -214,7 +217,7 @@ wait_start:
         NOP
     .else
         ; copy value into local registers (6 cycles)
-        JMP     IPTR                  ; jump target must be in # instructions from the start
+        JMP     IPTR                      ; jump target must be in # instructions from the start
 wait_start_copy_value:
         MOV     R10, TMP2
         JMP     wait_start_copy_value_done
@@ -262,9 +265,10 @@ wait_start_copy_value_done2:
         QBNE    wait_start, CCNT, 0
 
     .if USE_SCRATCHPAD
+        SUB     TMP, IPTR, IPTR0
         LDI     IPTR0, copy_sample
         LSR     IPTR0, IPTR0, 2           ; divide by 4 to get #instr instead of address
-        MOV     IPTR, IPTR0
+        ADD     IPTR, IPTR0, TMP
     .endif ; USE_SCRATCHPAD
 
 
@@ -273,7 +277,6 @@ main_loop:
 
         ; sample pins (3 cycles)
         AND     CVAL, GPI, PINMASK        ; sample tracing and actuation pins
-
         QBBS    set_pps_bit, GPI, PPS_PIN
         JMP     set_pps_bit_end
 set_pps_bit:
@@ -473,7 +476,7 @@ skip_ovfcnt_update2:
 
         ; compose the value to write
         ; if the overflow counter is zero, then there is just one last value to write
-        LDI32   TMP2, 0xFFFFFF00
+        LSL     TMP2, TMP2, 8
         OR      TMP2, TMP2, CVAL
         QBNE    get_offset, CCNT, 0
         ; the last value to copy

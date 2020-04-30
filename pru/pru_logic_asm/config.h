@@ -10,7 +10,7 @@
 /* parameters */
 #define SAMPLING_RATE       10000000    /* in Hz (1 - 10000000) */
 #define USE_SCRATCHPAD      1           /* utilize PRU0 to transfer the samples */
-#define WAIT_FOR_PPS        0           /* whether to wait for rising edge of PPS pin on startup and stop */
+#define WAIT_FOR_PPS        1           /* whether to wait for rising edge of PPS pin on startup and stop */
 #define CONFIG_ADDR         0x0         /* base address where the config is stored (in local data memory) */
 
 /* fixed values */

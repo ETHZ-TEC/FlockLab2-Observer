@@ -859,7 +859,7 @@ int main(int argc, char** argv)
   fl_log(LOG_INFO, "samples stored in %s", filename);
 
   // --- parse data ---
-  if (1 || extra_options & EXTRAOPT_SIMPLE_SCALING) {   //TODO
+  if (extra_options & EXTRAOPT_SIMPLE_SCALING) {
     parse_tracing_data(filename, starttime, stoptime);
   } else {
     parse_tracing_data_stepwise(filename, starttime, stoptime);
