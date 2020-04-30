@@ -195,7 +195,7 @@ depmod
 
 ##########################################################
 # install Ethernet PHY / SYS_RESETn fix for BeagleBone
-apt-get --assume-yes install ethtool > /dev/null 2>> $ERRORLOG && cd observer/various/bbbrtc && make > /dev/null 2>> $ERRORLOG
+apt-get --assume-yes install ethtool > /dev/null 2>> $ERRORLOG && cd ~/observer/various/bbbrtc && make > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install bbbrtc." "bbbrtc installed."
 
 ##########################################################
