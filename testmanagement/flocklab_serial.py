@@ -264,7 +264,7 @@ def ThreadSerialReader(sf, msgQueueDbBuf, msgQueueSockBuf, stopLock):
                             msgQueueSockBuf.put(data, False)
                             # Data is wirtten directly into the DB bufferr queue:
                             msgQueueDbBuf.put([0,data,timestamp], False)
-                            flocklab.log_info("[0,%s,%s]" %(str(data), str(timestamp)))
+                            #flocklab.log_debug("[0,%s,%s]" %(str(data), str(timestamp)))
                         except queue.Full:
                             flocklab.log_error("Queue msgQueueSockBuf full in ThreadSerialReader, dropping data.")
                         except:
@@ -447,7 +447,7 @@ def ProcDbBuf(msgQueueDbBuf, stopLock, testid):
                         _dbfile_creation_time = time.time()
                         flocklab.log_info("ProcDbBuf opened dbfile %s" % _dbfilename)
                     #why Illl and why _len + 12, in decode iii is used..?
-                    flocklab.log_info("SERVICE: %s - DATA: %s" % (str(_service), str(_data)))
+                    #flocklab.log_debug("SERVICE: %s - DATA: %s" % (str(_service), str(_data)))
                     packet = struct.pack("<Illl%ds" % _len,_len + 12, _service, _ts_sec, int((_ts - _ts_sec) * 1e6), _data)
                     _dbfile.write(packet)
                     _num_elements = _num_elements + 1
@@ -652,23 +652,23 @@ def main(argv):
         if not os.path.isdir("%s/%d" % (os.path.realpath(config.get("observer", 'testresultfolder')), testid)):
             flocklab.error_logandexit("Test results folder does not exist.")
 
-    # init logger
-    logger = flocklab.get_logger(debug=debug)
-    if not logger:
-        flocklab.error_logandexit("Could not get logger.")
-
     pidfile = "%s/flocklab_serial.pid" % (config.get("observer", "pidfolder"))
 
     if stop:
+        logger = flocklab.get_logger(debug=debug)
         rs = stop_on_api()
         sys.exit(rs)
 
     # If the daemon option is on, later on the process will be daemonized.
     if isdaemon:
         daemon.daemonize(pidfile=pidfile, closedesc=True)
-        logger.debug("Daemonized process")
     else:
         open(pidfile, 'w').write("%d" % (os.getpid()))
+
+    # init logger AFTER daemonizing the process
+    logger = flocklab.get_logger(debug=debug)
+    if not logger:
+        flocklab.error_logandexit("Could not get logger.")
 
     # Find out which target interface is currently activated.
     slotnr = flocklab.tg_get_selected()
