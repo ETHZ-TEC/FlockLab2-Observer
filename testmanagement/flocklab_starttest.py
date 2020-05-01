@@ -256,6 +256,7 @@ def main(argv):
             if settingcount == 2 and serialport == None and not debugserviceused:
                 act_events.append(['A', 1000])    # 1ms after startup
                 act_events.append(['a', flocklab.parse_int((teststoptime - teststarttime) * 1000000) - 1000])    # reactivate actuation just before the end of the test (when the reset pin needs to be pulled low)
+                settingcount = settingcount + 2
                 logger.debug("Actuation will be disabled during the test.")
             else:
                 actuationused = True
@@ -346,7 +347,7 @@ def main(argv):
             pins = pins | flocklab.pin_abbr2num("SIG1") | flocklab.pin_abbr2num("SIG2")
             logger.debug("Going to trace SIG pins...")
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        extra_options = 0x00000004
+        extra_options = 0x00000084
         if not powerprofilingused:
             extra_options = extra_options | 0x00000040    # use PRU0 to assist with GPIO tracing
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset, extra_options) != flocklab.SUCCESS:
