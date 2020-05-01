@@ -156,38 +156,24 @@ int main(int argc, char** argv)
     return 4;
   }
 
-  //fd_set dataready;
-
   while (running) {
-    /*struct timeval timeout = {3, 0};
-    FD_ZERO(&dataready);
-    FD_SET(fd, &dataready);
-    int retval = select(fd + 1, &dataready, NULL, NULL, &timeout);
-    if (retval > 0) {
-      clock_gettime(CLOCK_REALTIME, &currtime);*/
-      int len = read(fd, rcvbuf, sizeof(rcvbuf) - 1);
-      if (len > 0) {
-        clock_gettime(CLOCK_REALTIME, &currtime);
-        rcvbuf[len] = 0;
-        if (logfile) {
-          int prlen = sprintf(printbuf, "%ld.%ld,%s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
-          fwrite(printbuf, 1, prlen, logfile);
-          //fflush(logfile);
-        } else {
-          printf("[%ld.%ld] %s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
-        }
-      } else if (len < 0) {
-        printf("read error: %s\n", strerror(errno));
-        break;
-      } else {  /* len == 0 */
-        printf("read timeout\n");
+    int len = read(fd, rcvbuf, sizeof(rcvbuf) - 1);
+    if (len > 0) {
+      clock_gettime(CLOCK_REALTIME, &currtime);
+      rcvbuf[len] = 0;
+      if (logfile) {
+        int prlen = sprintf(printbuf, "%ld.%ld,%s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
+        fwrite(printbuf, 1, prlen, logfile);
+        //fflush(logfile);
+      } else {
+        printf("[%ld.%ld] %s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
       }
-    /*} else if (retval < 0) {
-      //printf("select() returned error: %s\n", strerror(errno));
+    } else if (len < 0) {
+      printf("read error: %s\n", strerror(errno));
       break;
-    } else {
-      printf("timeout\n");
-    }*/
+    } else {  /* len == 0 */
+      printf("read timeout\n");
+    }
   }
 
   if (logfile) {
