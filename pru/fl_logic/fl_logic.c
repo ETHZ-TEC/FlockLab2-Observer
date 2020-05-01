@@ -76,10 +76,12 @@
 #define SAMPLING_RATE_HIGH    10000000              // must match the sampling rate of the PRU
 #define SAMPLING_RATE_MEDIUM  1000000               // alternative, lower sampling rate
 #define SAMPLING_RATE_LOW     100000                // alternative, lowest sampling rate
+#define CYCLE_COUNTER_RES     6250000               // cycle counter resolution
 #define MAX_TIME_SCALING_DEV  0.001                 // max deviation for time scaling (1 +/- x)
 #define MAX_TIME_SCALE_CHANGE 0.000002              // max rate of change for the time scaling factor between two sync points (PPS pulses)
 #define MAX_PRU_DELAY         10000000              // max delay for the PRU startup / stop handshake (in us)
 #define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"       // must be a binary file
+#define PRU1_FIRMWARE_CCOUNT  "/lib/firmware/fl_pru1_logic_cc.bin"    // must be a binary file
 #define PRU1_FIRMWARE_MEDRATE "/lib/firmware/fl_pru1_logic_1M.bin"    // must be a binary file
 #define PRU1_FIRMWARE_LOWRATE "/lib/firmware/fl_pru1_logic_100k.bin"  // must be a binary file
 #define PRU_FIRMWARE_MULTI    "/lib/firmware/fl_pru1_logic_scratchpad.bin"
@@ -100,6 +102,7 @@
 #define EXTRAOPT_SAMPLING_RATE_MED  0x00000010      // use a medium sampling rate
 #define EXTRAOPT_USE_PRU_MEMORY     0x00000020      // use the PRU shared memory (12kb) instead of DDR RAM to store the samples
 #define EXTRAOPT_USE_PRU0_HELPER    0x00000040      // utilize the PRU0 to transfer the samples to memory
+#define EXTRAOPT_USE_CYCLE_COUNTER  0x00000080      // use the hardware cycle counter instead of delays and a loop counter
 
 
 // PARAMETER CHECK
@@ -337,12 +340,20 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
   __sync_synchronize();
 
   // load the PRU firmware (requires a binary file)
+  // determine which sampling rate is to be used and choose the corresponding PRU firmware accordingly
   const char* pru_fw = PRU1_FIRMWARE;
   if (extra_options & EXTRAOPT_USE_PRU0_HELPER) {
-    pru_fw = PRU_FIRMWARE_MULTI;
+    pru_fw        = PRU_FIRMWARE_MULTI;
+    sampling_rate = SAMPLING_RATE_HIGH;
+
+  } else if (extra_options & EXTRAOPT_USE_CYCLE_COUNTER) {
+    pru_fw        = PRU1_FIRMWARE_CCOUNT;
+    sampling_rate = CYCLE_COUNTER_RES;
+
   } else if ((extra_options & EXTRAOPT_SAMPLING_RATE_LOW) && access(PRU1_FIRMWARE_LOWRATE, F_OK) != -1) {
     pru_fw        = PRU1_FIRMWARE_LOWRATE;
     sampling_rate = SAMPLING_RATE_LOW;
+
   } else if ((extra_options & EXTRAOPT_SAMPLING_RATE_MED) && access(PRU1_FIRMWARE_MEDRATE, F_OK) != -1) {
     pru_fw        = PRU1_FIRMWARE_MEDRATE;
     sampling_rate = SAMPLING_RATE_MEDIUM;
@@ -546,6 +557,7 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     if (sample == 0) {
       break;
     }
+    //fl_log(LOG_DEBUG, "sample: 0x%x, counter: %u", sample & 0xff, sample >> 8);
     // update the timestamp
     timestamp_ticks += (sample >> 8);
     // find first high value of nRST pin and last low value
@@ -612,6 +624,10 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
       i++;
     }
     prev_sample = sample;
+    if (sample_cnt == 0) {
+      // clear the nRST bit after the first sample to avoid an issue where the first PPS pulse would not appear in the processed data
+      prev_sample &= ~0x80;
+    }
     sample_cnt++;
   } while (fread(&sample, 4, 1, data_file) && !abort_conversion);
 
@@ -715,6 +731,10 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
             diff >>= 1;
           }
           prev_sample = sample;
+          if (sample_cnt == 0) {
+            // clear the nRST bit after the first sample to avoid an issue where the first PPS pulse would not appear in the processed data
+            prev_sample &= ~0x80;
+          }
           sample_cnt++;         // total sample count
           samples_to_read--;
         }
