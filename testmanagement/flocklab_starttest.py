@@ -139,6 +139,7 @@ def main(argv):
     (out, err) = p.communicate()
     if (p.returncode not in (flocklab.SUCCESS, errno.ENOPKG)):
         flocklab.error_logandexit("Error %d when trying to stop a potentially running serial service script: %s" % (p.returncode, str(err).strip()))
+    flocklab.stop_serial_logging()
     flocklab.stop_gpio_tracing()
     flocklab.stop_pwr_measurement()
     flocklab.stop_gdb_server()
@@ -204,18 +205,23 @@ def main(argv):
         if ssport != None:
             logger.debug("Port: %s" % (ssport))
             cmd.append('--port=%s' % (ssport))
+        else:
+            ssport = "serial"
         cmd.append('--daemon')
         if debug:
             cmd.append('--debug')
-        p = subprocess.Popen(cmd)
-        rs = p.wait()
-        if (rs != flocklab.SUCCESS):
-            flocklab.tg_off()
-            flocklab.error_logandexit("Error %d when trying to start serial service." % (rs))
+        if not serialport:
+            # if only logging is required, use the faster C implementation
+            serialfile = "%s/%d/serial_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+            if flocklab.start_serial_logging(ssport, br, serialfile) != flocklab.SUCCESS:
+                flocklab.error_logandexit("Failed to start serial logging service.")
         else:
-            # Wait some time to let all threads start
-            time.sleep(3)
-            logger.debug("Started and configured serial service.")
+            p = subprocess.Popen(cmd)
+            rs = p.wait()
+            if (rs != flocklab.SUCCESS):
+                flocklab.tg_off()
+                flocklab.error_logandexit("Error %d when trying to start serial service." % (rs))
+        logger.debug("Started and configured serial service.")
     else:
         logger.debug("No config for serial service found.")
 

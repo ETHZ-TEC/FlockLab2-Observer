@@ -770,6 +770,57 @@ def stop_pwr_measurement():
 
 ##############################################################################
 #
+# start_serial_logging
+#
+##############################################################################
+def start_serial_logging(port=tg_serial_port, baudrate=115200, out_file=None):
+    if not out_file:
+        return FAILED
+    if port.lower() == "serial" or port == tg_serial_port:
+        port = tg_serial_port
+    elif port.lower() == "usb" or port == tg_usb_port:
+        port = tg_usb_port
+    else:
+        return FAILED
+    cmd = ["serialreader", port, str(baudrate), out_file]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    # do not call communicate(), it will block
+    logger.debug("Serial logger started with command '%s'." % (" ".join(cmd)))
+    return SUCCESS
+### END start_serial_logging()
+
+
+##############################################################################
+#
+# stop_serial_logging
+#
+##############################################################################
+def stop_serial_logging(timeout=5):
+    pid = get_pid('serialreader')
+    if pid <= 0:
+        return SUCCESS      # process does not exist
+    try:
+        os.kill(pid, signal.SIGINT)   # note: send SIGINT to tell the process to stop
+        if logger:
+            logger.debug("Waiting for gpio tracing service to stop...")
+        rs = 0
+        while rs == 0 and timeout:
+            time.sleep(1)
+            timeout = timeout - 1
+            p = subprocess.Popen(['pgrep', '-f', 'serialreader'], stdout=subprocess.PIPE)
+            rs = p.wait()
+        if rs != 0:
+            return SUCCESS
+    except:
+        if logger:
+            logger.error("An error occurred in stop_serial_logging(): %s, %s", str(sys.exc_info()[0]), str(sys.exc_info()[1]))
+        pass
+    return FAILED
+### END stop_serial_logging()
+
+
+##############################################################################
+#
 # start_gpio_tracing
 #
 ##############################################################################
