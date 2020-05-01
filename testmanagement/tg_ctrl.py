@@ -41,6 +41,7 @@ def usage():
     print("  --mux, -m\t\tenable or disable the MUX")
     print("  --actuation, -a\tenable or disable actuation")
     print("  --reset, -r\t\treset the target")
+    print("  --reset-low\t\tset the target reset low")
     print("  --help, -h\t\tOptional. Print this help.")
 ### END usage()
 
@@ -55,7 +56,7 @@ def main(argv):
     # Get command line parameters
     try:
         # Note: a ':' indicates that the option requires an argument
-        opts, args = getopt.getopt(argv, "hedprs:m:a:tv:", ["help", "enable", "disable", "power", "reset", "select=", "mux=", "actuation=", "target", "voltage="])
+        opts, args = getopt.getopt(argv, "hedprs:m:a:tv:", ["help", "enable", "disable", "power", "reset", "select=", "mux=", "actuation=", "target", "voltage=", "reset-low"])
     except getopt.GetoptError as err:
         print(str(err))
         sys.exit(errno.EINVAL)
@@ -81,6 +82,9 @@ def main(argv):
         elif opt in ("-r", "--reset"):
             flocklab.tg_reset()
             print("target reset")
+        elif opt in ("--reset-low"):
+            flocklab.tg_reset(False)
+            print("holding target in reset state")
         elif opt in ("-t", "--target"):
             print("active target slot: %d" % flocklab.tg_get_selected())
         elif opt in ("-s", "--select", "--sel"):
