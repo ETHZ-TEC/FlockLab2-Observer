@@ -13,6 +13,7 @@
 PRUSS_INTC              .set    C0
 PRUSS_CFG               .set    C4
 PRU1_CTRL               .set    0x00024000
+PRU1_CTPPR0             .set    0x00024028
 PRUSS_SYSCFG_OFS        .set    0x4
 PRUSS_CYCLECNT_OFS      .set    0xC
 PRUSS_STALLCNT_OFS      .set    0x10
@@ -37,7 +38,7 @@ SCRATCHPAD_ID           .set    10
 ; Register mapping
 TMP     .set R0     ; temporary storage
 TMP2    .set R1     ; temporary storage
-CTRL    .set R2     ; PRU control register address
+LIMIT   .set R2     ; holds the max value for the loop counter
 CVAL    .set R3     ; current value
 PVAL    .set R4     ; previous value
 SCNT    .set R5     ; sample counter (counts the number of main loop passes)
@@ -53,6 +54,7 @@ PINMASK .set R28    ; pin mask
 CCNT    .set R29    ; cycle counter
 GPO     .set R30    ; GPIO output pin register
 GPI     .set R31    ; GPIO input pin register
+CTRL    .set C28    ; PRU control register address
 
 
 ; Macros
@@ -85,14 +87,14 @@ $M?:    NOP
 
 START_COUNTER   .macro  ; enable the cycle counter (>=2 cycles)
         LDI     TMP, PRU_CRTL_CTR_ON
-        SBBO    &TMP, CTRL, 0, 1
+        SBCO    &TMP, CTRL, 0, 1
         .endm
 
 STOP_COUNTER    .macro  ; disable the cycle counter and reset its value to 0 (>= 4 cycles)
         LDI     TMP, PRU_CRTL_CTR_OFF
-        SBBO    &TMP, CTRL, 0, 1
+        SBCO    &TMP, CTRL, 0, 1
         LDI     TMP, 0
-        SBBO    &TMP, CTRL, PRUSS_CYCLECNT_OFS, 4
+        SBCO    &TMP, CTRL, PRUSS_CYCLECNT_OFS, 4
         .endm
 
 RESET_COUNTER   .macro  ; stops, clears and restarts the cycle counter (>= 6 cycles)
@@ -101,11 +103,11 @@ RESET_COUNTER   .macro  ; stops, clears and restarts the cycle counter (>= 6 cyc
         .endm
 
 GET_CYCLE_CNT  .macro   ; get the current cycle counter value and store it in CCNT (>= 4 cycles)
-        LBBO    &CCNT, CTRL, PRUSS_CYCLECNT_OFS, 4
+        LBCO    &CCNT, CTRL, PRUSS_CYCLECNT_OFS, 4
         .endm
 
 GET_STALL_CNT  .macro   ; get the current stall counter value and store it in CCNT (>= 4 cycles)
-        LBBO    &CCNT, CTRL, PRUSS_STALLCNT_OFS, 4
+        LBCO    &CCNT, CTRL, PRUSS_STALLCNT_OFS, 4
         .endm
 
 PIN_XOR .macro  pin_bit
@@ -151,11 +153,16 @@ main:
         QBNE    main_pru0, TMP2, 0        ; if the buffer offset is valid, then this is PRU0
     .endif ; USE_SCRATCHPAD
 
+        ; store the PRU1_CTRL register address in C28
+        LDI32   TMP, PRU1_CTPPR0
+        LDI     TMP2, 0x00000240          ; set value for bits 23..8 in PRU constant table register C28
+        SBBO    &TMP2, TMP, 0, 2
+
         ; set inital values
         LDI     CVAL, 0
         LDI     PVAL, 0x0                 ; GPIO initial state
         LDI     SCNT, 0                   ; sample counter, set to 0 is ok for the 1st sample since the reset pin will be high
-        LDI32   CTRL, PRU1_CTRL           ; address of CFG register
+        LDI32   LIMIT, 0xFFFFFF           ; pseudo instruction, takes 2 cycles
 
         ; load the config
         LDI     TMP, CONFIG_ADDR
@@ -238,10 +245,9 @@ wait_start:
         DELAYI  (PRU_FREQ - 8)            ; wait 1s
         SUB     CCNT, CCNT, 1
     .if !USE_SCRATCHPAD
-        SBBO    &CVAL, ADDR, OFS, 4       ; copy into RAM buffer
+        SBBO    &CVAL, ADDR, OFS, 4       ; copy into RAM buffer (assume 2 cycles)
         ADD     OFS, OFS, 4               ; increment buffer offset
         AND     OFS, OFS, SIZE            ; keep offset in the range 0..SIZE
-        NOP
         NOP
         NOP
     .else
@@ -312,13 +318,13 @@ set_pps_bit:
         SET     CVAL.t7
 set_pps_bit_end:
 
-        ; check whether value has changed (4 cycles)
+        ; check whether value has changed (2 cycles)
         QBNE    update_val, CVAL, PVAL
-        LDI32   TMP, 0xFFFFFF             ; pseudo instruction, takes 2 cycles -> if need be, this value could be permanently held in a register instead
         ; check whether counter value overflows
-        QBEQ    update_val2, SCNT, TMP
-        ; value has not changed -> just increment counter and wait (10 cycles)
+        QBEQ    update_val2, SCNT, LIMIT
+        ; value has not changed -> just increment counter and wait (11 cycles)
         ADD     SCNT, SCNT, 1
+        NOP
         NOP
         NOP
         NOP
@@ -331,8 +337,6 @@ set_pps_bit_end:
 
 update_val:
         NOP
-        NOP
-        NOP
 update_val2:
         ; append counter to the value and reset counter (4 cycles)
         LSL     SCNT, SCNT, 8
@@ -342,8 +346,8 @@ update_val2:
 
     .if !USE_SCRATCHPAD
 
-        ; copy value into the RAM buffer, update the offset (3 cycles)
-        SBBO    &TMP, ADDR, OFS, 4        ; takes 1 cycle for 4 bytes in the best/average case
+        ; copy value into the RAM buffer, update the offset (4 cycles)
+        SBBO    &TMP, ADDR, OFS, 4        ; takes ~1 cycle for 4 bytes in the best/average case according to datasheet -> allow 2 cycles (shows better results)
         ; update offset (2 cycles)
         ADD     OFS, OFS, 4
         AND     OFS, OFS, SIZE            ; keep offset in the range 0..SIZE
@@ -354,7 +358,7 @@ update_val2:
 
     .else ; USE_SCRATCHPAD
 
-        ; copy value into local registers (6 cycles)
+        ; copy value into local registers (7 cycles)
         JMP     IPTR                      ; jump target must be in # instructions from the start
 copy_sample:
         MOV     R10, TMP
@@ -396,10 +400,12 @@ copy_sample:
         ; alternatively, write directly into a register on PRU0
         ;LDI     TMP, 1          ; TMP = R0
         ;XOUT    14, &TMP, 1     ; not verified!
+        NOP
         JMP     done
 
 copy_done:
         ADD     IPTR, IPTR, 2             ; increment by 2 instructions
+        NOP
         NOP
         JMP     done
     .endif ; USE_SCRATCHPAD
@@ -415,6 +421,7 @@ done:
         QBBS    exit, GPI, 31             ; jump to exit if PRU1 status bit set
 
         ; add nops here to get exactly 19 cycles (1 cycle is for the main loop jump below)
+        NOP
         NOP
 
         ; stall the loop to achieve the desired sampling frequency
@@ -442,11 +449,11 @@ wait_for_pps_low:
         ADD     SCNT, SCNT, 1
         QBBS    wait_for_pps_low, GPI, PPS_PIN
 
-        LDI32   TMP2, 0xFFFFFF
 wait_for_pps_high:
-        DELAYI  (PRU_FREQ/SAMPLING_RATE - 6)
-        QBEQ    reset_counter, SCNT, TMP2
+        DELAYI  (PRU_FREQ/SAMPLING_RATE - 7)
+        QBEQ    reset_counter, SCNT, LIMIT
         ADD     SCNT, SCNT, 1
+        NOP
         NOP
         NOP
         JMP     end_reset_counter
@@ -473,14 +480,13 @@ end_reset_counter:
 
         ; keep track of the number of overflows during the following wait period
         LDI     CCNT, 0                   ; so far no overflows
-        LDI32   TMP2, 0xFFFFFF            ; overflow value
 
     .if WAIT_FOR_PPS
 
         ; wait until the PPS signal goes low
 wait_for_pps_low_alt:
         DELAYI  (PRU_FREQ/SAMPLING_RATE - 3)    ; one loop pass takes 3 cycles
-        QBNE    skip_ovfcnt_update, SCNT, TMP2
+        QBNE    skip_ovfcnt_update, SCNT, LIMIT
         ADD     CCNT, CCNT, 1             ; increment overflow counter
         LDI     SCNT, 0                   ; reset sample counter to 0 (because it is incremented by 1 just below)
         ; note: no need to do balancing here, overflow occurs less than once per second; loosing 2 cycles (10ns) in 1 second is negligible
@@ -491,7 +497,7 @@ skip_ovfcnt_update:
         ; wait until the PPS signal goes high
 wait_for_pps_high_alt:
         DELAYI  (PRU_FREQ/SAMPLING_RATE - 3)    ; one loop pass takes 3 cycles
-        QBNE    skip_ovfcnt_update2, SCNT, TMP2
+        QBNE    skip_ovfcnt_update2, SCNT, LIMIT
         ADD     CCNT, CCNT, 1             ; increment overflow counter
         LDI     SCNT, 0                   ; reset sample counter to 0 (because it is incremented by 1 just below)
         ; note: no need to do balancing here, overflow occurs less than once per second; loosing 2 cycles (10ns) in 1 second is negligible
@@ -506,7 +512,7 @@ skip_ovfcnt_update2:
 
         ; compose the value to write
         ; if the overflow counter is zero, then there is just one last value to write
-        LSL     TMP2, TMP2, 8
+        LSL     TMP2, LIMIT, 8
         OR      TMP2, TMP2, CVAL
         QBNE    get_offset, CCNT, 0
         ; the last value to copy
@@ -591,8 +597,7 @@ main_alt:
 
         ; at this point, the target has been released from reset state
 
-        ; use TMP2 register to hold the threshold for resetting the counter
-        LDI32   TMP2, (0xf0000000 >> 3)
+        LDI32   LIMIT, (0xf0000000 >> 3)
         LDI     SCNT, 0
 
         QBEQ    main_loop_alt, CCNT, 0    ; if no delay, jump directly to the main loop
@@ -602,9 +607,9 @@ main_alt:
         LDI32   CVAL, ((SAMPLING_RATE << 8) | 0x00)    ; all pins low (at this point bit 7 represents the PPS pin, of which the state is unknown => set low)
 
 wait_start_alt:
-        DELAYI  (PRU_FREQ - 5)            ; wait 1s
+        DELAYI  (PRU_FREQ - 6)            ; wait 1s
         SUB     CCNT, CCNT, 1
-        SBBO    &CVAL, ADDR, OFS, 4       ; copy into RAM buffer
+        SBBO    &CVAL, ADDR, OFS, 4       ; copy into RAM buffer (assume 2 cycles)
         ADD     OFS, OFS, 4               ; increment buffer offset
         AND     OFS, OFS, SIZE            ; keep offset in the range 0..SIZE
         QBNE    wait_start_alt, CCNT, 0
@@ -624,7 +629,7 @@ set_pps_bit_end_alt:
         ; check whether value has changed
         QBNE    update_val_alt, CVAL, PVAL
         ; check whether it is time to reset the counter
-        QBLE    update_val_alt, SCNT, TMP2
+        QBLE    update_val_alt, SCNT, LIMIT
         ADD     SCNT, SCNT, 9
         JMP     done_alt
 
