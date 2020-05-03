@@ -162,8 +162,8 @@ int main(int argc, char** argv)
       clock_gettime(CLOCK_REALTIME, &currtime);
       rcvbuf[len] = 0;
       if (logfile) {
-        int prlen = sprintf(printbuf, "%ld.%ld,%s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
-        fwrite(printbuf, 1, prlen, logfile);
+        int prlen = sprintf(printbuf, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
+        fwrite(printbuf, prlen, 1, logfile);
         //fflush(logfile);
       } else {
         printf("[%ld.%ld] %s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
