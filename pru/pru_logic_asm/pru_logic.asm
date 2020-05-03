@@ -12,27 +12,30 @@
 ; Define symbols
 PRUSS_INTC              .set    C0
 PRUSS_CFG               .set    C4
-PRU1_CTRL               .set    0x00024000
-PRU1_CTPPR0             .set    0x00024028
+PRU1_CTRL               .set    C28            ; PRU control register
+PRU1_CTRL_ADDR          .set    0x00024000
+PRU1_CTPPR0_ADDR        .set    0x00024028
 PRUSS_SYSCFG_OFS        .set    0x4
 PRUSS_CYCLECNT_OFS      .set    0xC
 PRUSS_STALLCNT_OFS      .set    0x10
 PRUSS_SICR_OFS          .set    0x24
-TRACING_PINS            .set    0x7F           ; trace all pins incl. actuation (but without reset pin)
-ACTUATION_PINS          .set    0xe0
-PPS_PIN                 .set    8              ; 0x100    (P8.27)
-SYSEVT_GEN_VALID_BIT    .set    0x20
-PRU_EVTOUT_2            .set    0x04           ; INTC system event number 16 + 4 = 20  (pr1_pru_mst_intr[4]_intr_req)
 PRU_CRTL_CTR_ON         .set    0x0B
 PRU_CRTL_CTR_OFF        .set    0x03
+SYSEVT_GEN_VALID_BIT    .set    0x20
+PRU1_ARM_INTERRUPT      .set    0x04           ; PRU_EVTOUT_2, INTC system event number 16 + 4 = 20  (pr1_pru_mst_intr[4]_intr_req)
+ARM_PRU1_INTERRUPT      .set    22             ; event number (see https://github.com/beagleboard/am335x_pru_package/blob/master/pru_sw/app_loader/include/pruss_intc_mapping.h)
+PRU1_PRU0_INTERRUPT     .set    2              ; event number
+SCRATCHPAD_ID           .set    10
+
+CONFIG_ADDR             .set    0x0            ; address of the configuration struct in PRU data memory
+CONFIG_ADDR_PRU0        .set    0x00002000     ; on PRU0, use config stored in PRU1 data RAM
 BUFFER_ADDR_OFS         .set    0              ; buffer address offset in config structure
 BUFFER_SIZE_OFS         .set    4              ; buffer size offset in config structure
 START_DELAY_OFS         .set    8              ; delay for the sampling start after releasing the reset pin
 PIN_MASK_OFS            .set    12             ; pin mask offset in config structure (defines which pins are sampled)
-ARM_PRU1_INTERRUPT      .set    22             ; event number (see https://github.com/beagleboard/am335x_pru_package/blob/master/pru_sw/app_loader/include/pruss_intc_mapping.h)
-PRU1_PRU0_INTERRUPT     .set    2              ; event number
-CONFIG_ADDR_PRU0        .set    0x00002000     ; on PRU0, use config stored in PRU1 data RAM
-SCRATCHPAD_ID           .set    10
+TRACING_PINS            .set    0xFF           ; available tracing pins
+PPS_PIN                 .set    8              ; 0x100    (P8.27)
+RST_PIN                 .set    7              ; 0x80     (P8.40)
 
 
 ; Register mapping
@@ -46,15 +49,14 @@ ADDR    .set R6     ; buffer address
 OFS     .set R7     ; buffer index
 SIZE    .set R8     ; buffer size - 1
 SIZE2   .set R9     ; half buffer size
-DATAIN  .set R10    ; input sample buffer (R10 - R25, 64 bytes)
-DATAOUT .set R10    ; output sample buffer (R10 - R25, 64 bytes)
-IPTR    .set R26    ; instruction pointer for jump to the correct buffer
+DATAIN  .set R10    ; input sample buffer for PRU0 (R10 - R25, 64 bytes)
+DATAOUT .set R10    ; output sample buffer for PRU1 (R10 - R25, 64 bytes)
+IPTR    .set R26    ; instruction pointer for jump to the next buffer register
 IPTR0   .set R27    ; initial value for IPTR
 PINMASK .set R28    ; pin mask
 CCNT    .set R29    ; cycle counter
 GPO     .set R30    ; GPIO output pin register
 GPI     .set R31    ; GPIO input pin register
-CTRL    .set C28    ; PRU control register address
 
 
 ; Macros
@@ -87,14 +89,14 @@ $M?:    NOP
 
 START_COUNTER   .macro  ; enable the cycle counter (>=2 cycles)
         LDI     TMP, PRU_CRTL_CTR_ON
-        SBCO    &TMP, CTRL, 0, 1
+        SBCO    &TMP, PRU1_CTRL, 0, 1
         .endm
 
 STOP_COUNTER    .macro  ; disable the cycle counter and reset its value to 0 (>= 4 cycles)
         LDI     TMP, PRU_CRTL_CTR_OFF
-        SBCO    &TMP, CTRL, 0, 1
+        SBCO    &TMP, PRU1_CTRL, 0, 1
         LDI     TMP, 0
-        SBCO    &TMP, CTRL, PRUSS_CYCLECNT_OFS, 4
+        SBCO    &TMP, PRU1_CTRL, PRUSS_CYCLECNT_OFS, 4
         .endm
 
 RESET_COUNTER   .macro  ; stops, clears and restarts the cycle counter (>= 6 cycles)
@@ -103,11 +105,11 @@ RESET_COUNTER   .macro  ; stops, clears and restarts the cycle counter (>= 6 cyc
         .endm
 
 GET_CYCLE_CNT  .macro   ; get the current cycle counter value and store it in CCNT (>= 4 cycles)
-        LBCO    &CCNT, CTRL, PRUSS_CYCLECNT_OFS, 4
+        LBCO    &CCNT, PRU1_CTRL, PRUSS_CYCLECNT_OFS, 4
         .endm
 
 GET_STALL_CNT  .macro   ; get the current stall counter value and store it in CCNT (>= 4 cycles)
-        LBCO    &CCNT, CTRL, PRUSS_STALLCNT_OFS, 4
+        LBCO    &CCNT, PRU1_CTRL, PRUSS_STALLCNT_OFS, 4
         .endm
 
 PIN_XOR .macro  pin_bit
@@ -144,7 +146,7 @@ $M?:
         .global main
 
 main:
-        ; --- init ---
+        ; --- INIT ---
 
     .if USE_SCRATCHPAD
         ; determine whether this is PRU0 or 1
@@ -154,8 +156,8 @@ main:
     .endif ; USE_SCRATCHPAD
 
         ; store the PRU1_CTRL register address in C28
-        LDI32   TMP, PRU1_CTPPR0
-        LDI     TMP2, 0x00000240          ; set value for bits 23..8 in PRU constant table register C28
+        LDI32   TMP, PRU1_CTPPR0_ADDR
+        LDI     TMP2, (PRU1_CTRL_ADDR >> 8)   ; set value for bits 23..8 in PRU constant table register C28
         SBBO    &TMP2, TMP, 0, 2
 
         ; set inital values
@@ -192,7 +194,7 @@ set_iptr_no_delay:
         QBEQ    use_default_mask, PINMASK, 0
         JMP     skip_use_default_mask
 use_default_mask:
-        LDI     PINMASK, TRACING_PINS
+        LDI     PINMASK, (TRACING_PINS & ~(1 << RST_PIN))
 skip_use_default_mask:
         AND     PINMASK, PINMASK, TRACING_PINS      ; make sure the upper bits are cleared
 
@@ -201,7 +203,8 @@ skip_use_default_mask:
         CLR     TMP, TMP, 4               ; clear bit 4 (STANDBY_INIT)
         SBCO    &TMP, PRUSS_CFG, PRUSS_SYSCFG_OFS, 4
 
-        ; --- handshake ---
+        ; --- HANDSHAKE ---
+
         ; wait for status bit (host event)
         WBS     GPI, 31
 
@@ -209,14 +212,14 @@ skip_use_default_mask:
         LDI     TMP, ARM_PRU1_INTERRUPT
         SBCO    &TMP, PRUSS_INTC, PRUSS_SICR_OFS, 4
 
-        ; wait for the next rising edge of the PPS signal
-    .if WAIT_FOR_PPS
+        ; wait for the next rising edge of the PPS signal (if bit 0x80 is not set in pinmask!)
+        QBBS    skip_wait_for_pps, PINMASK, RST_PIN
         WBC     GPI, PPS_PIN
         WBS     GPI, PPS_PIN
-    .endif ; WAIT_FOR_PPS
+skip_wait_for_pps:
 
         ; signal to host processor that PRU is ready by generating an event
-        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
+        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU1_ARM_INTERRUPT
 
         ; release target reset (P8.40)
         SET     GPO.t7
@@ -307,16 +310,16 @@ wait_start_copy_value_done2:
     .endif ; USE_SCRATCHPAD
 
 
-        ; --- sampling loop ---
+        ; --- MAIN SAMPLING LOOP ---
 main_loop:
 
         ; sample pins (3 cycles)
         AND     CVAL, GPI, PINMASK        ; sample tracing and actuation pins
         QBBS    set_pps_bit, GPI, PPS_PIN
-        JMP     set_pps_bit_end
+        JMP     skip_set_pps_bit
 set_pps_bit:
         SET     CVAL.t7
-set_pps_bit_end:
+skip_set_pps_bit:
 
         ; check whether value has changed (2 cycles)
         QBNE    update_val, CVAL, PVAL
@@ -414,7 +417,7 @@ copy_done:
 notify_host:
         NOP
 notify_host2:
-        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
+        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU1_ARM_INTERRUPT
 
 done:
         ; check if it is time to stop
@@ -429,10 +432,12 @@ done:
         JMP     main_loop
 
 exit:
+        ; --- EXIT ---
 
     .if !USE_SCRATCHPAD
 
-    .if WAIT_FOR_PPS
+        ; only wait for the next rising edge of the PPS signal if bit 0x80 not set in pinmask
+        QBBS    exit_skip_wait_for_pps, PINMASK, RST_PIN
 
         ; store current cycle counter before continuing to avoid an overflow in the wait_for_pps_low loop
         LSL     SCNT, SCNT, 8
@@ -465,7 +470,7 @@ reset_counter:
 end_reset_counter:
         QBBC    wait_for_pps_high, GPI, PPS_PIN
 
-    .endif ; WAIT_FOR_PPS
+exit_skip_wait_for_pps:
 
         ; actuate the target reset pin
         CLR     GPO.t7
@@ -481,10 +486,11 @@ end_reset_counter:
         ; keep track of the number of overflows during the following wait period
         LDI     CCNT, 0                   ; so far no overflows
 
-    .if WAIT_FOR_PPS
+        ; only wait for the next rising edge of the PPS signal if bit 0x80 not set in pinmask
+        QBBS    exit_skip_wait_for_pps, PINMASK, RST_PIN
 
         ; wait until the PPS signal goes low
-wait_for_pps_low_alt:
+wait_for_pps_low:
         DELAYI  (PRU_FREQ/SAMPLING_RATE - 3)    ; one loop pass takes 3 cycles
         QBNE    skip_ovfcnt_update, SCNT, LIMIT
         ADD     CCNT, CCNT, 1             ; increment overflow counter
@@ -492,10 +498,10 @@ wait_for_pps_low_alt:
         ; note: no need to do balancing here, overflow occurs less than once per second; loosing 2 cycles (10ns) in 1 second is negligible
 skip_ovfcnt_update:
         ADD     SCNT, SCNT, 1
-        QBBS    wait_for_pps_low_alt, GPI, PPS_PIN    ; loop as long as PPS pin bit is set
+        QBBS    wait_for_pps_low, GPI, PPS_PIN    ; loop as long as PPS pin bit is set
 
         ; wait until the PPS signal goes high
-wait_for_pps_high_alt:
+wait_for_pps_high:
         DELAYI  (PRU_FREQ/SAMPLING_RATE - 3)    ; one loop pass takes 3 cycles
         QBNE    skip_ovfcnt_update2, SCNT, LIMIT
         ADD     CCNT, CCNT, 1             ; increment overflow counter
@@ -503,9 +509,9 @@ wait_for_pps_high_alt:
         ; note: no need to do balancing here, overflow occurs less than once per second; loosing 2 cycles (10ns) in 1 second is negligible
 skip_ovfcnt_update2:
         ADD     SCNT, SCNT, 1
-        QBBC    wait_for_pps_high_alt, GPI, PPS_PIN   ; loop as long as PPS pin bit is cleared
+        QBBC    wait_for_pps_high, GPI, PPS_PIN   ; loop as long as PPS pin bit is cleared
 
-    .endif ; WAIT_FOR_PPS
+exit_skip_wait_for_pps:
 
         ; actuate the target reset pin
         CLR     GPO.t7
@@ -584,7 +590,7 @@ fill_empty_space:
     .endif ; USE_SCRATCHPAD
 
         ; send event to host processor to indicate successful program termination
-        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
+        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU1_ARM_INTERRUPT
 
         ; stop PRU
         HALT
@@ -652,14 +658,16 @@ update_val_alt:
         QBEQ    notify_host_alt, OFS, SIZE2
         JMP     done_alt
 notify_host_alt:
-        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
+        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU1_ARM_INTERRUPT
 
 done_alt:
         QBBS    exit_alt, GPI, 31         ; jump to exit if PRU1 status bit set
         JMP     main_loop_alt
 
 exit_alt:
-    .if WAIT_FOR_PPS
+        ; only wait for the next rising edge of the PPS signal if bit 0x80 not set in pinmask
+        QBBS    exit_alt_skip_wait_for_pps, PINMASK, RST_PIN
+
         ; store the current counter value
         GET_CYCLE_CNT
         RESET_COUNTER
@@ -672,7 +680,8 @@ exit_alt:
 
         WBC     GPI, PPS_PIN
         WBS     GPI, PPS_PIN
-    .endif ; WAIT_FOR_PPS
+
+exit_alt_skip_wait_for_pps:
 
         ; activate the target reset and store the last sample
         GET_CYCLE_CNT
@@ -684,7 +693,7 @@ exit_alt:
         SBBO    &TMP, ADDR, OFS, 4
 
         ; send event to host processor to indicate successful program termination
-        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
+        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU1_ARM_INTERRUPT
 
         HALT
 
@@ -730,7 +739,7 @@ main_loop_pru0:
         QBEQ    notify_host_pru0, OFS, SIZE2
         JMP     main_loop_pru0
 notify_host_pru0:
-        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU_EVTOUT_2
+        LDI     GPI.b0, SYSEVT_GEN_VALID_BIT | PRU1_ARM_INTERRUPT
         JMP     main_loop_pru0
 
         HALT
