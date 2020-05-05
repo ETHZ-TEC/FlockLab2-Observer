@@ -2,8 +2,6 @@
  * reads from a serial port and logs the data to a file
  *
  * 2020, rdaforno
- *
- * inspired by: https://stackoverflow.com/questions/6947413/how-to-open-read-and-write-from-serial-port-in-c
  */
 
 #include <errno.h>
@@ -16,6 +14,10 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
+
+
+#define SUBTRACT_TRANSMIT_TIME      1       // subtract the estimated transfer time over uart from the receive timestamp
+#define TIME_OFFSET                 1000    // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
 
 
 bool running = true;
@@ -69,7 +71,7 @@ int set_interface_attributes(int fd, int speed)
   struct termios tty;
 
   if (tcgetattr(fd, &tty) < 0) {
-    printf("Error from tcgetattr: %s\n", strerror(errno));
+    printf("error from tcgetattr: %s\n", strerror(errno));
     return 1;
   }
 
@@ -88,17 +90,15 @@ int set_interface_attributes(int fd, int speed)
   tty.c_cflag &= ~CRTSCTS;    /* no hardware flowcontrol */
 
   /* see http://man7.org/linux/man-pages/man3/termios.3.html for details about the flags */
-  /*tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | ICRNL | IXON);
-  tty.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-  tty.c_oflag &= ~OPOST;*/
   tty.c_lflag |= ICANON;      /* canonical mode */
+  tty.c_iflag  = 0;           /* clear input flags */
+  tty.c_iflag |= IGNCR;       /* ignore carriages return */
+  tty.c_iflag |= ISTRIP;      /* strip off 8th bit (ensures character is ASCII) */
 
-  /* the following parameters are only applicable in non-canonical mode */
-  tty.c_cc[VMIN] = 1;
-  tty.c_cc[VTIME] = 1;
+  printf("tty config: 0x%x, 0x%x, 0x%x, 0x%x\n", tty.c_iflag, tty.c_oflag, tty.c_cflag, tty.c_lflag);
 
   if (tcsetattr(fd, TCSANOW, &tty) != 0) {
-    printf("Error from tcsetattr: %s\n", strerror(errno));
+    printf("error from tcsetattr: %s\n", strerror(errno));
     return 3;
   }
   return 0;
@@ -129,6 +129,7 @@ int main(int argc, char** argv)
     outfilename = argv[3];
   }
 
+  // open the serial device
   fd = open(portname, O_RDWR | O_NOCTTY | O_SYNC);
   if (fd < 0) {
     printf("error opening %s: %s\n", portname, strerror(errno));
@@ -139,6 +140,7 @@ int main(int argc, char** argv)
     close(fd);
     return 2;
   }
+  tcflush(fd, TCIFLUSH);
 
   printf("connected to port %s (baudrate: %lu)\n", portname, baudrate);
 
@@ -160,13 +162,23 @@ int main(int argc, char** argv)
     int len = read(fd, rcvbuf, sizeof(rcvbuf) - 1);
     if (len > 0) {
       clock_gettime(CLOCK_REALTIME, &currtime);
+      currtime.tv_nsec = currtime.tv_nsec / 1000;   // convert to us
+#if SUBTRACT_TRANSMIT_TIME
+      int transmit_time = (10000000 / baudrate) * len + TIME_OFFSET;   // 10 clock cycles per symbol (byte), plus const offset
+      if (currtime.tv_nsec < transmit_time) {
+        currtime.tv_sec--;
+        currtime.tv_nsec = 1000000 - (transmit_time - currtime.tv_nsec);
+      } else {
+        currtime.tv_nsec -= transmit_time;
+      }
+#endif /* SUBTRACT_TRANSMIT_TIME */
       rcvbuf[len] = 0;
       if (logfile) {
-        int prlen = sprintf(printbuf, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
+        int prlen = sprintf(printbuf, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
         fwrite(printbuf, prlen, 1, logfile);
         //fflush(logfile);
       } else {
-        printf("[%ld.%ld] %s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
+        printf("[%ld.%ld] %s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
       }
     } else if (len < 0) {
       printf("read error: %s\n", strerror(errno));
