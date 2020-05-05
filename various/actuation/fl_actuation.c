@@ -24,7 +24,7 @@
 #define DEVICE_NAME         "flocklab_act"      // name of the device in '/dev/'
 #define TIMER_MODE          HRTIMER_MODE_ABS    // absolute or relative
 #define TIMER_ID            CLOCK_REALTIME      // realtime or monotonic
-#define TIMER_OFS_US        -120                // timer offset compensation in microseconds, applies to the start marker only
+#define TIMER_OFS_US        -90                 // timer offset compensation in microseconds, applies to the start marker only
 #define MIN_PERIOD          10                  // minimum time between two consecutive actuation events, in microseconds
 #define DEVICE_BUFFER_SIZE  8192                // max. buffer size for character device
 #define EVENT_QUEUE_SIZE    1024                // limits the max. number of actuations that can be registered at a time; must be a power of 2
