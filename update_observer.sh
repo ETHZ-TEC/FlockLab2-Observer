@@ -60,9 +60,9 @@ do
                 echo "Failed!"
             fi
         fi
-        if [[ $RES = *fl_act/* ]]; then
-            echo "Installing new fl_act binary... "
-            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/various/fl_act && sudo make install'
+        if [[ $RES = *serialreader/* ]]; then
+            echo "Installing new serial reader binary... "
+            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/various/serialreader && sudo make install'
             if [ $? -ne 0 ]; then
                 echo "Failed!"
             fi
