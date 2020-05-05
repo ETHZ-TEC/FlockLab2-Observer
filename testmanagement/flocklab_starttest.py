@@ -341,7 +341,7 @@ def main(argv):
             pins = pins | flocklab.pin_abbr2num("SIG1") | flocklab.pin_abbr2num("SIG2")
             logger.debug("Going to trace SIG pins...")
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        extra_options = 0x00000084
+        extra_options = 0x00000000
         if not powerprofilingused:
             extra_options = extra_options | 0x00000040    # use PRU0 to assist with GPIO tracing
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset, extra_options) != flocklab.SUCCESS:

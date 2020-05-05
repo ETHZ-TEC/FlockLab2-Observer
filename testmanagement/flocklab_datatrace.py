@@ -43,7 +43,11 @@ def sigterm_handler(signum, frame):
 def stop_daemon():
     logger = flocklab.get_logger()
     # try to get pid from file first
-    pid = int(open(pidfile, 'r').read())
+    pid = None
+    try:
+        pid = int(open(pidfile, 'r').read())
+    except:
+        pass
     if not pid:
         # take the first PID that isn't our PID
         pids = flocklab.get_pids('flocklab_datatrace')
