@@ -31,19 +31,6 @@
 
 /*
  * initiates GPIO sampling with PRU1
- *
- * usage:
- *          ./fl_logic [filename] [starttime] [stoptime/duration] [pinmask] [offset] [extra options]
- *
- * filename           output filename
- * starttime          UNIX timestamp of the sampling start
- * stoptime/duration  UNIX timestamp of the sampling stop, or sampling duration in seconds
- * pinmask            pins to trace, in hex (e.g. 0xff to trace all 8 pins)
- * offset             time between release of the reset pin and sampling start, in seconds
- * extra options      additional parameters encoded as single bits (32-bit hex value)
- *
- * Note: All arguments are optional, but must be used in-order such that e.g. argument starttime is always the 2nd argument.
- *       If for instance the last argument is used, all previous arguments must be specified as well.
  */
 
 // INCLUDES
@@ -59,67 +46,59 @@
 #include <prussdrv.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <unistd.h>
 
 
 // DEFINES
 
-#ifndef INTERACTIVE_MODE
- #define INTERACTIVE_MODE     0
-#endif /* INTERACTIVE_MODE */
-#define RECONFIG_TG_RST       1                     // reconfigure target reset pin such that PRU1 can control it
-#if INTERACTIVE_MODE
- #define BUFFER_SIZE          8                     // in bytes (must be a power of 2, minimum is 8 bytes)
-#else
- #define BUFFER_SIZE          8192                  // must be a multiple of 128
-#endif
+#define BUFFER_SIZE           8192                  // must be a multiple of 128
 #define SAMPLING_RATE_HIGH    10000000              // must match the sampling rate of the PRU
 #define SAMPLING_RATE_MEDIUM  1000000               // alternative, lower sampling rate
 #define SAMPLING_RATE_LOW     100000                // alternative, lowest sampling rate
+#define CYCLE_COUNTER_RES     6250000               // cycle counter resolution
 #define MAX_TIME_SCALING_DEV  0.001                 // max deviation for time scaling (1 +/- x)
 #define MAX_TIME_SCALE_CHANGE 0.000002              // max rate of change for the time scaling factor between two sync points (PPS pulses)
 #define MAX_PRU_DELAY         10000000              // max delay for the PRU startup / stop handshake (in us)
 #define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"       // must be a binary file
+#define PRU1_FIRMWARE_CCOUNT  "/lib/firmware/fl_pru1_logic_cc.bin"    // must be a binary file
 #define PRU1_FIRMWARE_MEDRATE "/lib/firmware/fl_pru1_logic_1M.bin"    // must be a binary file
 #define PRU1_FIRMWARE_LOWRATE "/lib/firmware/fl_pru1_logic_100k.bin"  // must be a binary file
-#define PRU_FIRMWARE_MULTI    "/lib/firmware/fl_pru1_logic_scratchpad.bin"
+#define PRU0_PRU1_FIRMWARE    "/lib/firmware/fl_pru1_logic_sp.bin"    // scratchpad version, utilizes both PRUs
+#define PID_FILE              "/tmp/fl_logic.pid"
 #define DATA_FILENAME_PREFIX  "tracing_data"
-#define OUTPUT_DIR            "/home/flocklab/data/"                  // with last slash
 #define LOG_FILENAME          "/home/flocklab/log/fl_logic.log"
 #define LOG_VERBOSITY         LOG_WARNING
 #define SPRINTF_BUFFER_LENGTH 256
 #define PIN_NAMES             "LED1", "LED2", "LED3", "INT1", "INT2", "SIG1", "SIG2", "nRST", "PPS"
+#define PIN_NAMES_BB          "P845", "P846", "P843", "P844", "P841", "P842", "P839", "P840", "P827"
 #define TG_RST_PIN            "P840"                // GPIO77
 #define PPS_PIN_BITMASK       0x80
 
 // extra options:
 #define EXTRAOPT_LOG_LEVEL_DEBUG    0x00000001      // set log level to debug
 #define EXTRAOPT_NO_RECONFIG_RST    0x00000002      // do not reconfigure the reset pin
-#define EXTRAOPT_SIMPLE_SCALING     0x00000004      // if set, time scaling will be done based on the start and stop only instead of step-wide (PPS based)
-#define EXTRAOPT_SAMPLING_RATE_LOW  0x00000008      // use a low sampling rate
-#define EXTRAOPT_SAMPLING_RATE_MED  0x00000010      // use a medium sampling rate
+#define EXTRAOPT_SIMPLE_SCALING     0x00000004      // if set, time scaling will be done based on the start and stop only instead of step-wide (only has an effect if EXTRAOPT_RELATIVE_TIME not set)
+#define EXTRAOPT_SAMPLING_RATE_LOW  0x00000008      // use a low sampling rate (only has an effect if EXTRAOPT_USE_CYCLE_COUNTER and EXTRAOPT_USE_PRU0_HELPER not set)
+#define EXTRAOPT_SAMPLING_RATE_MED  0x00000010      // use a medium sampling rate (only has an effect if EXTRAOPT_USE_CYCLE_COUNTER and EXTRAOPT_USE_PRU0_HELPER not set)
 #define EXTRAOPT_USE_PRU_MEMORY     0x00000020      // use the PRU shared memory (12kb) instead of DDR RAM to store the samples
 #define EXTRAOPT_USE_PRU0_HELPER    0x00000040      // utilize the PRU0 to transfer the samples to memory
+#define EXTRAOPT_USE_CYCLE_COUNTER  0x00000080      // use the hardware cycle counter instead of delays and a loop counter (only has an effect if EXTRAOPT_USE_PRU0_HELPER not set)
+#define EXTRAOPT_NO_PPS             0x00000100      // no PPS pin attached, don't wait for PPS signal to start/stop the sampling
+#define EXTRAOPT_RELATIVE_TIME      0x00000200      // return results with relative timestamps only, no time scaling will be applied
+#define EXTRAOPT_USE_BB_PINNAMES    0x00000400      // use BeagleBone pin names instead of FlockLab pin names (only available if option EXTRAOPT_RELATIVE_TIME is selected)
+#define EXTRAOPT_PRINT_TO_STDOUT    0x00000800      // print all log messages to stdout
 
 
 // PARAMETER CHECK
 
-#if (BUFFER_SIZE & (BUFFER_SIZE - 1)) || (BUFFER_SIZE < 8)
-#error "invalid BUFFER_SIZE"
+#if (BUFFER_SIZE & (BUFFER_SIZE - 1)) || (BUFFER_SIZE & 127 > 0)
+#error "invalid BUFFER_SIZE (must be a multiple of 128)"
 #endif
 
 
 // MACROS
 
-#define BYTE_TO_BIN_PATTERN "%c%c%c%c%c%c%c%c"
-#define BYTE_TO_BIN(byte)   (byte & 0x80 ? '1' : '0'), \
-                            (byte & 0x40 ? '1' : '0'), \
-                            (byte & 0x20 ? '1' : '0'), \
-                            (byte & 0x10 ? '1' : '0'), \
-                            (byte & 0x08 ? '1' : '0'), \
-                            (byte & 0x04 ? '1' : '0'), \
-                            (byte & 0x02 ? '1' : '0'), \
-                            (byte & 0x01 ? '1' : '0')
 #ifndef MAX
 #define MAX(x, y)     ((x) > (y) ? (x) : (y))
 #endif /* MAX */
@@ -145,7 +124,7 @@ typedef enum log_level log_level_t;
 
 // GLOBALS
 
-static const char* pin_mapping[] = { PIN_NAMES };
+static const char* pin_mapping[] = { PIN_NAMES, PIN_NAMES_BB };
 static uint32_t    sampling_rate = SAMPLING_RATE_HIGH;
 static uint32_t    extra_options = 0;
 static bool        running = true;
@@ -153,6 +132,26 @@ static bool        abort_conversion = false;
 
 
 // FUNCTIONS
+
+void print_usage(void)
+{
+  printf("No arguments supplied.\n"
+           "\nUsage:\n"
+           "\t./fl_logic [filename] ([starttime]) ([stoptime/duration]) ([pinmask]) ([offset]) ([extra options])\n"
+           "\n"
+           "\t1. filename           output filename\n"
+           "\t2. starttime          UNIX timestamp of the sampling start in seconds. If the value is < 1000, it is treated\n"
+           "\t                      as an offset, i.e. current time will be added)\n"
+           "\t3. stoptime/duration  UNIX timestamp of the sampling stop in seconds. If the value is smaller than the current\n"
+           "\t                      timestamp, it is treated as the sampling duration. Pass zero to sample indefinitely.\n"
+           "\t4. pinmask            pins to trace, in hex (e.g. 0xff to trace all 8 pins, 0x0 to use the default mask)\n"
+           "\t5. offset             time between release of the reset pin and sampling start, in seconds (default: 0)\n"
+           "\t6. extra options      additional parameters encoded as single bits (32-bit hex value, see fl_logic.c for details)\n"
+           "\n"
+           "Note: All arguments but the first are optional. Arguments must be provided in-order and mustn't be skipped (i.e.\n"
+           "      all previous arguments must be specified as well).\n");
+}
+
 
 void fl_log(log_level_t log_level, char const *const format, ...)
 {
@@ -184,15 +183,18 @@ void fl_log(log_level_t log_level, char const *const format, ...)
       fprintf(log_fp, "\n");
       fclose(log_fp);
     }
-  }
 
-#if INTERACTIVE_MODE
-  // also print to stdout
-  //printf(levelstr[log_level]);
-  vprintf(format, args);
-  printf("\n");
-  fflush(stdout);
-#endif /* INTERACTIVE_MODE */
+    if (extra_options & EXTRAOPT_PRINT_TO_STDOUT) {
+      // also print to stdout
+      struct timespec ts;
+      clock_gettime(CLOCK_REALTIME, &ts);
+      printf("[%ld.%03ld] ", ts.tv_sec, ts.tv_nsec / 1000000);
+      printf(levelstr[log_level]);
+      vprintf(format, args);
+      printf("\n");
+      fflush(stdout);
+    }
+  }
 
   va_end(args);
 }
@@ -209,9 +211,10 @@ static void sig_handler(int sig_num)
 
   // signal generated by interactive user (ctrl+C)
   if (sig_num == SIGINT) {
-#if INTERACTIVE_MODE
-    printf("\b\b  \naborting...\n");
-#endif /* INTERACTIVE_MODE */
+    if (extra_options & EXTRAOPT_PRINT_TO_STDOUT) {
+      printf("\b\b");
+      fl_log(LOG_DEBUG, "aborting...");
+    }
     running = false;
   }
 }
@@ -245,7 +248,6 @@ void wait_for_start(unsigned long starttime)
   uint32_t diff_sec  = (starttime - currtime.tv_sec);
   uint32_t diff_usec = (1000000 - (currtime.tv_nsec / 1000));
 
-  fl_log(LOG_DEBUG, "timestamp now: %u", time(0));
   if ((unsigned long)currtime.tv_sec < starttime) {
     fl_log(LOG_DEBUG, "waiting for start time... (%us, %uus)", (diff_sec - 1), diff_usec);
     sleep(diff_sec - 1);
@@ -256,7 +258,6 @@ void wait_for_start(unsigned long starttime)
 
 int config_pins(bool start)
 {
-#if RECONFIG_TG_RST
   if (start) {
     int status = system("config-pin -a " TG_RST_PIN " pruout");
     if (status != 0) {
@@ -267,7 +268,6 @@ int config_pins(bool start)
     // restore the regular config (MODE GPIO, output direction)
     system("config-pin -a " TG_RST_PIN " out");
   }
-#endif /* RECONFIG_TG_RST */
   return 0;
 }
 
@@ -287,6 +287,9 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
   tpruss_intc_initdata pruss_intc_initdata = PRUSS_INTC_INITDATA;
   prussdrv_pruintc_init(&pruss_intc_initdata);
 
+  if (extra_options & EXTRAOPT_NO_PPS) {
+    pinmask |= PPS_PIN_BITMASK;
+  }
   // prepare config
   prucfg.buffer_size = BUFFER_SIZE;
   prucfg.pin_mask    = pinmask;
@@ -337,12 +340,20 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
   __sync_synchronize();
 
   // load the PRU firmware (requires a binary file)
+  // determine which sampling rate is to be used and choose the corresponding PRU firmware accordingly
   const char* pru_fw = PRU1_FIRMWARE;
   if (extra_options & EXTRAOPT_USE_PRU0_HELPER) {
-    pru_fw = PRU_FIRMWARE_MULTI;
+    pru_fw        = PRU0_PRU1_FIRMWARE;
+    sampling_rate = SAMPLING_RATE_HIGH;
+
+  } else if (extra_options & EXTRAOPT_USE_CYCLE_COUNTER) {
+    pru_fw        = PRU1_FIRMWARE_CCOUNT;
+    sampling_rate = CYCLE_COUNTER_RES;
+
   } else if ((extra_options & EXTRAOPT_SAMPLING_RATE_LOW) && access(PRU1_FIRMWARE_LOWRATE, F_OK) != -1) {
     pru_fw        = PRU1_FIRMWARE_LOWRATE;
     sampling_rate = SAMPLING_RATE_LOW;
+
   } else if ((extra_options & EXTRAOPT_SAMPLING_RATE_MED) && access(PRU1_FIRMWARE_MEDRATE, F_OK) != -1) {
     pru_fw        = PRU1_FIRMWARE_MEDRATE;
     sampling_rate = SAMPLING_RATE_MEDIUM;
@@ -359,11 +370,11 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
     prussdrv_pru_write_memory(PRUSS0_PRU0_DATARAM, 0x0, (unsigned int *)&prucfg, sizeof(prucfg));
 
     // load the PRU firmware (the same firmware as for PRU1 can be used)
-    if (prussdrv_exec_program(PRU0, PRU_FIRMWARE_MULTI) < 0) {
+    if (prussdrv_exec_program(PRU0, PRU0_PRU1_FIRMWARE) < 0) {
       fl_log(LOG_ERROR,"failed to start PRU0");
       return 5;
     }
-    fl_log(LOG_INFO, "PRU firmware '%s' for PRU0 loaded", PRU_FIRMWARE_MULTI);
+    fl_log(LOG_INFO, "PRU firmware '%s' for PRU0 loaded", PRU0_PRU1_FIRMWARE);
   }
 
   return 0;
@@ -455,7 +466,6 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* st
     }
     // clear event
     prussdrv_pru_clear_event(PRU_EVTOUT_1, PRU1_ARM_INTERRUPT);
-
     // PRU memory sync before accessing data
     __sync_synchronize();
 
@@ -464,19 +474,10 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* st
       // odd numbers
       curr_buffer = (uint8_t*)&pru_buffer[BUFFER_SIZE / 2];
     }
-#if INTERACTIVE_MODE
-    // display latest value
-    unsigned char curr_value = *(uint8_t*)(curr_buffer + (BUFFER_SIZE / 2) - 4);
-    printf("\b\b\b\b\b\b\b\b" BYTE_TO_BIN_PATTERN, BYTE_TO_BIN(curr_value));
-    fflush(stdout);
-#endif /* INTERACTIVE_MODE */
-
     // write to file
     fwrite(curr_buffer, (BUFFER_SIZE / 2), 1, data_file);
-
     // clear buffer
     memset(curr_buffer, 0, (BUFFER_SIZE / 2));
-
     readout_count++;
 
     // check for overrun
@@ -493,7 +494,9 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* st
   // adjust the stop time if necessary
   currtime = time(NULL) - 1;
   if (currtime > *stoptime) {
-    fl_log(LOG_WARNING, "stop time adjusted to %lu", currtime);
+    if (*stoptime) {
+      fl_log(LOG_WARNING, "stop time adjusted to %lu", currtime);
+    }
     *stoptime = currtime;
   }
   __sync_synchronize();
@@ -510,6 +513,63 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* st
   fl_log(LOG_DEBUG, "collected %u samples", readout_count * BUFFER_SIZE / 8);
 
   return 0;
+}
+
+
+// convert binary tracing data to a csv file (simple parsing without time scaling, returns relative timestamps only)
+void parse_tracing_data_noscaling(const char* filename)
+{
+  char     buffer[SPRINTF_BUFFER_LENGTH];
+  FILE*    data_file                = NULL;
+  FILE*    csv_file                 = NULL;
+  uint32_t sample                   = 0;
+  uint32_t prev_sample              = 0;
+  uint32_t line_cnt                 = 0;
+  uint32_t sample_cnt               = 0;
+  uint64_t timestamp_ticks          = 0;
+  uint32_t pinnames_idx_offset      = (extra_options & EXTRAOPT_USE_BB_PINNAMES) ? 9 : 0;
+
+  data_file = fopen(filename, "rb");
+  sprintf(buffer, "%s.csv", filename);
+  csv_file = fopen(buffer, "w");
+  if (NULL == data_file || NULL == csv_file) {
+    fl_log(LOG_ERROR, "failed to open files (%s and/or %s)", filename, csv_file);
+    return;
+  }
+  fread(&sample, 4, 1, data_file);
+  prev_sample = ~sample & 0xff;
+  do {
+    // data valid? -> at least the cycle counter must be > 0
+    if (sample == 0) {
+      break;
+    }
+    // update the timestamp
+    timestamp_ticks += (sample >> 8);
+    double monotonic_time = (double)timestamp_ticks / sampling_rate;
+    // go through all pins and check whether there has been a change
+    uint32_t i = 0;
+    while (i < 8) {
+      uint32_t bitmask = (1 << i);
+      if ((prev_sample & bitmask) != (sample & bitmask)) {
+        uint32_t pin_state = (sample & bitmask) > 0;
+        // format: timestamp,pin,state(0/1)
+        sprintf(buffer, "%.7f,%s,%u\n", monotonic_time, pin_mapping[i + pinnames_idx_offset], pin_state);
+        fwrite(buffer, strlen(buffer), 1, csv_file);
+        line_cnt++;
+      }
+      i++;
+    }
+    prev_sample = sample;
+    sample_cnt++;
+  } while (fread(&sample, 4, 1, data_file) && !abort_conversion);
+
+  long int parsed_size = ftell(data_file) - 4;
+  fseek(data_file, 0, SEEK_END);
+  long int file_size = ftell(data_file);
+  fclose(data_file);
+  fclose(csv_file);
+  fl_log(LOG_DEBUG, "%ld of %ld bytes parsed", parsed_size, file_size);
+  fl_log(LOG_INFO, "tracing data parsed and stored in %s.csv (%u samples, %u lines)", filename, sample_cnt, line_cnt);
 }
 
 
@@ -546,6 +606,7 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     if (sample == 0) {
       break;
     }
+    //fl_log(LOG_DEBUG, "sample: 0x%x, counter: %u", sample & 0xff, sample >> 8);
     // update the timestamp
     timestamp_ticks += (sample >> 8);
     // find first high value of nRST pin and last low value
@@ -599,9 +660,10 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     bool first_or_last_sample = (sample_cnt == 0) || (sample_cnt == ((uint32_t)parsed_size / 4 - 1));
     uint32_t i = 0;
     while (i < 8) {
-      if ((prev_sample & (1 << i)) != (sample & (1 << i))) {
-        uint32_t pin_state = (sample & (1 << i)) > 0;
-        // format: timestamp,ticks,obs_id,node_id,pin,state(0/1)
+      uint32_t bitmask = (1 << i);
+      if ((prev_sample & bitmask) != (sample & bitmask)) {
+        uint32_t pin_state = (sample & bitmask) > 0;
+        // format: timestamp,ticks,pin,state(0/1)
         if (i == 7 && !first_or_last_sample) {
           i = 8;
         }
@@ -612,6 +674,10 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
       i++;
     }
     prev_sample = sample;
+    if (sample_cnt == 0) {
+      // clear the nRST bit after the first sample to avoid an issue where the first PPS pulse would not appear in the processed data
+      prev_sample &= ~0x80;
+    }
     sample_cnt++;
   } while (fread(&sample, 4, 1, data_file) && !abort_conversion);
 
@@ -715,6 +781,10 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
             diff >>= 1;
           }
           prev_sample = sample;
+          if (sample_cnt == 0) {
+            // clear the nRST bit after the first sample to avoid an issue where the first PPS pulse would not appear in the processed data
+            prev_sample &= ~0x80;
+          }
           sample_cnt++;         // total sample count
           samples_to_read--;
         }
@@ -761,10 +831,27 @@ int main(int argc, char** argv)
   uint8_t  pinmask   = 0x0;
   uint32_t offset    = 0;
 
+  // --- make sure only one instance of this program is running ---
+  int pidfd = open(PID_FILE, O_CREAT | O_RDWR, 0666);
+  if (flock(pidfd, LOCK_EX | LOCK_NB) && (EWOULDBLOCK == errno)) {
+    printf("another instance of fl_logic is running, terminating...\n");
+    return -1;
+  }
+
   // --- remove old log file ---
   remove(LOG_FILENAME);
 
   // --- check arguments ---
+  if (argc == 1) {
+    print_usage();
+    return 1;
+  }
+  // read extra options first!
+  if (argc > 6) {
+    // 6th argument if given are the extra option bits
+    extra_options = (uint32_t)strtol(argv[6], NULL, 0);
+    fl_log(LOG_DEBUG, "using extra option 0x%x", extra_options);
+  }
   if (argc > 1) {
     // 1st argument if given is the filename
     strncpy(filename, argv[1], SPRINTF_BUFFER_LENGTH);
@@ -773,18 +860,13 @@ int main(int argc, char** argv)
     if (mkdir(argv[1], 0777) == 0) {
       fl_log(LOG_INFO, "output directory %s created", argv[1]);
     }
-  } else {
-    if (mkdir(OUTPUT_DIR, 0777) == 0) {
-      fl_log(LOG_INFO, "output directory %s created", OUTPUT_DIR);
-    }
-    sprintf(filename, OUTPUT_DIR "%s_%lu.dat", DATA_FILENAME_PREFIX, time(NULL));
   }
   if (argc > 2) {
     // 2nd argument if given is the start timestamp
     starttime = strtol(argv[2], NULL, 10);
     if (starttime < time(NULL)) {
-      if (starttime < 1000) {       // allow offsets of less than 1000s
-        starttime = time(NULL) + 2;    // invalid start time -> start in 2 seconds
+      if (starttime < 1000) {         // allow offsets of less than 1000s
+        starttime = time(NULL) + 2;   // invalid start time -> start in 2 seconds
       } else {
         fl_log(LOG_ERROR, "start time is in the past", argv[1]);
         return 1;
@@ -794,7 +876,7 @@ int main(int argc, char** argv)
   if (argc > 3) {
     // 3rd argument if given is the test duration in seconds or stop timestamp
     stoptime = strtol(argv[3], NULL, 10);
-    if (stoptime < time(NULL)) {
+    if (stoptime > 0 && stoptime < time(NULL)) {
       // appears to be an offset rather than a UNIX timestamp
       stoptime += starttime;
     }
@@ -812,11 +894,6 @@ int main(int argc, char** argv)
     } else {
       fl_log(LOG_DEBUG, "using offset of %us", offset);
     }
-  }
-  if (argc > 6) {
-    // 6th argument if given are the extra option bits
-    extra_options = (uint32_t)strtol(argv[6], NULL, 0);
-    fl_log(LOG_DEBUG, "using extra option 0x%x", extra_options);
   }
 
   // --- register signal handler ---
@@ -859,7 +936,9 @@ int main(int argc, char** argv)
   fl_log(LOG_INFO, "samples stored in %s", filename);
 
   // --- parse data ---
-  if (extra_options & EXTRAOPT_SIMPLE_SCALING) {
+  if (extra_options & EXTRAOPT_RELATIVE_TIME) {
+    parse_tracing_data_noscaling(filename);
+  } else if (extra_options & EXTRAOPT_SIMPLE_SCALING) {
     parse_tracing_data(filename, starttime, stoptime);
   } else {
     parse_tracing_data_stepwise(filename, starttime, stoptime);

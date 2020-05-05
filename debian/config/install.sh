@@ -146,6 +146,11 @@ if [ $? -ne 0 ]; then
   echo "[ OK ] Entry added to fstab."
 fi
 
+# move log directory onto the SD card
+mkdir /media/card/log
+chmod 777 /media/card/log
+ln -sf /media/card/log /var/log
+
 # updates and software dependencies
 echo "       Deactivating and uninstalling potentially conflicting services..."
 
