@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import os, sys, getopt, errno, subprocess, serial, time, configparser, shutil, syslog, xml.etree.ElementTree, traceback, datetime
+import os, sys, getopt, errno, subprocess, serial, time, configparser, shutil, xml.etree.ElementTree, traceback, datetime
 import lib.flocklab as flocklab
 
 
@@ -175,6 +175,10 @@ def main(argv):
         errors.append("Failed to stop debug service.")
     else:
         logger.debug("Stopped debug service.")
+    if flocklab.stop_data_trace() != flocklab.SUCCESS:
+        errors.append("Failed to stop data trace service.")
+    else:
+        logger.debug("Stopped data trace service.")
     
     # allow some time for the above services to terminate properly ---
     time.sleep(10)

@@ -2,7 +2,6 @@
 
 import os, sys, subprocess, getopt, errno, tempfile, time, shutil, serial, xml.etree.ElementTree, traceback
 import lib.flocklab as flocklab
-import lib.dwt as dwt
 
 
 ##############################################################################
@@ -145,6 +144,7 @@ def main(argv):
     flocklab.stop_gdb_server()
 
     # Enable MUX and power
+    flocklab.tg_off()
     flocklab.tg_on()
 
     # Pull down GPIO setting lines ---
@@ -291,29 +291,17 @@ def main(argv):
         # data trace config
         dwtconfs = list(tree.find('obsDebugConf').getiterator('dataTraceConf'))
         if dwtconfs:
-            dwtvars = []
+            dwtvalues = []
             for dwtconf in dwtconfs:
-                trackpc = False
-                mode    = dwtconf.findtext('mode').lower()
-                if mode == 'pc':
-                    trackpc = True
-                    mode = 'rw'
-                dwtvars.append([int(dwtconf.findtext('variable'), 0), mode, trackpc])
-                logger.debug("Found data trace config (addr: %s, mode: %s, track PC: %s)" % (dwtconf.findtext('variable'), mode, str(trackpc)))
-            if len(dwtvars) > 0:
-                while len(dwtvars) < 4:
-                    dwtvars.append([None, None, None])
-                dwt.config_dwt_for_data_trace(device_name=flocklab.jlink_mcu_str(platform), ts_prescaler=64,
-                                              trace_address0=dwtvars[0][0], access_mode0=dwtvars[0][1], trace_pc0=dwtvars[0][2],
-                                              trace_address1=dwtvars[1][0], access_mode1=dwtvars[1][1], trace_pc1=dwtvars[1][2],
-                                              trace_address2=dwtvars[2][0], access_mode2=dwtvars[2][1], trace_pc2=dwtvars[2][2],
-                                              trace_address3=dwtvars[3][0], access_mode3=dwtvars[3][1], trace_pc3=dwtvars[3][2])
-                datatracefile = "%s/%d/datatrace_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-                # TODO make the following call non-blocking
-                #dwt.read_swo_buffer(device_name=flocklab.jlink_mcu_str(platform), loop_delay_in_ms=2, output_file=datatracefile)
-                # put the target back into reset state
-                flocklab.tg_reset(False)
-                logger.debug("Data trace configured.")
+                dwtvalues.append(dwtconf.findtext('variable'))
+                dwtvalues.append(dwtconf.findtext('mode'))
+                logger.debug("Found data trace config: addr=%s, mode=%s." % (dwtconf.findtext('variable'), dwtconf.findtext('mode')))
+            datatracefile = "%s/%d/datatrace_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+            if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile) != flocklab.SUCCESS:
+                flocklab.error_logandexit("Failed to start data tracing service.")
+            # put the target back into reset state
+            flocklab.tg_reset(False)
+            logger.debug("Data trace service configured.")
         # make sure mux is enabled
         flocklab.tg_mux_en(True)
         if port > 0:

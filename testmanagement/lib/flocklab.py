@@ -716,7 +716,9 @@ def get_pids(process_name=None):
     if p.returncode != 0:
         return FAILED
     if pids:
-        pid_list = map(int, pids.split('\n'))
+        pid_list = []
+        for p in pids.strip().split('\n'):
+            pid_list.append(int(p))
         return pid_list
     return None
 ### END get_pids()
@@ -963,7 +965,7 @@ def start_gdb_server(platform=None, port=2331, delay=0):
     if logger:
         logger.debug("Will start GDBServer in %ds..." % delay)
     #os.system("sleep %d > /dev/null 2>&1 && JLinkGDBServer -device %s -if SWD -speed 4000 -port %d > %s 2>&1 &" % (delay, platform, port, gdblog))
-    args = "sleep %d; JLinkGDBServer -device %s -if SWD -speed 4000 -port %d > %s 2>&1 &" % (delay, platform, port, gdblog)
+    args = "sleep %d; JLinkGDBServer -device %s -if SWD -speed 4000 -port %d -nohalt > %s 2>&1 &" % (delay, platform, port, gdblog)
     p = subprocess.Popen(["/bin/bash", "-c", args], stdout=subprocess.PIPE)
     return SUCCESS
     #time.sleep(5)
@@ -985,6 +987,37 @@ def stop_gdb_server():
         os.kill(gdbpid, signal.SIGTERM)
     return SUCCESS
 ### END stop_gdb_server()
+
+
+##############################################################################
+#
+# start_data_trace
+#
+##############################################################################
+def start_data_trace(platform=None, dwtconfig=None, outputfile=None):
+    if not platform or not outputfile or not dwtconfig:
+        return FAILED
+    cmd = [config.get("observer", "datatraceservice"), '--output=%s' % outputfile, '--platform=%s' % platform, '--config=%s' % dwtconfig]
+    p = subprocess.Popen(cmd)
+    rs = p.wait()
+    if rs != SUCCESS:
+        return FAILED
+    return SUCCESS
+### END start_data_trace()
+
+
+##############################################################################
+#
+# stop_data_trace
+#
+##############################################################################
+def stop_data_trace():
+    cmd = [config.get("observer", "datatraceservice"), '--stop']
+    p = subprocess.Popen(cmd)
+    rs = p.wait()
+    if rs not in (SUCCESS, errno.ENOPKG):
+        return FAILED
+    return SUCCESS
 
 
 ##############################################################################
