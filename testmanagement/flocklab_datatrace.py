@@ -163,6 +163,7 @@ def main(argv):
             while len(dwtvalues) < 4:
                 dwtvalues.append([None, None, None])
             # apply config
+            logger.info("Configuring data trace service for MCU %s..." % (flocklab.jlink_mcu_str(platform)))
             dwt.config_dwt_for_data_trace(device_name=flocklab.jlink_mcu_str(platform), ts_prescaler=64,
                                           trace_address0=dwtvalues[0][0], access_mode0=dwtvalues[0][1], trace_pc0=dwtvalues[0][2],
                                           trace_address1=dwtvalues[1][0], access_mode1=dwtvalues[1][1], trace_pc1=dwtvalues[1][2],

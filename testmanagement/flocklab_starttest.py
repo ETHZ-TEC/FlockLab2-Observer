@@ -297,8 +297,11 @@ def main(argv):
                 dwtvalues.append(dwtconf.findtext('mode'))
                 logger.debug("Found data trace config: addr=%s, mode=%s." % (dwtconf.findtext('variable'), dwtconf.findtext('mode')))
             datatracefile = "%s/%d/datatrace_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+            # release target from reset state before starting data trace
+            flocklab.tg_reset()
             if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile) != flocklab.SUCCESS:
                 flocklab.error_logandexit("Failed to start data tracing service.")
+            time.sleep(8)    # give the data trace service some time to initialize
             # put the target back into reset state
             flocklab.tg_reset(False)
             logger.debug("Data trace service configured.")
