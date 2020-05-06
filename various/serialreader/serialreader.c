@@ -90,6 +90,7 @@ int set_interface_attributes(int fd, int speed)
   tty.c_cflag &= ~CRTSCTS;    /* no hardware flowcontrol */
 
   /* see http://man7.org/linux/man-pages/man3/termios.3.html for details about the flags */
+  tty.c_oflag  = 0;           /* no output processing */
   tty.c_lflag |= ICANON;      /* canonical mode */
   tty.c_iflag  = 0;           /* clear input flags */
   tty.c_iflag |= IGNCR;       /* ignore carriages return */
@@ -107,7 +108,7 @@ int set_interface_attributes(int fd, int speed)
 
 int main(int argc, char** argv)
 {
-  unsigned char   rcvbuf[512];
+  unsigned char   rcvbuf[1024];
   char            printbuf[4096];
   const char*     portname    = "/dev/ttyS5";
   const char*     outfilename = NULL;
@@ -159,6 +160,7 @@ int main(int argc, char** argv)
   }
 
   while (running) {
+    //memset(rcvbuf, 0, sizeof(rcvbuf));
     int len = read(fd, rcvbuf, sizeof(rcvbuf) - 1);
     if (len > 0) {
       clock_gettime(CLOCK_REALTIME, &currtime);
@@ -172,13 +174,19 @@ int main(int argc, char** argv)
         currtime.tv_nsec -= transmit_time;
       }
 #endif /* SUBTRACT_TRANSMIT_TIME */
-      rcvbuf[len] = 0;
+      //printf("len is: %d, bytes: %x %x %x %x\n", len, rcvbuf[0], rcvbuf[1], rcvbuf[2], rcvbuf[3]);
+      rcvbuf[len] = 0;  /* just to be sure, but should already be terminated by zero character in canonical mode */
       if (logfile) {
         int prlen = sprintf(printbuf, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
+        if (printbuf[prlen - 1] != '\n') {
+          printbuf[prlen++] = '\n';
+          printbuf[prlen] = 0;
+        }
         fwrite(printbuf, prlen, 1, logfile);
         //fflush(logfile);
       } else {
-        printf("[%ld.%ld] %s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
+        printf("[%ld.%06ld] %s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
+        fflush(stdout);
       }
     } else if (len < 0) {
       printf("read error: %s\n", strerror(errno));
