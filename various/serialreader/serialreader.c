@@ -16,8 +16,8 @@
 #include <signal.h>
 
 
-#define SUBTRACT_TRANSMIT_TIME      1       // subtract the estimated transfer time over uart from the receive timestamp
-#define TIME_OFFSET                 1000    // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
+#define SUBTRACT_TRANSMIT_TIME      1    // subtract the estimated transfer time over uart from the receive timestamp
+#define TIME_OFFSET                 500  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
 
 
 bool running = true;

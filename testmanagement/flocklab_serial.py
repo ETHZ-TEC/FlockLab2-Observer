@@ -236,7 +236,7 @@ def ThreadSerialReader(sf, msgQueueDbBuf, msgQueueSockBuf, stopLock):
     sf_err_back_max  = 5.0        # Maximum backoff time to wait after error on opening serial port
     sf_err_backoff   = sf_err_back_init # Time to wait after error on opening serial port
 
-    flocklab.log_error("ThreadSerialReader started.")
+    flocklab.log_info("ThreadSerialReader started.")
     while stopLock.acquire(False):
         stopLock.release()
         if not sf.isRunning():
@@ -503,7 +503,7 @@ def stop_on_sig(ret_val=flocklab.SUCCESS):
         try:
             proc.join(10)
         except:
-            flocklab.log_error("Could not stop process/thread.")
+            flocklab.log_warning("Could not stop process/thread.")
         if proc.is_alive():
             flocklab.log_error("Could not stop process/thread.")
 
