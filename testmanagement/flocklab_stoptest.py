@@ -4,6 +4,9 @@ import os, sys, getopt, errno, subprocess, serial, time, configparser, shutil, x
 import lib.flocklab as flocklab
 
 
+flashdefaultimage = False
+
+
 ##############################################################################
 #
 # Usage
@@ -196,31 +199,32 @@ def main(argv):
         errors.append("An error occurred while collecting error logs: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
     
     # Flash target with default image ---
-    if platform:
-        core = 0
-        while True:
-            try:
-                imgfile = config.get("defaultimages", "img%d_%s" % (core,platform))
-                optional_reprogramming = False
-            except configparser.NoOptionError:
+    if flashdefaultimage:
+        if platform:
+            core = 0
+            while True:
                 try:
-                    imgfile = config.get("defaultimages", "optional_img%d_%s" % (core,platform))
-                    optional_reprogramming = True
+                    imgfile = config.get("defaultimages", "img%d_%s" % (core,platform))
+                    optional_reprogramming = False
                 except configparser.NoOptionError:
-                    break
-            cmd = [config.get("observer", "progscript"), '--image=%s/%s' % (config.get("observer", "defaultimgfolder"), imgfile), '--target=%s' % (platform), '--core=%d' % core]
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-            (out, err) = p.communicate()
-            rs = p.returncode
-            if (rs != flocklab.SUCCESS):
-                if not optional_reprogramming:
-                    errors.append("Could not flash target with default image for core %d because error %d occurred (%s)." % (core, rs, err.strip()))
-            else:
-                logger.debug("Reprogrammed target with default image.")
-            core = core + 1
-    elif len(imagepath) > 0:
-        logger.warn("Could not flash target with default image because slot number and/or platform could not be determined.")
-    
+                    try:
+                        imgfile = config.get("defaultimages", "optional_img%d_%s" % (core,platform))
+                        optional_reprogramming = True
+                    except configparser.NoOptionError:
+                        break
+                cmd = [config.get("observer", "progscript"), '--image=%s/%s' % (config.get("observer", "defaultimgfolder"), imgfile), '--target=%s' % (platform), '--core=%d' % core]
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+                (out, err) = p.communicate()
+                rs = p.returncode
+                if (rs != flocklab.SUCCESS):
+                    if not optional_reprogramming:
+                        errors.append("Could not flash target with default image for core %d because error %d occurred (%s)." % (core, rs, err.strip()))
+                else:
+                    logger.debug("Reprogrammed target with default image.")
+                core = core + 1
+        elif len(imagepath) > 0:
+            logger.warn("Could not flash target with default image because slot number and/or platform could not be determined.")
+      
     # Set voltage to 3.3V, turn target off (cut all connections) ---
     flocklab.tg_set_vcc()
     flocklab.tg_off()
