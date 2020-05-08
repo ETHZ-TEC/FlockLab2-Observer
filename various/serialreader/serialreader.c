@@ -17,7 +17,7 @@
 
 
 #define SUBTRACT_TRANSMIT_TIME      1    // subtract the estimated transfer time over uart from the receive timestamp
-#define TIME_OFFSET                 500  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
+#define TIME_OFFSET                 100  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
 
 
 bool running = true;
