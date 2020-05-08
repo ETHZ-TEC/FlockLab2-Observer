@@ -205,11 +205,14 @@ skip_use_default_mask:
 
         ; --- HANDSHAKE ---
 
+        ; make sure event status bit is cleared
+        LDI     TMP, ARM_PRU1_INTERRUPT
+        SBCO    &TMP, PRUSS_INTC, PRUSS_SICR_OFS, 4
+
         ; wait for status bit (host event)
         WBS     GPI, 31
 
         ; clear event status bit (R31.t31)
-        LDI     TMP, ARM_PRU1_INTERRUPT
         SBCO    &TMP, PRUSS_INTC, PRUSS_SICR_OFS, 4
 
         ; wait for the next rising edge of the PPS signal (if bit 0x80 is not set in pinmask!)
@@ -717,7 +720,7 @@ main_pru0:
         SBCO    &TMP, PRUSS_CFG, PRUSS_SYSCFG_OFS, 4
 
         ; clear event status bit (R31.t30)
-        LDI     TMP, PRU1_PRU0_INTERRUPT
+        LDI     TMP, (PRU1_PRU0_INTERRUPT + 16)
         SBCO    &TMP, PRUSS_INTC, PRUSS_SICR_OFS, 4
 
 main_loop_pru0:

@@ -8,7 +8,7 @@
 #define __PRU_LOGIC_CONFIG_H__
 
 /* parameters */
-#define USE_SCRATCHPAD      0           /* utilize PRU0 to transfer the samples */
+#define USE_SCRATCHPAD      1           /* utilize PRU0 to transfer the samples */
 #define USE_CYCLE_COUNTER   0           /* use hardware cycle counter for timestamping instead of counting loop passes (max. sampling rate will be reduced) */
 #if USE_CYCLE_COUNTER
  #define SAMPLING_RATE      6250000     /* in Hz (do not change) */

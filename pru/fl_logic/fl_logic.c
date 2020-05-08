@@ -689,13 +689,13 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
 
 
 // convert binary tracing data to a csv file (does stepwise scaling)
-void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s, unsigned long stoptime_s)
+void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s, unsigned long stoptime_s, unsigned long offset)
 {
   char     buffer[SPRINTF_BUFFER_LENGTH];
   FILE*    data_file            = NULL;
   FILE*    csv_file             = NULL;
   uint32_t sample               = 0;
-  uint32_t prev_sample          = 0;
+  uint32_t prev_sample          = 0xffffffff;
   uint32_t line_cnt             = 0;
   uint32_t sample_cnt           = 0;
   uint64_t timestamp_ticks      = 0;
@@ -717,17 +717,14 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
   }
 
   // go through entire file to read timestamps of starting and ending nRST events (used for correction of timestamps)
-  fread(&sample, 4, 1, data_file);  // read the first sample
-  prev_sample = ~sample & 0xff;
-  do {
-    // data valid? -> at least the cycle counter must be > 0
+  while (!end_of_file_found && fread(&sample, 4, 1, data_file) && !abort_conversion) {
+    // data valid? -> at least the cycle counter must be > 0 (except for first sample)
     if (sample != 0) {
       elapsed_ticks += (sample >> 8);
       samples_to_read++;
     } else {
       end_of_file_found = true;
     }
-
     if (wait_for_rising_edge) {
       if ((sample & PPS_PIN_BITMASK) != 0 || end_of_file_found) {
         // --- rising edge found ---
@@ -737,9 +734,19 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
         }
         // calculate the time in seconds
         uint32_t sec_elapsed = (elapsed_ticks + sampling_rate / 2) / sampling_rate;
-        uint32_t sec_now     = last_sync_seconds + sec_elapsed;
+        // only continue if the elapsed time is at least one second
+        uint32_t sec_now = last_sync_seconds + sec_elapsed;
+        // skip the first rising edge (may be shifter slightly due to the offset applied by the PRU)
+        if (starttime_s + offset >= sec_now) {
+          wait_for_rising_edge = false;
+          continue;
+        }
         // calculate the correction factor
-        double corr_factor   = ((double)sec_elapsed / ((double)elapsed_ticks / sampling_rate));
+        double div         = ((double)elapsed_ticks / sampling_rate);
+        double corr_factor = 1.0;
+        if (div > 0) {
+          corr_factor = ((double)sec_elapsed / div);
+        }
         // print info
         fl_log(LOG_DEBUG, "correction factor from %u to %u is %.7f", last_sync_seconds, sec_now, corr_factor);
         if (corr_factor < (1.0 - MAX_TIME_SCALING_DEV) || (corr_factor > (1.0 + MAX_TIME_SCALING_DEV))) {
@@ -755,6 +762,10 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
         // go back in the file to the last sync point and read all samples again
         fseek(data_file, last_sync_filepos, SEEK_SET);
         elapsed_ticks = 0;
+        // first loop iteration?
+        if (prev_sample == 0xffffffff) {
+          prev_sample = ~sample & 0xff;
+        }
         while (samples_to_read && fread(&sample, 4, 1, data_file) && !abort_conversion) {
           // update the timestamp
           elapsed_ticks   += (sample >> 8);     // ticks since last sync point
@@ -789,10 +800,10 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
           samples_to_read--;
         }
         // update / reset state
-        last_sync_seconds    = sec_now;
-        last_sync_filepos    = ftell(data_file);
-        samples_to_read      = 0;
-        elapsed_ticks        = 0;
+        last_sync_seconds = sec_now;
+        last_sync_filepos = ftell(data_file);
+        samples_to_read   = 0;
+        elapsed_ticks     = 0;
         wait_for_rising_edge = false;   // wait for falling edge
       }
 
@@ -803,7 +814,7 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
         wait_for_rising_edge = true;
       }
     }
-  } while (!end_of_file_found && fread(&sample, 4, 1, data_file) && !abort_conversion);
+  }
 
   if ((stoptime_s + 1) != last_sync_seconds) {
     fl_log(LOG_WARNING, "calculated stop time (%lu) is != real stop time (%lu)", last_sync_seconds, stoptime_s + 1);
@@ -941,7 +952,7 @@ int main(int argc, char** argv)
   } else if (extra_options & EXTRAOPT_SIMPLE_SCALING) {
     parse_tracing_data(filename, starttime, stoptime);
   } else {
-    parse_tracing_data_stepwise(filename, starttime, stoptime);
+    parse_tracing_data_stepwise(filename, starttime, stoptime, offset);
   }
 
   fl_log(LOG_DEBUG, "terminated");
