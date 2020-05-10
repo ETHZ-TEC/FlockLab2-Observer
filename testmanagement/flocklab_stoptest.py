@@ -183,9 +183,6 @@ def main(argv):
     else:
         logger.debug("Stopped data trace service.")
     
-    # allow some time for the above services to terminate properly ---
-    time.sleep(10)
-    
     # add some more info to the timesync log ---
     try:
         flocklab.log_timesync_info(testid=testid, includepps=True)
@@ -200,6 +197,8 @@ def main(argv):
     
     # Flash target with default image ---
     if flashdefaultimage:
+        # allow some time for the above services to terminate properly before accessing the serial port for programming ---
+        time.sleep(10)
         if platform:
             core = 0
             while True:

@@ -803,8 +803,6 @@ def stop_serial_logging(timeout=5):
         return SUCCESS      # process does not exist
     try:
         os.kill(pid, signal.SIGINT)   # note: send SIGINT to tell the process to stop
-        if logger:
-            logger.debug("Waiting for gpio tracing service to stop...")
         rs = 0
         while rs == 0 and timeout:
             time.sleep(1)
@@ -862,7 +860,7 @@ def stop_gpio_tracing(timeout=30):
     try:
         os.kill(pid, signal.SIGINT)   # note: send SIGINT to tell the process to stop, SIGTERM will force termination
         if logger:
-            logger.debug("Waiting for gpio tracing service to stop...")
+            logger.debug("Waiting for gpio tracing service to stop (PID %u)..." % pid)
         rs = 0
         while rs == 0 and timeout:
             time.sleep(1)
@@ -874,6 +872,7 @@ def stop_gpio_tracing(timeout=30):
         else:
             # force process to stop
             os.kill(pid, signal.SIGTERM)
+            logger.debug("Forced termination of process with ID %u." % pid)
     except:
         if logger:
             logger.error("An error occurred in stop_gpio_tracing(): %s, %s", str(sys.exc_info()[0]), str(sys.exc_info()[1]))
