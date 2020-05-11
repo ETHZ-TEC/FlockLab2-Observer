@@ -263,7 +263,13 @@ def main(argv):
             settingcount = settingcount + 1
             cmd = flocklab.level_str2abbr(pinconf.find('level').text, pin)
             microsecs = int(flocklab.parse_float(pinconf.find('offset').text) * 1000000)
-            act_events.append([cmd, microsecs])
+            if pinconf.findtext('period'):
+                count = flocklab.parse_int(pinconf.findtext('count'))
+                periodic_evts = flocklab.generate_periodic_act_events(pin, flocklab.parse_float(pinconf.find('offset').text), float(pinconf.findtext('period')), 0.5, count)
+                if periodic_evts:
+                    act_events.extend(periodic_evts)
+            else:
+                act_events.append([cmd, microsecs])
         # determine test start
         try:
             teststarttime = flocklab.parse_int(resets[0])   # 1st reset actuation is the reset release = start of test

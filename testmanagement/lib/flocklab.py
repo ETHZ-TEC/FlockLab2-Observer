@@ -107,6 +107,7 @@ rl_default_rate = 1000
 rl_samp_rates   = [1, 10, 100, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
 rl_max_samples  = 100000000
 rl_time_offset  = -0.0037          # rocketlogger is about ~3.7ms behind the actual time
+max_act_events  = 1024             # max. number of actuation events
 
 # paths
 configfile   = '/home/flocklab/observer/testmanagement/config.ini'
@@ -605,13 +606,15 @@ def level_str2abbr(levelstr="", pin="SIG1"):
 #
 ##############################################################################
 def generate_periodic_act_events(pin="SIG1", offset=0.0, period=1.0, duty_cycle=0.5, count=1):
-    if count < 1 or duty_cycle == 0 or duty_cycle > 1.0 or offset < 0.0:
-        return FAILED
+    if (count < 1) or (count * 2 > max_act_events) or (duty_cycle == 0) or (duty_cycle >= 1.0) or (offset < 0.0):
+        return None
     result = []
     offset = 1000000 * offset     # convert to us
     # get command for high and low for the requested pin
     cmd_high = level_str2abbr('high', pin)
     cmd_low  = level_str2abbr('low', pin)
+    if not cmd_high or not cmd_low:
+        return None
     for c in range(count):
         result.append([cmd_high, int(offset)])
         offset = offset + period * 1000000 * duty_cycle
@@ -973,9 +976,10 @@ def start_gpio_actuation(start_time=None, act_events=[]):
         return FAILED
     # Sort the events
     act_events.sort(key=lambda pair: pair[1])
-    act_cmd = ""
+    act_cmd    = ""
     last_event = 0
-    for evt in act_events:
+    limit      = min(max_act_events, len(act_events))
+    for evt in act_events[0:limit]:
         if len(evt) != 2:
             if logger:
                 logger.warning("Invalid argument in act_events.")
