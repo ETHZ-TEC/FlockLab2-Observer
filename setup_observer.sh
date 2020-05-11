@@ -1,8 +1,6 @@
 #!/bin/bash
 #
-# FlockLab2 observer setup script, requires a running and configured Debian system.
-#
-# Copyright (c) 2019, ETH Zurich, Computer Engineering Group
+# Copyright (c) 2020, ETH Zurich, Computer Engineering Group
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,6 +27,14 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# Author: Reto Da Forno
+#
+
+#
+# FlockLab2 observer setup script
+#
+# Make sure to first execute ./debian/setup_system.sh before running this script.
 #
 
 REBOOT_TIMEOUT=120

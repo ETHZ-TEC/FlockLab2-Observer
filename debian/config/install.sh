@@ -1,7 +1,6 @@
 #!/bin/bash
-# Basic operating system configuration of a new BeagleBone Black/Green/Green Wireless
 #
-# Copyright (c) 2016-2019, ETH Zurich, Computer Engineering Group
+# Copyright (c) 2016-2020, ETH Zurich, Computer Engineering Group
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,6 +29,9 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+#
+# Basic operating system configuration of a new BeagleBone Black/Green/Green Wireless
+#
 
 ERRORLOG="/tmp/debian_install.log"
 

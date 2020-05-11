@@ -1,7 +1,6 @@
 #!/bin/bash
-# FlockLab2 observer install script (runs on BeagleBone).
 #
-# Copyright (c) 2016-2019, ETH Zurich, Computer Engineering Group
+# Copyright (c) 2020, ETH Zurich, Computer Engineering Group
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,7 +28,15 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
+# Author: Reto Da Forno
+#
 
+##########################################################
+#
+# FlockLab2 observer install script (runs on BeagleBone).
+# Do not call this script directly, use ./setup_observer.sh instead.
+#
+##########################################################
 
 HOMEDIR="/home/flocklab"
 RESULTSDIR="/home/flocklab/data/results"

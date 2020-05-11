@@ -27,10 +27,12 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Author: Reto Da Forno
  */
 
 /*
- * initiates GPIO sampling with PRU1
+ * FlockLab2 logic/GPIO tracing user space program for the BeagleBone Green
  */
 
 // INCLUDES
