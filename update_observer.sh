@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2019, ETH Zurich, Computer Engineering Group
+# Copyright (c) 2020, ETH Zurich, Computer Engineering Group
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -46,6 +46,7 @@ SRCDIR="."
 DESTDIR="observer"
 RSYNCPARAMS=" -a -z -c --timeout=5 --exclude=.git --no-perms --no-owner --no-group"  # --delete
 JLINKPATH="/opt"
+PASSWORD=""     # script will query password if left blank
 
 # check arguments
 if [ $# -gt 0 ]; then
@@ -58,6 +59,15 @@ fi
 
 echo "Going to update files on FlockLab observer(s) $OBSIDS..."
 sleep 2   # give the user time to abort, just in case
+
+
+function getpw {
+    if [ -z "$PASSWORD" ]; then
+        echo "Enter the sudo password for user $USER:"
+        read -s PASSWORD
+    fi
+}
+
 
 for OBS in $OBSIDS
 do
@@ -91,45 +101,51 @@ do
     # install new code
     if [ $INSTALL -gt 0 ]; then
         if [[ $CHANGEDFILES = *fl_logic/* ]]; then
+            getpw
             echo "Installing new fl_logic binary and PRU firmware... "
-            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/pru/fl_logic && sudo make install'
+            echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/pru/fl_logic && sudo make install'
             if [ $? -ne 0 ]; then
                 echo "Failed!"
             fi
         fi
         if [[ $CHANGEDFILES = *serialreader/* ]]; then
+            getpw
             echo "Installing new serial reader binary... "
-            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/various/serialreader && sudo make install'
+            echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/various/serialreader && sudo make install'
             if [ $? -ne 0 ]; then
                 echo "Failed!"
             fi
         fi
         if [[ $CHANGEDFILES = *actuation* ]]; then
+            getpw
             echo "Installing new actuation service module... "
-            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/various/actuation && sudo make install'
+            echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/various/actuation && sudo make install'
             if [ $? -ne 0 ]; then
                 echo "Failed!"
             fi
         fi
         if [[ $CHANGEDFILES = *device_tree_overlay* ]]; then
+            getpw
             echo "Installing new device tree overlay... "
-            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/device_tree_overlay && sudo ./install'
+            echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/device_tree_overlay && sudo ./install'
             if [ $? -ne 0 ]; then
                 echo "Failed!"
             fi
         fi
         if [[ $CHANGEDFILES = *rocketlogger/* ]]; then
+            getpw
             echo "Compiling and installing new RocketLogger software... "
-            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/rocketlogger && sudo make install'
+            echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/rocketlogger && sudo make install'
             if [ $? -ne 0 ]; then
                 echo "Failed!"
             fi
         fi
         if [[ $NEWFILES = *jlink/* ]]; then
+            getpw
             echo "Installing new JLink software..."
             JLINK=$(ls -1 jlink | grep JLink_Linux | sort | tail -n 1)
             JLINKDIR=${JLINK::-4}
-            ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} "sudo tar xzf ~/observer/jlink/${JLINK} -C ${JLINKPATH} && sudo rm ${JLINKPATH}/jlink && sudo ln -sf ${JLINKPATH}/${JLINKDIR} ${JLINKPATH}/jlink"
+            printf "$PASSWORD\n$PASSWORD\n$PASSWORD\n" | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} "sudo tar xzf ~/observer/jlink/${JLINK} -C ${JLINKPATH} && sudo rm ${JLINKPATH}/jlink && sudo ln -sf ${JLINKPATH}/${JLINKDIR} ${JLINKPATH}/jlink"
             if [ $? -ne 0 ]; then
                 echo "Failed!"
             fi
