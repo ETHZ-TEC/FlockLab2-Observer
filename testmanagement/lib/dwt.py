@@ -627,7 +627,7 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
     #log.write("after connecting")
     loop_delay_in_s = loop_delay_in_ms/1000
 
-    jlink.reset(ms=10, halt=False)  # ATTENTION we need this reset for SWO reader to work.
+    #jlink.reset(ms=10, halt=True)  # ATTENTION we need this reset for SWO reader to work.
 
     file = open(filename, "w")
     file.write("first line")
