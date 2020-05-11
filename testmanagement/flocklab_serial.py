@@ -52,9 +52,9 @@ msgQueueDbBuf = None                # Queue used to send data to the DB buffer
 #
 ##############################################################################
 def usage():
-    print("Usage: %s --testid=<int> [--port=<string>] [--baudrate=<int>] [--socketport=<int>] [--stop] [--daemon] [--debug] [--help]" %sys.argv[0])
+    print("Usage: %s --output=<string> [--port=<string>] [--baudrate=<int>] [--socketport=<int>] [--stop] [--daemon] [--debug] [--help]" %sys.argv[0])
     print("Options:")
-    print("  --testid=<int>\t\tID of the test.")
+    print("  --output=<string>\t\tOutput filename.")
     print("  --port=<string>\t\tOptional. Port over which serial communication is done. Default is serial.")
     print("\t\t\t\tPossible values are: %s" % (str(flocklab.tg_port_types)))
     print("  --baudrate=<int>\t\tOptional. Baudrate of serial device. Default is 115200.")
@@ -435,12 +435,12 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
 # ProcDbBuf
 #
 ##############################################################################
-def ProcDbBuf(msgQueueDbBuf, stopLock, testid):
+def ProcDbBuf(msgQueueDbBuf, stopLock, resultsfile):
     _num_elements         = 0
     _dbfile               = None
     _dbfile_creation_time = 0
     _dbflushinterval      = 300
-    _obsresfolder         = "%s/%d" % (os.path.realpath(config.get("observer", 'testresultfolder')), testid)
+    _obsresfolder         = resultsfile
 
     def _get_db_file_name():
         return "%s/serial_%s.db" % (_obsresfolder, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
@@ -635,8 +635,8 @@ def main(argv):
     serialdev  = None
     baudrate   = 115200        # Standard baudrate. Can be overwritten by the user.
     slotnr     = None
-    testid     = None
     socketport = None
+    output     = None
     stop       = False
 
     # Get config:
@@ -646,7 +646,7 @@ def main(argv):
 
     # Get command line parameters.
     try:
-        opts, args = getopt.getopt(argv, "ehqdt:p:m:b:i:l:", ["stop", "help", "daemon", "debug", "port=", "baudrate=", "testid=", "socketport="])
+        opts, args = getopt.getopt(argv, "ehqdt:p:m:b:o:l:", ["stop", "help", "daemon", "debug", "port=", "baudrate=", "output=", "socketport="])
     except(getopt.GetoptError) as err:
         flocklab.error_logandexit(str(err), errno.EINVAL)
     for opt, arg in opts:
@@ -669,20 +669,20 @@ def main(argv):
                 flocklab.error_logandexit("Port not valid. Possible values are: %s" % (str(flocklab.tg_port_types)), errno.EINVAL)
             else:
                 port = arg
-        elif opt in ("-i", "--testid"):
-            testid = int(arg)
+        elif opt in ("-o", "--output"):
+            output = arg
         elif opt in ("-l", "--socketport"):
             socketport = int(arg)
         else:
             flocklab.error_logandexit("Unknown option '%s'." % (opt), errno.EINVAL)
 
-    # Check if the mandatory parameter --testid is set:
+    # Check if the mandatory parameter is set:
     if not stop:
-        if not testid:
-            flocklab.error_logandexit("No test ID specified.", errno.EINVAL)
+        if not output:
+            flocklab.error_logandexit("No output file specified.", errno.EINVAL)
         # Check if folder exists
-        if not os.path.isdir("%s/%d" % (os.path.realpath(config.get("observer", 'testresultfolder')), testid)):
-            flocklab.error_logandexit("Test results folder does not exist.")
+        if not os.path.isdir(os.path.dirname(output)):
+            flocklab.error_logandexit("Output directory '%s' does not exist." % (os.path.dirname(output)))
 
     pidfile = "%s/flocklab_serial.pid" % (config.get("observer", "pidfolder"))
 
@@ -726,7 +726,7 @@ def main(argv):
 
     # Start process for DB buffer ---
     stopLock = multiprocessing.Lock()
-    p =  multiprocessing.Process(target=ProcDbBuf, args=(msgQueueDbBuf, stopLock, testid), name="ProcDbBuf")
+    p =  multiprocessing.Process(target=ProcDbBuf, args=(msgQueueDbBuf, stopLock, output), name="ProcDbBuf")
     try:
         p.daemon = True
         p.start()

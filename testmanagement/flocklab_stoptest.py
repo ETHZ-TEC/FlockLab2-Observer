@@ -177,20 +177,11 @@ def main(argv):
         slotnr = flocklab.tg_get_selected()
         errors.append("Could not activate interface because slot number could not be determined. Working on currently active interface %d." % slotnr)
     
-    # Stop serial service ---
-    # This has to be done before turning off power since otherwise the service will encounter errors due to disappearing devices.
-    cmd = [config.get("observer", "serialservice"), '--stop', '--testid=%d' % testid]
-    if debug:
-        cmd.append('--debug')
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    (out, err) = p.communicate()
-    rs = p.returncode
-    if (rs not in (flocklab.SUCCESS, errno.ENOPKG)):
-        errors.append("Error %d when trying to stop serial service." % rs)
+    # Reset all services ---
+    if flocklab.stop_serial_service(debug) != flocklab.SUCCESS:
+        errors.append("Failed to stop serial service.")
     else:
         logger.debug("Stopped serial service.")
-    
-    # Reset all remaining services, regardless of previous errors ---
     if flocklab.stop_serial_logging() != flocklab.SUCCESS:
         errors.append("Failed to stop serial logging service.")
     else:

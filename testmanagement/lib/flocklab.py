@@ -119,8 +119,8 @@ gdblog       = '/home/flocklab/log/jlinkgdb.log'
 scriptname   = os.path.basename(os.path.abspath(sys.argv[0]))   # name of caller script
 
 # constants
-SUCCESS = 0
-FAILED  = -2       # note: must be negative, and -1 (= 255) is reserved for SSH error
+SUCCESS = 0     # do not change, must be 0
+FAILED  = -2    # note: must be negative, and -1 (= 255) is reserved for SSH error
 
 # global variables
 logger = None
@@ -807,7 +807,49 @@ def stop_pwr_measurement():
 
 ##############################################################################
 #
-# start_serial_logging
+# start_serial_service    python implementation, support reading and writing
+#
+##############################################################################
+def start_serial_service(serialport=tg_serial_port, baudrate=115200, socketport=None, out_dir=None, debug=False):
+    if not out_dir:
+        return FAILED
+    cmd = [config.get("observer", "serialservice"), '--output=%s' % out_dir]
+    if serialport:
+        cmd.append('--port=%s' % (serialport))
+    if socketport:
+        cmd.append('--socketport=%d' % (socketport))
+    if baudrate:
+        cmd.append('--baudrate=%s' % (baudrate))
+    cmd.append('--daemon')
+    if debug:
+        cmd.append('--debug')
+    logger.debug("Starting serial service with command '%s'..." % (" ".join(cmd)))
+    p = subprocess.Popen(cmd)
+    rs = p.wait()
+    return rs
+### END start_serial_service()
+
+
+##############################################################################
+#
+# stop_serial_service
+#
+##############################################################################
+def stop_serial_service(debug=False):
+    cmd = [config.get("observer", "serialservice"), '--stop']
+    if debug:
+        cmd.append('--debug')
+    p = subprocess.Popen(cmd)
+    rs = p.wait()
+    if rs in (0, errno.ENOPKG):
+        return SUCCESS
+    return FAILED
+### END stop_serial_service()
+
+
+##############################################################################
+#
+# start_serial_logging    C implementation, only supports reading (logging)
 #
 ##############################################################################
 def start_serial_logging(port=tg_serial_port, baudrate=115200, out_file=None):

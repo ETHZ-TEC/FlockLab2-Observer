@@ -63,7 +63,7 @@ def main(argv):
 
     xmlfile    = None
     testid     = None
-    serialport = None
+    socketport = None
     debug      = False
 
     # Get config:
@@ -86,7 +86,7 @@ def main(argv):
             if not (os.path.exists(xmlfile)):
                 flocklab.error_logandexit("Error: file %s does not exist" % (str(xmlfile)), errno.EINVAL)
         elif opt in ("-p", "--serialport"):
-            serialport = int(arg)
+            socketport = int(arg)     # socket port used for the serial output
         elif opt in ("-h", "--help"):
             usage()
             sys.exit(flocklab.SUCCESS)
@@ -97,7 +97,7 @@ def main(argv):
 
     # Check for mandatory arguments:
     if not xmlfile or not testid:
-        flocklab.error_logandexit("Test ID, XML or serial port missing.", errno.EINVAL)
+        flocklab.error_logandexit("Test ID and/or XML config missing.", errno.EINVAL)
 
     # init logger
     logger = flocklab.get_logger(debug=debug)
@@ -129,7 +129,7 @@ def main(argv):
     imagefile           = None
     slotnr              = None
     platform            = None
-    ssport              = None
+    serialport          = None
     noimage             = False
     actuationused       = False
     tracingserviceused  = tree.find('obsGpioMonitorConf') != None
@@ -226,34 +226,21 @@ def main(argv):
     # Serial ---
     if tree.find('obsSerialConf') != None:
         logger.debug("Found config for serial service.")
-        cmd = [config.get("observer", "serialservice"), '--testid=%d' % testid]
-        if serialport:
-            logger.debug("Serial socket port: %d" % serialport)
-            cmd.append('--socketport=%d' % (serialport))
-        br = tree.findtext('obsSerialConf/baudrate')
-        if br != None:
-            logger.debug("Baudrate: %s" % (br))
-            cmd.append('--baudrate=%s' % (br))
-        ssport = tree.findtext('obsSerialConf/port')
-        if ssport != None:
-            logger.debug("Port: %s" % (ssport))
-            cmd.append('--port=%s' % (ssport))
-        else:
-            ssport = "serial"
-        cmd.append('--daemon')
-        if debug:
-            cmd.append('--debug')
+        baudrate = tree.findtext('obsSerialConf/baudrate')
+        serialport = tree.findtext('obsSerialConf/port')
+        if serialport == None:
+            serialport = "serial"
         if not serialport:
-            # if only logging is required, use the faster C implementation
             serialfile = "%s/%d/serial_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-            if flocklab.start_serial_logging(ssport, br, serialfile) != flocklab.SUCCESS:
+            # if only logging is required, use the faster C implementation
+            if flocklab.start_serial_logging(serialport, baudrate, serialfile) != flocklab.SUCCESS:
+                flocklab.tg_off()
                 flocklab.error_logandexit("Failed to start serial logging service.")
         else:
-            p = subprocess.Popen(cmd)
-            rs = p.wait()
-            if (rs != flocklab.SUCCESS):
+            outputdir = "%s/%d" % (config.get("observer", "testresultfolder"), testid)
+            if flocklab.start_serial_service(serialport, baudrate, socketport, outputdir, debug) != flocklab.SUCCESS:
                 flocklab.tg_off()
-                flocklab.error_logandexit("Error %d when trying to start serial service." % (rs))
+                flocklab.error_logandexit("Failed to start serial service.")
         logger.debug("Started and configured serial service.")
     else:
         logger.debug("No config for serial service found.")
@@ -351,7 +338,7 @@ def main(argv):
     else:
         logger.debug("No config for debug service found.")
         # disable MUX for more accurate current measurements only if serial port is not USB
-        if ssport != "usb":
+        if serialport != "usb":
             flocklab.tg_mux_en(False)
             logger.debug("Disabling MUX.")
 
