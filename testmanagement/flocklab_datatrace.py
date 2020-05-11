@@ -208,6 +208,10 @@ def main(argv):
     # Start SWO read
     dwt.read_swo_buffer(device_name=flocklab.jlink_mcu_str(platform), loop_delay_in_ms=2, filename=filename)
 
+    # Remove PID file
+    if os.path.isfile(pidfile):
+        os.remove(pidfile)
+
     sys.exit(flocklab.SUCCESS)
 ### END main()
 
