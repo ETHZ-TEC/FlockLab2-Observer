@@ -92,11 +92,9 @@ def stop_daemon():
         logger.info("Sending SIGTERM signal to process %d" % pid)
         try:
             os.kill(pid, signal.SIGTERM)
-        except OSError:
-            return flocklab.FAILED
-        try:
             os.waitpid(pid, 0)
         except OSError:
+            # process probably didn't exist -> ignore error
             pass
     else:
         logger.info("No daemon process found.")
