@@ -284,14 +284,14 @@ def main(argv):
             flocklab.error_logandexit("Could not determine test start time (%s)." % str(sys.exc_info()[1]))
         # actuation service required?
         if settingcount > 0:
-            # if only two actuations are scheduled, then it's only the reset pins -> disable actuation during the test if debugging service not used
-            if settingcount == 2 and serialport == None and not debugserviceused:
+            if settingcount > 2:
+                actuationused = True
+            elif serialport == None and not debugserviceused:
+                # if two or less actuations are scheduled, then it's only the reset pins -> disable actuation during the test if debugging service not used
                 act_events.append(['A', 1000])    # 1ms after startup
                 act_events.append(['a', flocklab.parse_int((teststoptime - teststarttime) * 1000000) - 1000])    # reactivate actuation just before the end of the test (when the reset pin needs to be pulled low)
                 settingcount = settingcount + 2
                 logger.debug("Actuation will be disabled during the test.")
-            else:
-                actuationused = True
             if flocklab.start_gpio_actuation(teststarttime, act_events) != flocklab.SUCCESS:
                 flocklab.tg_off()
                 flocklab.error_logandexit("Failed to start GPIO actuation service.")
@@ -371,6 +371,9 @@ def main(argv):
             logger.debug("Going to trace SIG pins...")
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         extra_options = 0x00000000
+        if debugserviceused:
+            # do not control the reset pin in this case
+            extra_options |= 0x00000002
         if not powerprofilingused:
             extra_options = extra_options | 0x00000040    # use PRU0 to assist with GPIO tracing
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset, extra_options) != flocklab.SUCCESS:

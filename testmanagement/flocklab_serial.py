@@ -415,7 +415,7 @@ def ThreadSocketProxy(msgQueueSockBuf, ServerSock, sf, msgQueueDbBuf, stopLock):
             except:
                 flocklab.log_error("ThreadSocketProxy encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
         # Stop the thread
-        flocklab.log_info("ThreadSocketProxy stopping...")
+        flocklab.log_debug("ThreadSocketProxy stopping...")
         try:
             if ServerSock.isRunning():
                 ServerSock.disconnectClient()
@@ -493,7 +493,7 @@ def ProcDbBuf(msgQueueDbBuf, stopLock, resultsfile):
                     raise
 
         # Stop the process
-        flocklab.log_info("ProcDbBuf stopping... %d elements received " % _num_elements)
+        flocklab.log_debug("ProcDbBuf stopping... %d elements received " % _num_elements)
     except KeyboardInterrupt:
         pass
     except:
@@ -503,7 +503,7 @@ def ProcDbBuf(msgQueueDbBuf, stopLock, resultsfile):
     try:
         if _dbfile is not None:
             _dbfile.close()
-            flocklab.log_info("ProcDbBuf closed dbfile %s" % _dbfilename)
+            flocklab.log_debug("ProcDbBuf closed dbfile %s" % _dbfilename)
         flocklab.log_info("ProcDbBuf stopped.")
     except:
         flocklab.log_error("ProcDbBuf encountered error: %s: %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
@@ -524,13 +524,13 @@ def stop_on_sig(ret_val=flocklab.SUCCESS):
     global proc_list
 
     # Close all threads:
-    flocklab.log_info("Closing %d processes/threads..." %  len(proc_list))
+    flocklab.log_debug("Closing %d processes/threads..." %  len(proc_list))
     for (proc,stopLock) in proc_list:
         try:
             stopLock.acquire()
         except:
             flocklab.log_error("Could not acquire stop lock for process/thread.")
-    flocklab.log_info("Joining %d processes/threads..." %  len(proc_list))
+    flocklab.log_debug("Joining %d processes/threads..." %  len(proc_list))
     for (proc,stopLock) in proc_list:
         try:
             proc.join(10)
@@ -540,14 +540,14 @@ def stop_on_sig(ret_val=flocklab.SUCCESS):
             flocklab.log_error("Could not stop process/thread.")
 
     # Stop dbbuf process:
-    flocklab.log_info("Closing ProcDbBuf process...")
+    flocklab.log_debug("Closing ProcDbBuf process...")
     try:
         dbbuf_proc[1].acquire()
     except:
         flocklab.log_error("Could not acquire stoplock for ProcDbBuf process.")
     # Send some dummy data to the queue of the DB buffer to wake it up:
     msgQueueDbBuf.put([None, None, None])
-    flocklab.log_info("Joining ProcDbBuf process...")
+    flocklab.log_debug("Joining ProcDbBuf process...")
     try:
         dbbuf_proc[0].join(30)
     except:
