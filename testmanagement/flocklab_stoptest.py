@@ -207,6 +207,9 @@ def main(argv):
     else:
         logger.debug("Stopped data trace service.")
     
+    # wait for all background services to stop
+    time.sleep(10)
+    
     # add some more info to the timesync log ---
     try:
         flocklab.log_timesync_info(testid=testid, includepps=True)
