@@ -55,7 +55,8 @@
 
 // DEFINES
 
-#define BUFFER_SIZE           8192                  // must be a multiple of 128
+#define BUFFER_SIZE_DDRMEM    16384                 // must be a multiple of 128
+#define BUFFER_SIZE_PRUMEM    8192                  // must be a multiple of 128
 #define SAMPLING_RATE_HIGH    10000000              // must match the sampling rate of the PRU
 #define SAMPLING_RATE_MEDIUM  1000000               // alternative, lower sampling rate
 #define SAMPLING_RATE_LOW     100000                // alternative, lowest sampling rate
@@ -95,8 +96,11 @@
 
 // PARAMETER CHECK
 
-#if (BUFFER_SIZE & (BUFFER_SIZE - 1)) || (BUFFER_SIZE & 127 > 0)
-#error "invalid BUFFER_SIZE (must be a multiple of 128)"
+#if (BUFFER_SIZE_DDRMEM & (BUFFER_SIZE_DDRMEM - 1)) || (BUFFER_SIZE_DDRMEM & 127 > 0)
+#error "invalid BUFFER_SIZE_DDRMEM (must be a multiple of 128)"
+#endif
+#if (buffer_size_PRUMEM & (buffer_size_PRUMEM - 1)) || (BUFFER_SIZE_PRUMEM & 127 > 0)
+#error "invalid BUFFER_SIZE_PRUMEM (must be a multiple of 128)"
 #endif
 
 
@@ -129,6 +133,7 @@ typedef enum log_level log_level_t;
 
 static const char* pin_mapping[] = { PIN_NAMES, PIN_NAMES_BB };
 static uint32_t    sampling_rate = SAMPLING_RATE_HIGH;
+static uint32_t    buffer_size   = BUFFER_SIZE_DDRMEM;
 static uint32_t    extra_options = 0;
 static bool        running = true;
 static bool        abort_conversion = false;
@@ -294,18 +299,21 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
     pinmask |= PPS_PIN_BITMASK;
   }
   // prepare config
-  prucfg.buffer_size = BUFFER_SIZE;
+  buffer_size        = BUFFER_SIZE_DDRMEM;
+  prucfg.buffer_size = BUFFER_SIZE_DDRMEM;
   prucfg.pin_mask    = pinmask;
   prucfg.offset      = offset;
 
   // get sample buffer
   if (extra_options & EXTRAOPT_USE_PRU_MEMORY) {
     // use a buffer in the PRU data memory
+    buffer_size        = BUFFER_SIZE_PRUMEM;
+    prucfg.buffer_size = BUFFER_SIZE_PRUMEM;
     prucfg.buffer_addr = 0x00010000;
     if (out_buffer_addr) {
       prussdrv_map_prumem(PRUSS0_SHARED_DATARAM, (void**)out_buffer_addr);
       // clear buffer
-      memset(*out_buffer_addr, 0, BUFFER_SIZE);
+      memset(*out_buffer_addr, 0, buffer_size);
     }
 
   } else {
@@ -314,15 +322,15 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
     prussdrv_map_extmem(&pru_extmem_base);
     uint32_t pru_extmem_size = (uint32_t)prussdrv_extmem_size();
     // place the buffer at the end of the mapped memory
-    pru_extmem_base = (void*)((uint32_t)pru_extmem_base + pru_extmem_size - BUFFER_SIZE);
+    pru_extmem_base = (void*)((uint32_t)pru_extmem_base + pru_extmem_size - buffer_size);
     prucfg.buffer_addr = (uint32_t)prussdrv_get_phys_addr(pru_extmem_base);
 
     // check max PRU buffer size
-    if (BUFFER_SIZE > pru_extmem_size) {
+    if (buffer_size > pru_extmem_size) {
       fl_log(LOG_ERROR, "insufficient PRU memory available");
       return 2;
     }
-    fl_log(LOG_DEBUG, "%d / %d bytes allocated in mapped PRU memory (physical address 0x%x)", BUFFER_SIZE, pru_extmem_size, prucfg.buffer_addr);
+    fl_log(LOG_DEBUG, "%d / %d bytes allocated in mapped PRU memory (physical address 0x%x)", buffer_size, pru_extmem_size, prucfg.buffer_addr);
 
     // get user space mapped PRU memory addresses
     if (out_buffer_addr) {
@@ -332,7 +340,7 @@ int pru1_init(uint8_t** out_buffer_addr, uint8_t pinmask, uint32_t offset)
         return 3;
       }
       // clear buffer
-      memset(*out_buffer_addr, 0, BUFFER_SIZE);
+      memset(*out_buffer_addr, 0, buffer_size);
     }
   }
 
@@ -475,12 +483,12 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* st
     uint8_t* curr_buffer = (uint8_t*)pru_buffer;
     if (readout_count & 1) {
       // odd numbers
-      curr_buffer = (uint8_t*)&pru_buffer[BUFFER_SIZE / 2];
+      curr_buffer = (uint8_t*)&pru_buffer[buffer_size / 2];
     }
     // write to file
-    fwrite(curr_buffer, (BUFFER_SIZE / 2), 1, data_file);
+    fwrite(curr_buffer, (buffer_size / 2), 1, data_file);
     // clear buffer
-    memset(curr_buffer, 0, (BUFFER_SIZE / 2));
+    memset(curr_buffer, 0, (buffer_size / 2));
     readout_count++;
 
     // check for overrun
@@ -506,14 +514,14 @@ int pru1_run(uint8_t* pru_buffer, FILE* data_file, time_t* starttime, time_t* st
 
   // copy the remaining data (add a few more bytes in case there is a buffer wrap around on the PRU)
   if (readout_count & 1) {
-    fwrite(&pru_buffer[BUFFER_SIZE / 2], (BUFFER_SIZE / 2), 1, data_file);
+    fwrite(&pru_buffer[buffer_size / 2], (buffer_size / 2), 1, data_file);
     fwrite(pru_buffer, 32, 1, data_file);
   } else {
-    fwrite(pru_buffer, (BUFFER_SIZE / 2) + 32, 1, data_file);
+    fwrite(pru_buffer, (buffer_size / 2) + 32, 1, data_file);
   }
   readout_count++;
 
-  fl_log(LOG_DEBUG, "collected %u samples", readout_count * BUFFER_SIZE / 8);
+  fl_log(LOG_DEBUG, "collected %u samples", readout_count * buffer_size / 8);
 
   return 0;
 }
