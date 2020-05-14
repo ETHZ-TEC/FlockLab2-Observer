@@ -665,7 +665,10 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     }
     // update the timestamp
     timestamp_ticks += (sample >> 8);
-    double realtime_time = (double)starttime_s + (double)timestamp_ticks / sampling_rate * corr_factor;
+    double elapsed_time = (double)timestamp_ticks / sampling_rate * corr_factor;
+    // note: IEEE 754 double only has 52-bit precision (~16 digits), we need to split the value into full seconds and a fractional portion
+    uint32_t realtime_time_s    = (uint32_t)elapsed_time + starttime_s;
+    uint32_t realtime_time_frac = (uint32_t)((double)(elapsed_time - (uint32_t)elapsed_time) * 1e7);  // if factor '1e7' is changed, don't forget to adjust the print formating below (%07u)
     double monotonic_time = (double)timestamp_ticks / sampling_rate;
     // go through all pins and check whether there has been a change
     bool first_or_last_sample = (sample_cnt == 0) || (sample_cnt == ((uint32_t)parsed_size / 4 - 1));
@@ -678,7 +681,7 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
         if (i == 7 && !first_or_last_sample) {
           i = 8;
         }
-        sprintf(buffer, "%.7f,%.7f,%s,%u\n", realtime_time, monotonic_time, pin_mapping[i], pin_state);
+        sprintf(buffer, "%u.%07u,%.7f,%s,%u\n", realtime_time_s, realtime_time_frac, monotonic_time, pin_mapping[i], pin_state);
         fwrite(buffer, strlen(buffer), 1, csv_file);
         line_cnt++;
       }
@@ -781,7 +784,11 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
           // update the timestamp
           elapsed_ticks   += (sample >> 8);     // ticks since last sync point
           timestamp_ticks += (sample >> 8);     // total ticks since test start
-          double realtime_time  = (double)last_sync_seconds + (double)elapsed_ticks / sampling_rate * corr_factor;
+          double elapsed_time = (double)elapsed_ticks / sampling_rate * corr_factor;
+          // note: IEEE 754 double only has 52-bit precision (~16 digits), we need to split the value into full seconds and a fractional portion
+          uint32_t realtime_time_s    = (uint32_t)elapsed_time + last_sync_seconds;
+          uint32_t realtime_time_frac = (uint32_t)((double)(elapsed_time - (uint32_t)elapsed_time) * 1e7);  // if factor '1e7' is changed, don't forget to adjust the print formating below (%07u)
+          // for reference, also generate a monotonic timestamp
           double monotonic_time = (double)timestamp_ticks / sampling_rate;
           // go through all pins and check whether there has been a change
           sample = sample & 0xff;               // remove upper bits (timestamp)
@@ -795,7 +802,7 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
                 idx++;
               }
               // format: timestamp,ticks,pin,state(0/1)
-              sprintf(buffer, "%.7f,%.7f,%s,%u\n", realtime_time, monotonic_time, pin_mapping[idx], pin_state);
+              sprintf(buffer, "%u.%07u,%.7f,%s,%u\n", realtime_time_s, realtime_time_frac, monotonic_time, pin_mapping[idx], pin_state);
               fwrite(buffer, strlen(buffer), 1, csv_file);
               line_cnt++;   // # lines written
             }
