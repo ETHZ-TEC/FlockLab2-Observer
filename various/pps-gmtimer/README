@@ -1,2 +1,5 @@
 original project by ddrown: https://github.com/ddrown/pps-gmtimer
 modified to work with kernel 4.14 by kugelbit: https://github.com/kugelbit/pps-gmtimer
+
+to use the watch-pps skript:
+cd /sys/devices/platform/ocp/ocp:pps_gmtimer/ && perl ~/observer/various/pps-gmtimer/watch-pps 2
