@@ -39,7 +39,9 @@ import lib.flocklab as flocklab
 import lib.dwt as dwt
 
 
-pidfile  = None
+pidfile   = None
+prescaler = 16     # prescaler for local timestamps
+loopdelay = 10     # SWO read loop delay in ms (recommended values: 10 - 100ms)
 
 
 ##############################################################################
@@ -180,22 +182,25 @@ def main(argv):
                 # mode definition (a variable address must precede it)
                 mode    = val.lower()
                 trackpc = False
-                if mode in 'pc':
+                if 'pc' in mode:
                     trackpc = True
+                if 'rw' in mode:
                     mode = 'rw'
-                elif mode not in ('r', 'w', 'rw'):
-                    mode = 'w'    # default value
+                elif 'r' in mode:
+                    mode = 'r'
+                else:
+                    mode = 'w'    # default mode
                 dwtvalues.append([int(prevval, 0), mode, trackpc])
         # config valid?
         if len(dwtvalues) > 0:
             for elem in dwtvalues:
-                logger.info("Config found: addr=0x%x, mode=%s" % (elem[0], elem[1]))
+                logger.info("Config found: addr=0x%x, mode=%s, pc=%s" % (elem[0], elem[1], str(elem[2])))
             # fill up the unused variables with zeros
             while len(dwtvalues) < 4:
                 dwtvalues.append([None, None, None])
             # apply config
-            logger.info("Configuring data trace service for MCU %s..." % (flocklab.jlink_mcu_str(platform)))
-            dwt.config_dwt_for_data_trace(device_name=flocklab.jlink_mcu_str(platform), ts_prescaler=64,
+            logger.info("Configuring data trace service for MCU %s with prescaler %d..." % (flocklab.jlink_mcu_str(platform), prescaler))
+            dwt.config_dwt_for_data_trace(device_name=flocklab.jlink_mcu_str(platform), ts_prescaler=prescaler,
                                           trace_address0=dwtvalues[0][0], access_mode0=dwtvalues[0][1], trace_pc0=dwtvalues[0][2],
                                           trace_address1=dwtvalues[1][0], access_mode1=dwtvalues[1][1], trace_pc1=dwtvalues[1][2],
                                           trace_address2=dwtvalues[2][0], access_mode2=dwtvalues[2][1], trace_pc2=dwtvalues[2][2],
@@ -204,7 +209,7 @@ def main(argv):
     logger.info("Starting SWO read... (output file: %s)." % filename)
 
     # Start SWO read
-    dwt.read_swo_buffer(device_name=flocklab.jlink_mcu_str(platform), loop_delay_in_ms=2, filename=filename)
+    dwt.read_swo_buffer(device_name=flocklab.jlink_mcu_str(platform), loop_delay_in_ms=loopdelay, filename=filename)
 
     # Remove PID file
     if os.path.isfile(pidfile):

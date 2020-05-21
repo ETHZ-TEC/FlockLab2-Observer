@@ -318,11 +318,16 @@ def main(argv):
         dwtconfs = list(tree.find('obsDebugConf').getiterator('dataTraceConf'))
         if dwtconfs:
             dwtvalues = []
+            varnames  = []
             for dwtconf in dwtconfs:
                 dwtvalues.append(dwtconf.findtext('variable'))
+                varnames.append(dwtconf.findtext('varName'))
                 dwtvalues.append(dwtconf.findtext('mode'))
                 logger.debug("Found data trace config: addr=%s, mode=%s." % (dwtconf.findtext('variable'), dwtconf.findtext('mode')))
-            datatracefile = "%s/%d/datatrace_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+            datatracefile = "%s/%d/datatrace_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+            # write the variable names as the first line into the file
+            with open(datatracefile, "w") as f:
+                f.write("%s\n\n" % (" ".join(varnames)))
             # release target from reset state before starting data trace
             flocklab.tg_reset()
             if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile) != flocklab.SUCCESS:
@@ -370,7 +375,7 @@ def main(argv):
             pins = pins | flocklab.pin_abbr2num("SIG1") | flocklab.pin_abbr2num("SIG2")
             logger.debug("Going to trace SIG pins...")
         tracingfile = "%s/%d/gpio_monitor_%s" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        extra_options = 0x00000000
+        extra_options = 0x00000000      # extra options (flags) for the gpio tracing service (see fl_logic.c for details)
         if not powerprofilingused:
             extra_options = extra_options | 0x00000040    # use PRU0 to assist with GPIO tracing
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset, extra_options) != flocklab.SUCCESS:
