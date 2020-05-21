@@ -46,108 +46,15 @@ except ImportError:
 import sys
 import time
 
-from lib.daemon import daemonize
-import os
-import sys
-import threading
-import multiprocessing
-import signal
-import subprocess
-
-
-pidfile = '/tmp/flocklab_dwt.pid'
-# config        = None
-isdaemon = True
-proc_list = []                  # List with all running processes
-# dbbuf_proc    = []                  # Dbbuf process
-# msgQueueDbBuf = None                # Queue used to send data to the DB buffer
 
 logging_on = False
-running = True
+running    = True
 
 
 def stop_swo_read():
     global running
     running = False
 ### END sigterm_handler()
-
-
-def start_swo_read_thread(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_ms=2, filename='swo_read_log'):
-    global pidfile
-    global isdaemon
-    global proc_list
-
-    # If the daemon option is on, later on the process will be daemonized.
-    if isdaemon:
-        daemonize(pidfile=pidfile, closedesc=False)
-    else:
-        open(pidfile, 'w').write("%d" % (os.getpid()))
-
-    signal.signal(signal.SIGTERM, sigterm_handler)
-    read_swo_buffer(jlink_serial=jlink_serial, device_name=device_name, loop_delay_in_ms=loop_delay_in_ms, filename=filename)
-
-
-    # Create threads
-    """stop_lock = multiprocessing.Lock()
-    read_thread = threading.Thread(target=read_swo_buffer, args=(jlink_serial, device_name, loop_delay_in_ms, filename))
-    try:
-        read_thread.daemon = True
-        read_thread.start()
-        time.sleep(1)
-        if read_thread.is_alive():
-            proc_list.append((read_thread, stop_lock))
-            print('thread running')
-        else:
-            print('thread not running')
-    except:
-        print('could not create daemon')"""
-
-    return 0
-
-
-def stop_on_api():
-    global pidfile
-    """Stop all already running serial reader processes
-    """
-    # Get PID of running serial reader (if any) from pidfile and send it the terminate signal.
-    try:
-        pid = int(open(pidfile, 'r').read())
-        # Signal the process to stop:
-        if pid > 0:
-            print("Sending SIGTERM signal to process ", pid)
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except OSError:
-                os.remove(pidfile)
-                raise
-            try:
-                os.waitpid(pid, 0)
-            except OSError:
-                pass    # can occur, no need to print a warning
-        return 0
-    except (IOError, OSError):
-        # The pid file was most probably not present. This can have two causes:
-        #   1) The serial reader service is not running.
-        #   2) The serial reader service did not shut down correctly the last time.
-        # As consequence, try to kill all remaining serial reader servce threads (handles 1)) and if that
-        # was not successful (meaning cause 2) takes effect), return ENOPKG.
-        try:
-            patterns = [os.path.basename(__file__), ]
-            ownpid = str(os.getpid())
-            for pattern in patterns:
-                p = subprocess.Popen(['pgrep', '-f', pattern], stdout=subprocess.PIPE, universal_newlines=True)
-                out, err = p.communicate(None)
-                if out != None:
-                    for pid in out.split('\n'):
-                        if (pid != '') and (pid != ownpid):
-                            print("Trying to kill process ", pid)
-                            os.kill(int(pid), signal.SIGKILL)
-                    return 0
-            return 1
-        except (OSError, ValueError):
-            print("Error while trying to kill serial service threads: %s, %s" % (str(sys.exc_info()[0]),
-                                                                                 str(sys.exc_info()[1])))
-            return 1
 
 
 def disable_and_reset_all_comparators(jlink_serial=None, device_name='STM32L433CC'):
@@ -629,8 +536,7 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
 
     #jlink.reset(ms=10, halt=True)  # ATTENTION we need this reset for SWO reader to work.
 
-    file = open(filename, "w")
-    file.write("first line")
+    file = open(filename, "w+")   # append to file
 
     # catch the keyboard interrupt telling execution to stop
     try:
@@ -654,33 +560,3 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
 
     return 0
 
-
-def configure_read(jlink_serial, device_name, ts_prescaler=64, loop_delay_in_ms=2,
-                   trace_address0=None, access_mode0='w', trace_pc0=0,
-                   trace_address1=None, access_mode1='w', trace_pc1=0,
-                   trace_address2=None, access_mode2='w', trace_pc2=0,
-                   trace_address3=None, access_mode3='w', trace_pc3=0):
-
-    disable_and_reset_all_comparators(jlink_serial, device_name)
-
-    # time.sleep(0.5)
-
-    config_dwt_for_data_trace(jlink_serial=jlink_serial, device_name=device_name, ts_prescaler=ts_prescaler,
-                              trace_address0=trace_address0, access_mode0=access_mode0, trace_pc0=trace_pc0,
-                              trace_address1=None, access_mode1=access_mode1, trace_pc1=trace_pc1,
-                              trace_address2=None, access_mode2=access_mode2, trace_pc2=trace_pc2,
-                              trace_address3=None, access_mode3=access_mode3, trace_pc3=trace_pc3)
-
-    #read_swo_buffer(jlink_serial=jlink_serial, device_name=device_name, loop_delay_in_ms=loop_delay_in_ms)
-    # read_swo_buffer(device_name='STM32L433CC', loop_delay_in_ms=2)
-    start_swo_read_thread(jlink_serial=jlink_serial, device_name=device_name, loop_delay_in_ms=loop_delay_in_ms)
-
-    #time.sleep(10)
-    #stop_on_api()
-
-if __name__ == '__main__':
-    exit(configure_read(sys.argv[1], sys.argv[2], int(sys.argv[3], 10), int(sys.argv[4], 10),
-                        int(sys.argv[5], 16), sys.argv[6], int(sys.argv[7]),
-                        int(sys.argv[8], 16), sys.argv[9], int(sys.argv[10]),
-                        int(sys.argv[11], 16), sys.argv[12], int(sys.argv[13]),
-                        int(sys.argv[14], 16), sys.argv[15], int(sys.argv[16]),))
