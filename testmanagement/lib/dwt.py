@@ -205,8 +205,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
                 config = 0x3
             else:
                 if logging_on:
-                    print("access_mode must be r,w or rw. default is w")
-                config = 0xf
+                    print("only PC tracing set, automatically select RW")
+                config = 0x1
 
         else:  # tracing data only
             if access_mode == 'r':
@@ -239,7 +239,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
             print('setting the device name to default: "STM32L433CC"')
             dev_name = 'STM32L433CC'
         try:
-            int(ts_pres)
+            ts_pres = int(ts_pres)
         except TypeError:  # if the type is None we just pass
             pass
         try:
@@ -312,7 +312,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
     enable_dwt_itm = [0x01000000]
 
     tpiu_sppr = 0xe00400f0  # Selected Pin Protocol Register, TPIU_SPPR
-    async_swo_nrz = [0x00000002]  # Asynchronous SWO, using NRZ encoding.
+    async_swo_nrz = [0x00000002]  # Asynchronous SWO, using NRZ encoding. Manchester is not supported
 
     tpiu_acpr = 0xe0040010  # Asynchronous Clock Prescaler Register, TPIU_ACPR
     swo_rate_prescaler = [0x00000013]  # SWO freq = Clock/(SWOSCALAR +1). 0x27 for 2MHz, 0x13 for 4MHz
@@ -322,7 +322,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
     # the value 00010c0f will also print global timestamps (NOT WORKING)
     # bit 4 = 1 enables TPIU async counter freq (NOT WORKING)
     # the value 0001010f,0001020f,0001030f are prescaler 4,16,64
-    if ts_prescaler == 0:
+    if ts_prescaler == 0 or ts_prescaler == 1:
         itm_tcr_config = [0x0001000f]
     elif ts_prescaler == 4:
         itm_tcr_config = [0x0001010f]
@@ -541,11 +541,9 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
     # catch the keyboard interrupt telling execution to stop
     try:
         while running:
-            #log.write("after connecting")
+            global_time = time.time()
             num_bytes = jlink.swo_num_bytes()
             if num_bytes:
-                # print(num_bytes)
-                global_time = time.time()
                 data = jlink.swo_read(0, num_bytes, remove=True)
                 file.write(' '.join(str(x) for x in data) + "\n" + str(global_time) + "\n")
             time.sleep(loop_delay_in_s)  # time in seconds to sleep.
