@@ -47,8 +47,9 @@ import sys
 import time
 
 
-logging_on = False
-running    = True
+jlinklibpath = '/opt/jlink/libjlinkarm.so'
+logging_on   = False
+running      = True
 
 
 def stop_swo_read():
@@ -82,7 +83,8 @@ def disable_and_reset_all_comparators(jlink_serial=None, device_name='STM32L433C
 
 
     buf = StringIO.StringIO()
-    jlink = pylink.JLink(log=buf.write, detailed_log=buf.write)
+    jlinklib = pylink.library.Library(dllpath=jlinklibpath)
+    jlink = pylink.JLink(lib=jlinklib, log=buf.write, detailed_log=buf.write)
 
     if jlink_serial:  # if have several emulators connected, user can specify one by the serial number
         jlink.open(serial_no=jlink_serial)
@@ -273,7 +275,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
     trace_address3 = result[6]
 
     buf = StringIO.StringIO()
-    jlink = pylink.JLink(log=buf.write, detailed_log=buf.write)
+    jlinklib = pylink.library.Library(dllpath=jlinklibpath)
+    jlink = pylink.JLink(lib=jlinklib, log=buf.write, detailed_log=buf.write)
     if jlink_serial:  # if have several emulators connected, user can specify one by the serial number
         jlink.open(serial_no=jlink_serial)
     else:
@@ -507,7 +510,8 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
 
 
     buf = StringIO.StringIO()
-    jlink = pylink.JLink(log=buf.write, detailed_log=buf.write)
+    jlinklib = pylink.library.Library(dllpath=jlinklibpath)
+    jlink = pylink.JLink(lib=jlinklib, log=buf.write, detailed_log=buf.write)
 
     # Output the information about the program.
     #sys.stdout.write('Press Ctrl-C to Exit\n')

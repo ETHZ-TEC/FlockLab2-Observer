@@ -43,14 +43,13 @@ RESULTSDIR="/home/flocklab/data/results"
 LOGDIR="/var/log/flocklab"
 CONFIGDIR="/etc/flocklab"
 TESTDIR="/home/flocklab/data/curtest";
-SDCARDLINK="/home/flocklab/data"
+SDCARDLINK="/home/flocklab/data"                      # path to the SD card
 
 # installation directories
-SCRIPTPATH="/home/flocklab/observer/testmanagement"
-JLINKPATH="/opt"
-BINPATH="/usr/bin"
-USERSPACEMODPATH="/usr/bin"
-LIBPATH="/usr/lib/flocklab/python"
+SCRIPTPATH="/home/flocklab/observer/testmanagement"   # will be appended to PATH
+INSTALLPATH="/opt"                                    # additional SW such as JLink will be installed here
+BINPATH="/usr/bin"                                    # executables will be copied into this directory
+LIBPATH="/opt/jlink"                                  # will be appended to LD_LIBRARY_PATH
 
 # error log for this install script
 ERRORLOG="/tmp/flocklab_obs_install.log"
@@ -99,9 +98,12 @@ ln -sf $LOGDIR $HOMEDIR/log
 [ -d $CONFIGDIR ]  || (mkdir -p $CONFIGDIR && chown flocklab:flocklab $CONFIGDIR)
 check_retval "Failed to create directories." "Directories created."
 
-# add script directory to path
+# add script directories to path
 grep ${SCRIPTPATH} ${HOMEDIR}/.profile > /dev/null 2>&1 || echo 'export PATH=$PATH:'${SCRIPTPATH} >> ${HOMEDIR}/.profile
 check_retval "Failed to set PATH variable." "PATH variable adjusted."
+
+# add library directories to path (not required)
+#grep ${LIBPATH} ${HOMEDIR}/.profile > /dev/null 2>&1 || echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:'${LIBPATH} >> ${HOMEDIR}/.profile
 
 ##########################################################
 # install device tree overlay
@@ -137,7 +139,7 @@ depmod
 # extract JLink files
 JLINK=$(ls -1 ${HOMEDIR}/observer/jlink | grep JLink_Linux | sort | tail -n 1)
 JLINKDIR=${JLINK::-4}
-tar xzf ${HOMEDIR}/observer/jlink/${JLINK} -C ${JLINKPATH} && cp -f ${JLINKPATH}/${JLINKDIR}/99-jlink.rules /etc/udev/rules.d/ && ln -sf ${JLINKPATH}/${JLINKDIR} ${JLINKPATH}/jlink && ln -sf ${JLINKPATH}/jlink/JRunExe ${BINPATH}/JRunExe && ln -sf ${JLINKPATH}/jlink/JLinkExe ${BINPATH}/JLinkExe && ln -sf ${JLINKPATH}/jlink/JLinkGDBServer ${BINPATH}/JLinkGDBServer
+tar xzf ${HOMEDIR}/observer/jlink/${JLINK} -C ${INSTALLPATH} && cp -f ${INSTALLPATH}/${JLINKDIR}/99-jlink.rules /etc/udev/rules.d/ && ln -sf ${INSTALLPATH}/${JLINKDIR} ${INSTALLPATH}/jlink && ln -sf ${INSTALLPATH}/jlink/JRunExe ${BINPATH}/JRunExe && ln -sf ${INSTALLPATH}/jlink/JLinkExe ${BINPATH}/JLinkExe && ln -sf ${INSTALLPATH}/jlink/JLinkGDBServer ${BINPATH}/JLinkGDBServer
 check_retval "Failed to install JLink." "JLink installed."
 
 ##########################################################
@@ -156,7 +158,7 @@ check_retval "Failed to install python-msp430-tools." "python-msp430-tools insta
 
 ##########################################################
 # misc python modules
-pip3 install smbus intelhex stm32loader > /dev/null 2>> $ERRORLOG
+pip3 install smbus intelhex stm32loader pylink-square > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install additional python modules." "Additional python modules installed."
 
 ##########################################################
