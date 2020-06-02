@@ -550,21 +550,16 @@ exit_skip_wait_for_pps:
         ; actuate the target reset pin
         CLR     GPO.t7
 
-        ; compose the value to write
-        ; if the overflow counter is zero, then there is just one last value to write
-        LSL     TMP2, LIMIT, 8
-        OR      TMP2, TMP2, CVAL
-        QBNE    get_offset, CCNT, 0
-        ; the last value to copy
-        CLR     CVAL.t7
-        LSL     SCNT, SCNT, 8
-        OR      TMP2, CVAL, SCNT
-get_offset:
         ; find out which register is the next we can write to
         SUB     TMP, IPTR, IPTR0      ; calculate the offset in #instructions
         LDI     IPTR0, jump_to_register
         LSR     IPTR0, IPTR0, 2       ; divide by 4 to get #instructions from the top
         ADD     IPTR, IPTR0, TMP
+        ; if the overflow counter is zero, then there is just one last value to write
+        QBEQ    copy_last_value, CCNT, 0
+        ; compose the overflow value
+        LSL     TMP2, LIMIT, 8
+        OR      TMP2, TMP2, CVAL
 copy_values:
         JMP     IPTR
 jump_to_register:
@@ -612,6 +607,7 @@ copy_value_done2:
         ; more overflow values to copy?
         QBNE    copy_values, CCNT, 0
         ; prepare the last value
+copy_last_value:
         CLR     CVAL.t7
         LSL     SCNT, SCNT, 8
         OR      TMP2, CVAL, SCNT
