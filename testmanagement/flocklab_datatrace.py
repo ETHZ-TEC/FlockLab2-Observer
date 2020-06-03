@@ -223,4 +223,5 @@ if __name__ == "__main__":
     try:
         main(sys.argv[1:])
     except Exception:
-        flocklab.error_logandexit("Encountered error: %s\n%s\nCommandline was: %s" % (str(sys.exc_info()[1]), traceback.format_exc(), str(sys.argv)))
+        flocklab.error_logandexit("Encountered error: %s\n%s\nCommand line was: %s" % (str(sys.exc_info()[1]), traceback.format_exc(), " ".join(sys.argv)))
+        sys.exit(flocklab.FAILED)
