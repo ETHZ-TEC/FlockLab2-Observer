@@ -313,7 +313,6 @@ def gpio_set(pin):
         f.write('1')
         f.close()
     except IOError:
-        print("Failed to set GPIO state.")
         return FAILED
     return SUCCESS
 ### END gpio_set()
@@ -331,7 +330,6 @@ def gpio_clr(pin):
         f.write('0')
         f.close()
     except IOError:
-        print("Failed to set GPIO state.")
         return FAILED
     return SUCCESS
 ### END gpio_clr()
@@ -350,7 +348,6 @@ def gpio_get(pin):
         out = f.read()
         f.close()
     except IOError:
-        print("Failed to get GPIO state.")
         return FAILED
     return int(out)
 ### END gpio_get()
