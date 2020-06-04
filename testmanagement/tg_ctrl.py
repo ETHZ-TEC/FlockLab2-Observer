@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#!/usr/bin/env python3
 
 """
 Copyright (c) 2020, ETH Zurich, Computer Engineering Group
@@ -75,6 +75,8 @@ def usage():
     print("  --actuation, -a\tenable or disable actuation")
     print("  --reset, -r\t\treset the target")
     print("  --reset-low\t\tset the target reset low")
+    print("  --temperature\t\tget the current temperature (SHT31 sensor on the observer)")
+    print("  --humidity\t\tget the current humidity (SHT31 sensor on the observer)")
     print("  --help, -h\t\tOptional. Print this help.")
 ### END usage()
 
@@ -85,41 +87,48 @@ def usage():
 #
 ##############################################################################
 def main(argv):
-    
+
     # Get command line parameters
     try:
         # Note: a ':' indicates that the option requires an argument
-        opts, args = getopt.getopt(argv, "hedprs:m:a:tv:", ["help", "enable", "disable", "power", "reset", "select=", "mux=", "actuation=", "target", "voltage=", "reset-low"])
+        opts, args = getopt.getopt(argv, "hedprs:m:a:tv:", ["help", "enable", "disable", "power", "reset", "select=", "mux=", "actuation=", "target", "voltage=", "reset-low", "temperature", "humidity"])
     except getopt.GetoptError as err:
         print(str(err))
         sys.exit(errno.EINVAL)
-    
+
     # Parse arguments and execute commands
     for opt, arg in opts:
+
         if opt in ("-e", "--enable"):
             flocklab.tg_en(True)
             flocklab.tg_pwr_en(True)
             print("target enabled")
+
         elif opt in ("-d", "--disable"):
             flocklab.tg_pwr_en(False)
             flocklab.tg_act_en(False)
             flocklab.tg_en(False)
             print("target disabled")
             print("actuation disabled")
+
         elif opt in ("-p", "--power"):
             if flocklab.tg_pwr_state() > 0:
                 print("power state: ON")
                 print("target voltage: %.3fV" % flocklab.tg_get_vcc())
             else:
                 print("power state: OFF")
+
         elif opt in ("-r", "--reset"):
             flocklab.tg_reset()
             print("target reset")
+
         elif opt in ("--reset-low"):
             flocklab.tg_reset(False)
             print("holding target in reset state")
+
         elif opt in ("-t", "--target"):
             print("active target slot: %d" % flocklab.tg_get_selected())
+
         elif opt in ("-s", "--select", "--sel"):
             try:
                 target = int(arg)
@@ -129,6 +138,7 @@ def main(argv):
                 print("target %d selected" % target)
             except:
                 print("invalid target slot")
+
         elif opt in ("-v", "--vcc", "--voltage"):
             try:
                 vcc = float(arg)
@@ -138,6 +148,7 @@ def main(argv):
                     print("target voltage set to %.3fV" % vcc)
             except:
                 print("invalid voltage")
+
         elif opt in ("-m", "--mux"):
             if arg.lower() in ("e", "en", "enable", "1", "on"):
                 flocklab.tg_mux_en(True)
@@ -145,6 +156,7 @@ def main(argv):
             else:
                 flocklab.tg_mux_en(False)
                 print("MUX disabled")
+
         elif opt in ("-a", "--act", "--actuation"):
             if arg.lower() in ("e", "en", "enable", "1", "on"):
                 flocklab.tg_act_en(True)
@@ -152,9 +164,18 @@ def main(argv):
             else:
                 flocklab.tg_act_en(False)
                 print("actuation disabled")
+
         elif opt in ("-h", "--help"):
             usage()
             sys.exit(flocklab.SUCCESS)
+
+        elif opt in ("--temperature"):
+            data = flocklab.get_temp_humidity()
+            print("temperature: %.2f C" % (data[0]))
+
+        elif opt in ("--humidity"):
+            data = flocklab.get_temp_humidity()
+            print("humidity: %.1f%%" % data[1])
 ### END main()
 
 if __name__ == "__main__":

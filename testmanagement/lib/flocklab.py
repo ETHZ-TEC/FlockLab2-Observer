@@ -41,6 +41,8 @@ Author: Reto Da Forno
 
 # needed imports:
 import sys, os, errno, signal, time, configparser, logging, logging.config, subprocess, traceback, glob, shutil, smbus, re
+import io, fcntl      # required for I2C I/O
+
 
 # pin numbers
 gpio_tg_nrst    = 77
@@ -126,6 +128,30 @@ FAILED  = -2    # note: must be negative, and -1 (= 255) is reserved for SSH err
 # global variables
 logger = None
 config = None
+
+
+##############################################################################
+#
+# i2cdev - I2C device I/O
+#
+##############################################################################
+class i2cdev:
+
+    def __init__(self, bus, device_addr):
+        self.i2c_rd  = io.open("/dev/i2c-" + str(bus), "rb", buffering=0)
+        self.i2c_wr = io.open("/dev/i2c-" + str(bus), "wb", buffering=0)
+        fcntl.ioctl(self.i2c_rd, 0x0703, device_addr)   # set slave device address
+        fcntl.ioctl(self.i2c_wr, 0x0703, device_addr)
+
+    def write(self, data):
+        self.i2c_wr.write(data)
+
+    def read(self, num_bytes):
+        return self.i2c_rd.read(num_bytes)
+
+    def close(self):
+        self.i2c_rd.close()
+        self.i2c_wr.close()
 
 
 ##############################################################################
@@ -697,6 +723,29 @@ def tg_get_vcc():
     vcc = int((VREF - v_dac) / R12R11 + (VREF * R11R13)) / 1000
     return vcc
 ### END tg_get_vcc()
+
+
+##############################################################################
+#
+# get_temp_humidity - returns the current temperature and humidity (SHT31 sensor reading)
+#
+##############################################################################
+def get_temp_humidity():
+    try:
+        dev = i2cdev(2, 0x44)
+        # send command (high repeatability mode with clock stretching)
+        dev.write(b'\x2c\x06')
+        # read the result (2 bytes temp + 1 byte CRC + 2 bytes humidity + 1 byte CRC)
+        data = dev.read(6)
+    except OSError:
+        return [0, 0]
+    temp_raw  = (data[0] * 256 + data[1])
+    hum_raw   = (data[3] * 256 + data[4])
+    temp_conv = -45 + 175 * temp_raw / (2**16 - 1)
+    hum_conv  = 100 * hum_raw / (2**16 - 1)
+    dev.close()
+    return [temp_conv, hum_conv]
+### END get_temp_humidity()
 
 
 ##############################################################################
