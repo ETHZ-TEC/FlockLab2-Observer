@@ -108,8 +108,9 @@ rl_max_rate     = 64000
 rl_default_rate = 1000
 rl_samp_rates   = [1, 10, 100, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
 rl_max_samples  = 100000000
-rl_time_offset  = -0.0037          # rocketlogger is about ~3.7ms behind the actual time
-max_act_events  = 1024             # max. number of actuation events
+rl_time_offset  = -0.0037       # rocketlogger is about ~3.7ms behind the actual time
+max_act_events  = 1024          # max. number of actuation events
+i2c_bus         = 2             # I2C2 is used to control the DAC and read the SHT31 sensor
 
 # paths
 configfile   = '/home/flocklab/observer/testmanagement/config.ini'
@@ -138,20 +139,17 @@ config = None
 class i2cdev:
 
     def __init__(self, bus, device_addr):
-        self.i2c_rd  = io.open("/dev/i2c-" + str(bus), "rb", buffering=0)
-        self.i2c_wr = io.open("/dev/i2c-" + str(bus), "wb", buffering=0)
-        fcntl.ioctl(self.i2c_rd, 0x0703, device_addr)   # set slave device address
-        fcntl.ioctl(self.i2c_wr, 0x0703, device_addr)
+        self.dev = io.open("/dev/i2c-" + str(bus), "wb+", buffering=0)
+        fcntl.ioctl(self.dev, 0x0703, device_addr)   # set slave device address
 
     def write(self, data):
-        self.i2c_wr.write(data)
+        self.dev.write(data)
 
     def read(self, num_bytes):
-        return self.i2c_rd.read(num_bytes)
+        return self.dev.read(num_bytes)
 
     def close(self):
-        self.i2c_rd.close()
-        self.i2c_wr.close()
+        self.dev.close()
 
 
 ##############################################################################
@@ -676,7 +674,7 @@ def tg_set_vcc(v=tg_vcc_default):
     if v is None or v < 1.1 or v > 3.6:
         return FAILED
       
-    bus = smbus.SMBus(2)  # I2C2
+    bus = smbus.SMBus(i2c_bus)
     
     DEVICE_ADDR = 0x60    # device part number: MCP47CVB01-E/MF
     DEVICE_REG  = 0x0
@@ -705,7 +703,7 @@ def tg_set_vcc(v=tg_vcc_default):
 #
 ##############################################################################
 def tg_get_vcc():
-    bus = smbus.SMBus(2)  # I2C2
+    bus = smbus.SMBus(i2c_bus)
     DEVICE_ADDR = 0x60    # device part number: MCP47CVB01-E/MF
     DEVICE_REG  = 0x0
     VREF        = 800     # mV
@@ -732,7 +730,7 @@ def tg_get_vcc():
 ##############################################################################
 def get_temp_humidity():
     try:
-        dev = i2cdev(2, 0x44)
+        dev = i2cdev(i2c_bus, 0x44)
         # send command (high repeatability mode with clock stretching)
         dev.write(b'\x2c\x06')
         # read the result (2 bytes temp + 1 byte CRC + 2 bytes humidity + 1 byte CRC)
