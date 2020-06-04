@@ -50,6 +50,9 @@ else
   HOSTNAME=$HOST
 fi
 
+# remove IP address / host name from known_hosts file
+ssh-keygen -R $HOST > /dev/null 2>&1
+
 echo "Deploying system configuration on host '${HOST}'..."
 sleep 3   # give the user time to abort, just in case
 
