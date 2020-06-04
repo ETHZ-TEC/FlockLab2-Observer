@@ -119,7 +119,7 @@ check_retval "Failed to install RocketLogger software." "RocketLogger software i
 ##########################################################
 # install binary for GPIO tracing
 cd ${HOMEDIR}/observer/pru/fl_logic && make install > /dev/null 2>> $ERRORLOG
-check_retval "Failed to install fl_logic software." "fl_logic software installed."
+check_retval "Failed to install GPIO tracing software." "GPIO tracing software installed."
 
 ##########################################################
 # install binary for serial logging
@@ -129,7 +129,7 @@ check_retval "Failed to install serial logging software." "Serial logging softwa
 ##########################################################
 # install kernel module for GPIO actuation
 cd ${HOMEDIR}/observer/various/actuation && make install > /dev/null 2>> $ERRORLOG
-check_retval "Failed to install fl_actuation software." "fl_actuation software installed."
+check_retval "Failed to install GPIO actuation kernel module" "GPIO actuation kernel module installed."
 echo "fl_actuation" > /etc/modules-load.d/fl_actuation.conf
 depmod
 # add udev rule

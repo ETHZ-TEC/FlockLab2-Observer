@@ -51,6 +51,9 @@ HOST=$1
 echo "Setting up FlockLab observer '${HOST}'..."
 sleep 3   # give the user time to abort, just in case
 
+# remove IP address / host name from known_hosts file
+ssh-keygen -R $HOST > /dev/null 2>&1
+
 # verify that SSH login works
 ssh -q -p ${PORT} ${USER}@${HOST} "exit" > /dev/null 2>&1
 if [ $? -ne 0 ]; then

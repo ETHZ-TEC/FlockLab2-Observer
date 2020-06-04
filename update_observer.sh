@@ -12,7 +12,7 @@
 # * Redistributions in binary form must reproduce the above copyright notice,
 #   this list of conditions and the following disclaimer in the documentation
 #   and/or other materials provided with the distribution.
-# 
+#
 # * Neither the name of the copyright holder nor the names of its
 #   contributors may be used to endorse or promote products derived from
 #   this software without specific prior written permission.
@@ -41,7 +41,7 @@ INSTALL=1       # whether to recompile and install programs on the observer (wil
 PORT=2322
 USER="flocklab"
 HOSTPREFIX="fl-"
-OBSIDS="02 04 05 06 07 08 09 10 11 12"
+OBSIDS="02 03 04 05 06 07 08 09 10 11 12"
 SRCDIR="."
 DESTDIR="observer"
 RSYNCPARAMS=" -a -z -c --timeout=5 --exclude=.git --no-perms --no-owner --no-group"  # --delete
