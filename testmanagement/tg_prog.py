@@ -380,13 +380,13 @@ def main(argv):
     if target == 'dpp':
         rs = prog_dpp(imagefile, core)
     elif target in ('dpp2lora', 'dpp2lorahg'):
-        if porttype in ("SWD", "swd"):
-            rs = prog_swd(imagefile, "STM32L433CC")
-        else:
+        if porttype in ("BSL", "bsl", "serial"):
             try:
                 rs = prog_stm32l4(imagefile, flocklab.tg_serial_port)
             except:     # use except here to also catch sys.exit()
                 rs = 1
+        else:
+            rs = prog_swd(imagefile, "STM32L433CC")
     elif target == 'nrf5':
         rs = prog_swd(imagefile, "nRF52840_xxAA")
     elif target in ('tmote', 'telosb', 'sky'):
