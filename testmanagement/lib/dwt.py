@@ -540,7 +540,7 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
 
     #jlink.reset(ms=10, halt=True)  # ATTENTION we need this reset for SWO reader to work.
 
-    file = open(filename, "w+")   # append to file
+    file = open(filename, "a")   # append to file
 
     # catch the keyboard interrupt telling execution to stop
     try:

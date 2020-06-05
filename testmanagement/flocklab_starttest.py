@@ -328,8 +328,9 @@ def main(argv):
                 logger.debug("Found data trace config: addr=%s, mode=%s." % (dwtconf.findtext('variable'), dwtconf.findtext('mode')))
             datatracefile = "%s/%d/datatrace_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
             # write the variable names as the first line into the file
-            with open(datatracefile, "w") as f:
-                f.write("%s\n\n" % (" ".join(varnames)))
+            f = open(datatracefile, "w")
+            f.write("%s\n\n" % (" ".join(varnames)))
+            f.close()
             # release target from reset state before starting data trace
             flocklab.tg_reset()
             if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile) != flocklab.SUCCESS:
