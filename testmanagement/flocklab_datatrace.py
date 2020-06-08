@@ -176,7 +176,7 @@ def main(argv):
             if "0x" in val:
                 # variable address
                 if prevval:
-                    dwtvalues.append([prevval, 'w', False])    # use default mode
+                    dwtvalues.append([int(prevval, 0), 'w', False])    # use default mode
                 prevval = val
             elif prevval:
                 # mode definition (a variable address must precede it)
@@ -191,6 +191,7 @@ def main(argv):
                 else:
                     mode = 'w'    # default mode
                 dwtvalues.append([int(prevval, 0), mode, trackpc])
+                prevval = None
         # config valid?
         if len(dwtvalues) > 0:
             for elem in dwtvalues:
