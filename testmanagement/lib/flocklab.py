@@ -601,7 +601,7 @@ def level_str2abbr(levelstr="", pin="SIG1"):
     pin = pin.upper()
     if pin == "SIG2":
         abbr = abbr.lower()
-    elif pin == "RST":
+    elif pin == "NRST" or pin == "RST":
         if abbr == 'H':
             abbr = 'R'
         else:

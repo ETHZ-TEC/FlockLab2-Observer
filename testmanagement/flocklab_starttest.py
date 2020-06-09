@@ -132,6 +132,7 @@ def main(argv):
     serialport          = None
     noimage             = False
     actuationused       = False
+    resetactuationused  = False
     tracingserviceused  = tree.find('obsGpioMonitorConf') != None
     debugserviceused    = tree.find('obsDebugConf') != None
     powerprofilingused  = tree.find('obsPowerprofConf') != None
@@ -192,8 +193,8 @@ def main(argv):
                 flocklab.tg_off()
                 flocklab.error_logandexit("Unknown platform %s. Not known how to program this platform." % platform)
             cmd = [config.get("observer", "progscript"), '--image=%s' % image, '--target=%s' % (platform), '--core=%d' % core]
-            if debug:
-                cmd.append("--debug")
+            #if debug:
+            #    cmd.append("--debug")
             logger.debug("Going to flash image to platform %s (core %d)..." % (platform, core))
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             (out, err) = p.communicate()
@@ -258,11 +259,13 @@ def main(argv):
         act_events = []
         for pinconf in pinconfs:
             pin = pinconf.find('pin').text
-            if pinconf.find('pin').text == 'RST':
+            if pin == 'RST':
                 # reset pin comes with absolute timestamps and determine the test start / stop
                 resets.append(pinconf.find('timestamp').text)
                 continue
             settingcount = settingcount + 1
+            if pin == 'nRST':   # target reset actuation during the test
+                resetactuationused = True
             cmd = flocklab.level_str2abbr(pinconf.find('level').text, pin)
             microsecs = int(flocklab.parse_float(pinconf.find('offset').text) * 1000000)
             if pinconf.findtext('period'):
@@ -381,6 +384,9 @@ def main(argv):
         extra_options = 0x00000000      # extra options (flags) for the gpio tracing service (see fl_logic.c for details)
         if not powerprofilingused:
             extra_options = extra_options | 0x00000040    # use PRU0 to assist with GPIO tracing
+        if resetactuationused:
+            extra_options = extra_options | 0x00000002    # do not control the reset pin with the PRU
+            logger.debug("Target reset actuations scheduled, won't control reset pin with PRU.")
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset, extra_options) != flocklab.SUCCESS:
             flocklab.tg_off()
             flocklab.error_logandexit("Failed to start GPIO tracing service.")
