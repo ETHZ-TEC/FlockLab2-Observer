@@ -91,7 +91,7 @@ def main(argv):
     # Get command line parameters
     try:
         # Note: a ':' indicates that the option requires an argument
-        opts, args = getopt.getopt(argv, "hedprs:m:a:tv:", ["help", "enable", "disable", "power", "reset", "select=", "mux=", "actuation=", "target", "voltage=", "reset-low", "temperature", "humidity"])
+        opts, args = getopt.getopt(argv, "hedprs:m:a:tv:", ["help", "enable", "disable", "power", "reset", "select=", "mux=", "actuation=", "target", "voltage=", "reset-low", "temperature", "humidity", "temp", "humi"])
     except getopt.GetoptError as err:
         print(str(err))
         sys.exit(errno.EINVAL)
@@ -169,13 +169,19 @@ def main(argv):
             usage()
             sys.exit(flocklab.SUCCESS)
 
-        elif opt in ("--temperature"):
+        elif opt in ("--temperature", "--temp"):
             data = flocklab.get_temp_humidity()
-            print("temperature: %.2f C" % (data[0]))
+            if opt in ("--temp"):
+                print("%.2f" % (data[0]))
+            else:
+                print("temperature: %.2f C" % (data[0]))
 
-        elif opt in ("--humidity"):
+        elif opt in ("--humidity", "--humi"):
             data = flocklab.get_temp_humidity()
-            print("humidity: %.1f%%" % data[1])
+            if opt in ("--humi"):
+                print("%.1f" % (data[1]))
+            else:
+                print("humidity: %.1f%%" % data[1])
 ### END main()
 
 if __name__ == "__main__":
