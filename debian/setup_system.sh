@@ -56,12 +56,12 @@ ssh-keygen -R $HOST > /dev/null 2>&1
 echo "Deploying system configuration on host '${HOST}'..."
 sleep 3   # give the user time to abort, just in case
 
-# write the password into a file
+# write the password into a file (note: do not use read -s, it is important to visually double check the entered password)
 echo "Enter new password for user flocklab on host ${HOST}:"
-read -s PASSWORD
+read PASSWORD
 echo "flocklab:${PASSWORD}" > config/user/password
 
-# either clone the repo on the beaglebone or copy all files
+# copy all files
 echo "       Copying config files... (enter default password 'temppwd' when asked)"
 scp -F /dev/null -P ${PORT} -r config ${USER}@${HOST}: > /dev/null
 if [ $? -ne 0 ]; then
@@ -70,6 +70,9 @@ if [ $? -ne 0 ]; then
 else
   echo "[ OK ] Files copied."
 fi
+
+# remove password file
+rm config/user/password
 
 # perform system configuration
 echo "       Initiating system configuration. You will be asked for the default user password ('temppwd') two times."
@@ -102,8 +105,4 @@ if [ $REBOOT_TIMEOUT -eq 0 ]; then
   echo "[ !! ] System reboot timed out."
   exit 1
 fi
-
-# remove password file
-rm config/user/password
-
 
