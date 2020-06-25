@@ -408,7 +408,7 @@ def main(argv):
             # serial forwarder (proxy) not used -> logging only
             serialfile = "%s/%d/serial_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
             # if only logging is required, use the faster C implementation
-            if flocklab.start_serial_logging(serialport, baudrate, serialfile) != flocklab.SUCCESS:
+            if flocklab.start_serial_logging(serialport, baudrate, serialfile, teststarttime) != flocklab.SUCCESS:
                 flocklab.tg_off()
                 flocklab.error_logandexit("Failed to start serial logging service.")
         else:

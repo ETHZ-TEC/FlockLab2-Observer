@@ -149,6 +149,7 @@ int main(int argc, char** argv)
   FILE*           logfile     = NULL;
   int             fd          = 0;
   unsigned long   baudrate    = 115200;
+  unsigned int    starttime   = 0;
   struct timespec currtime;
 
   if (argc > 1) {
@@ -162,6 +163,14 @@ int main(int argc, char** argv)
   if (argc > 3) {
     // 3rd argument is the output filename
     outfilename = argv[3];
+  }
+  if (argc > 4) {
+    // 4th argument is the start time
+    starttime = strtol(argv[4], NULL, 10);
+    if (starttime > 0 && starttime < 1000) {
+      // treat as an offset
+      starttime = time(NULL) + starttime;
+    }
   }
 
   // open the serial device
@@ -191,6 +200,21 @@ int main(int argc, char** argv)
 
   if (register_sighandler() != 0) {
     return 4;
+  }
+
+  // wait for start time
+  if (starttime) {
+    struct timespec currtime;
+    clock_gettime(CLOCK_REALTIME, &currtime);
+    unsigned int diff_sec  = (starttime - currtime.tv_sec);
+    unsigned int diff_usec = (1000000 - (currtime.tv_nsec / 1000));
+    if ((unsigned long)currtime.tv_sec < starttime) {
+      printf("waiting for start time... (%u.%06uus)", (diff_sec - 1), diff_usec);
+      fflush(stdout);
+      sleep(diff_sec - 1);
+      usleep(diff_usec);
+    }
+    tcflush(fd, TCIFLUSH);
   }
 
   while (running) {

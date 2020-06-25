@@ -897,7 +897,7 @@ def stop_serial_service(debug=False):
 # start_serial_logging    C implementation, only supports reading (logging)
 #
 ##############################################################################
-def start_serial_logging(port=tg_serial_port, baudrate=115200, out_file=None):
+def start_serial_logging(port=tg_serial_port, baudrate=115200, out_file=None, starttime=None):
     if not out_file:
         return FAILED
     if port.lower() == "serial" or port == tg_serial_port:
@@ -907,6 +907,8 @@ def start_serial_logging(port=tg_serial_port, baudrate=115200, out_file=None):
     else:
         return FAILED
     cmd = ["serialreader", port, str(baudrate), out_file]
+    if starttime:
+        cmd.append(str(starttime))
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     # do not call communicate(), it will block
     logger.debug("Serial logger started with command '%s'." % (" ".join(cmd)))
