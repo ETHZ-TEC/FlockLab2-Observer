@@ -124,10 +124,10 @@ do
                 echo "Failed!"
             fi
         fi
-        if [[ $CHANGEDFILES = *device_tree_overlay* ]]; then
+        if [[ $CHANGEDFILES = *device_tree_overlay/* ]]; then
             getpw
             echo "Installing new device tree overlay... "
-            echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/device_tree_overlay && sudo ./install'
+            echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/device_tree_overlay && sudo ./install.sh'
             if [ $? -ne 0 ]; then
                 echo "Failed!"
             fi

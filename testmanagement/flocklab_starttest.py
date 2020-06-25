@@ -182,7 +182,7 @@ def main(argv):
     flocklab.tg_on()
 
     # Pull down GPIO setting lines ---
-    if (flocklab.gpio_clr(flocklab.gpio_tg_sig1) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2) != flocklab.SUCCESS) and (flocklab.gpio_clr(flocklab.gpio_tg_sig1_old) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2_old) != flocklab.SUCCESS):   #TODO remove old pins
+    if flocklab.gpio_clr(flocklab.gpio_tg_sig1) != flocklab.SUCCESS or flocklab.gpio_clr(flocklab.gpio_tg_sig2) != flocklab.SUCCESS:
         flocklab.tg_off()
         flocklab.error_logandexit("Failed to set GPIO lines")
 
@@ -226,29 +226,8 @@ def main(argv):
     logger.debug("Test results folder '%s' created" % resfolder)
 
     # Configure needed services ---
-    # Serial ---
-    if tree.find('obsSerialConf') != None:
-        logger.debug("Found config for serial service.")
-        baudrate = tree.findtext('obsSerialConf/baudrate')
-        serialport = tree.findtext('obsSerialConf/port')
-        if serialport == None:
-            serialport = "serial"
-        if not serialport:
-            serialfile = "%s/%d/serial_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-            # if only logging is required, use the faster C implementation
-            if flocklab.start_serial_logging(serialport, baudrate, serialfile) != flocklab.SUCCESS:
-                flocklab.tg_off()
-                flocklab.error_logandexit("Failed to start serial logging service.")
-        else:
-            outputdir = "%s/%d" % (config.get("observer", "testresultfolder"), testid)
-            if flocklab.start_serial_service(serialport, baudrate, socketport, outputdir, debug) != flocklab.SUCCESS:
-                flocklab.tg_off()
-                flocklab.error_logandexit("Failed to start serial service.")
-        logger.debug("Started and configured serial service.")
-    else:
-        logger.debug("No config for serial service found.")
 
-    # GPIO actuation ---
+    # GPIO actuation (do this first to determine test start and stop time) ---
     flocklab.tg_act_en()  # make sure actuation is enabled
     if (tree.find('obsGpioSettingConf') != None):
         logger.debug("Found config for GPIO actuation.")
@@ -331,9 +310,9 @@ def main(argv):
                 logger.debug("Found data trace config: addr=%s, mode=%s." % (dwtconf.findtext('variable'), dwtconf.findtext('mode')))
             datatracefile = "%s/%d/datatrace_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
             # write the variable names as the first line into the file
-            f = open(datatracefile, "w")
-            f.write("%s\n\n" % (" ".join(varnames)))
-            f.close()
+            with open(datatracefile, "w") as f:
+                f.write("%s\n\n" % (" ".join(varnames)))
+                f.flush()
             # release target from reset state before starting data trace
             flocklab.tg_reset()
             if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile) != flocklab.SUCCESS:
@@ -359,7 +338,7 @@ def main(argv):
             flocklab.tg_mux_en(False)
             logger.debug("Disabling MUX.")
 
-    # GPIO tracing ---
+    # GPIO tracing (must be started after the debug service) ---
     if tracingserviceused:
         logger.debug("Found config for GPIO monitoring.")
         # move the old log file
@@ -417,6 +396,29 @@ def main(argv):
         logger.debug("Power measurement will start at %s (output: %s, sampling rate: %dHz, duration: %ds)." % (str(starttime), outputfile, samplingrate, duration))
     else:
         logger.debug("No config for powerprofiling service found.")
+
+    # Serial (must be started after the debug service) ---
+    if tree.find('obsSerialConf') != None:
+        logger.debug("Found config for serial service.")
+        baudrate = tree.findtext('obsSerialConf/baudrate')
+        serialport = tree.findtext('obsSerialConf/port')
+        if serialport == None:
+            serialport = "serial"
+        if not socketport:
+            # serial forwarder (proxy) not used -> logging only
+            serialfile = "%s/%d/serial_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+            # if only logging is required, use the faster C implementation
+            if flocklab.start_serial_logging(serialport, baudrate, serialfile) != flocklab.SUCCESS:
+                flocklab.tg_off()
+                flocklab.error_logandexit("Failed to start serial logging service.")
+        else:
+            outputdir = "%s/%d" % (config.get("observer", "testresultfolder"), testid)
+            if flocklab.start_serial_service(serialport, baudrate, socketport, outputdir, debug) != flocklab.SUCCESS:
+                flocklab.tg_off()
+                flocklab.error_logandexit("Failed to start serial service.")
+        logger.debug("Started and configured serial service.")
+    else:
+        logger.debug("No config for serial service found.")
 
     # Timesync log ---
     try:

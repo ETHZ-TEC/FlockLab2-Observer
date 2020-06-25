@@ -327,7 +327,7 @@ def prog_swd(imagefile, device, speed='auto'):
 def main(argv):
     global debug
 
-    porttype  = "serial"
+    porttype  = None
     imagefile = None
     target    = None
     core      = 0
