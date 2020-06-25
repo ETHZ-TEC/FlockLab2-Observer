@@ -222,7 +222,7 @@ int main(int argc, char** argv)
     tcflush(fd, TCIFLUSH);
   }
 
-  while (running && (duration == 0 || (unsigned int)time(NULL) <= (starttime + duration))) {
+  while (running && (duration == 0 || (unsigned int)time(NULL) < (starttime + duration))) {
     //memset(rcvbuf, 0, sizeof(rcvbuf));
     int len = read(fd, rcvbuf, sizeof(rcvbuf) - 1);
     if (len > 0) {
@@ -237,7 +237,6 @@ int main(int argc, char** argv)
         currtime.tv_nsec -= transmit_time;
       }
 #endif /* SUBTRACT_TRANSMIT_TIME */
-      //printf("len is: %d, bytes: %x %x %x %x\n", len, rcvbuf[0], rcvbuf[1], rcvbuf[2], rcvbuf[3]);
       rcvbuf[len] = 0;  /* just to be sure, but should already be terminated by zero character in canonical mode */
       if (logfile) {
         int prlen = sprintf(printbuf, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
