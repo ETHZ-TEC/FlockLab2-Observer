@@ -150,6 +150,7 @@ int main(int argc, char** argv)
   int             fd          = 0;
   unsigned long   baudrate    = 115200;
   unsigned int    starttime   = 0;
+  unsigned int    duration    = 0;
   struct timespec currtime;
 
   if (argc > 1) {
@@ -171,6 +172,10 @@ int main(int argc, char** argv)
       // treat as an offset
       starttime = time(NULL) + starttime;
     }
+  }
+  if (argc > 5) {
+    // 5th argument is the duration
+    duration = strtol(argv[5], NULL, 10);
   }
 
   // open the serial device
@@ -217,7 +222,7 @@ int main(int argc, char** argv)
     tcflush(fd, TCIFLUSH);
   }
 
-  while (running) {
+  while (running && (duration == 0 || (unsigned int)time(NULL) <= (starttime + duration))) {
     //memset(rcvbuf, 0, sizeof(rcvbuf));
     int len = read(fd, rcvbuf, sizeof(rcvbuf) - 1);
     if (len > 0) {
