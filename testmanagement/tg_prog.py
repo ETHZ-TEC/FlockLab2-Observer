@@ -250,9 +250,6 @@ def prog_dpp(imagefile, core):
     # select core
     flocklab.set_pin(flocklab.gpio_tg_sig1, core2sig[core][0])
     flocklab.set_pin(flocklab.gpio_tg_sig2, core2sig[core][1])
-    # TODO remove (for backwards compatibility only
-    flocklab.set_pin(flocklab.gpio_tg_sig1_old, core2sig[core][0])
-    flocklab.set_pin(flocklab.gpio_tg_sig2_old, core2sig[core][1])
 
     # program
     ret = 1
@@ -300,7 +297,7 @@ def prog_swd(imagefile, device, speed='auto'):
     #cmd = ['JRunExe', '-device', device, '-if', 'SWD', '-speed', str(speed), '--quit', imagefile]
     #p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     cmd = ['JLinkExe', '-device', device, '-if', 'SWD', '-speed', str(speed), '-autoconnect', '1']
-    jlinkcmd = 'erase\nloadfile %s\nr\nq\n' % imagefile
+    jlinkcmd = 'r\nerase\nloadfile %s\nr\nq\n' % imagefile
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     out, err = p.communicate(input=jlinkcmd)
     if "Core found" not in out:
