@@ -148,12 +148,11 @@ def disable_and_reset_all_comparators(jlink_serial=None, device_name='STM32L433C
     jlink.halt()
 
     if logging_on:
-        log("\n", "all comparators are reset. To be sure the comparators are disabled check if the last four bits"
-                    " of the function value are zero")
-        log("reset value comp0 function = ", hex(jlink.memory_read32(dwt_fun0, 1)[0]))
-        log("reset value comp1 function = ", hex(jlink.memory_read32(dwt_fun1, 1)[0]))
-        log("reset value comp2 function = ", hex(jlink.memory_read32(dwt_fun2, 1)[0]))
-        log("reset value comp3 function = ", hex(jlink.memory_read32(dwt_fun3, 1)[0]), "\n")
+        log("\nall comparators are reset. To be sure the comparators are disabled check if the last four bits of the function value are zero")
+        log("reset value comp0 function = " + hex(jlink.memory_read32(dwt_fun0, 1)[0]))
+        log("reset value comp1 function = " + hex(jlink.memory_read32(dwt_fun1, 1)[0]))
+        log("reset value comp2 function = " + hex(jlink.memory_read32(dwt_fun2, 1)[0]))
+        log("reset value comp3 function = " +  hex(jlink.memory_read32(dwt_fun3, 1)[0]) + "\n")
 
     return 0
 
@@ -163,7 +162,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
                               trace_address0=None, access_mode0='w', trace_pc0=0,
                               trace_address1=None, access_mode1='w', trace_pc1=0,
                               trace_address2=None, access_mode2='w', trace_pc2=0,
-                              trace_address3=None, access_mode3='w', trace_pc3=0):
+                              trace_address3=None, access_mode3='w', trace_pc3=0,
+                              swo_speed=4000000, cpu_speed=80000000):
     """
     Configures the coresight components to trace variables with the DWT module
 
@@ -237,7 +237,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         return config
 
     def convert_type(jlink_ser, dev_name, ts_pres, trace_addr0, trace_addr1,
-                     trace_addr2, trace_addr3):
+                     trace_addr2, trace_addr3, swo_speed, cpu_speed):
         """
         takes the raw input values from function call and converts them to the right type (int or string)
         if type is "None", it stays
@@ -272,12 +272,24 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
             trace_addr3 = int(trace_addr3, 16)
         except TypeError:  # if the type is None we just pass
             pass
+        try:
+            swo_speed = int(swo_speed)
+            if swo_speed == 0 or swo_speed > 4000000:
+                swo_speed = 4000000
+        except:
+            swo_speed = 4000000   # use default value
+        try:
+            cpu_speed = int(cpu_speed)
+            if cpu_speed == 0:
+                cpu_speed = 80000000
+        except:
+            cpu_speed = 80000000      # use default value
 
-        return jlink_ser, dev_name, ts_pres, trace_addr0, trace_addr1, trace_addr2, trace_addr3
+        return jlink_ser, dev_name, ts_pres, trace_addr0, trace_addr1, trace_addr2, trace_addr3, swo_speed, cpu_speed
 
     # convert in case wrong type given as input
     result = convert_type(jlink_serial, device_name, ts_prescaler, trace_address0, trace_address1,
-                          trace_address2, trace_address3)
+                          trace_address2, trace_address3, swo_speed, cpu_speed)
     jlink_serial = result[0]
     device_name = result[1]
     ts_prescaler = result[2]
@@ -285,6 +297,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
     trace_address1 = result[4]
     trace_address2 = result[5]
     trace_address3 = result[6]
+    swo_speed = result[7]
+    cpu_speed = result[8]
 
     buf = StringIO.StringIO()
     jlinklib = pylink.library.Library(dllpath=jlinklibpath)
@@ -310,18 +324,6 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
     dwt_fun2 = 0xe0001048
     dwt_fun3 = 0xe0001058
 
-    if logging_on:
-        log("\n", "function values at start of config")
-        log("reset value comp0 function = ", hex(jlink.memory_read32(dwt_fun0, 1)[0]))
-        log("reset value comp1 function = ", hex(jlink.memory_read32(dwt_fun1, 1)[0]))
-        log("reset value comp2 function = ", hex(jlink.memory_read32(dwt_fun2, 1)[0]))
-        log("reset value comp3 function = ", hex(jlink.memory_read32(dwt_fun3, 1)[0]), "\n")
-
-        log("old value comp0 = ", hex(jlink.memory_read32(0xe0001020, 1)[0]))
-        log("old value comp1= ", hex(jlink.memory_read32(0xe0001030, 1)[0]))
-        log("old value comp2= ", hex(jlink.memory_read32(0xe0001040, 1)[0]))
-        log("old value comp3= ", hex(jlink.memory_read32(0xe0001050, 1)[0]), "\n")
-
     """general registers"""
     demcr = 0xe000edfc  # Debug Exception and Monitor Control Register, DEMCR
     enable_dwt_itm = [0x01000000]
@@ -330,7 +332,10 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
     async_swo_nrz = [0x00000002]  # Asynchronous SWO, using NRZ encoding. Manchester is not supported
 
     tpiu_acpr = 0xe0040010  # Asynchronous Clock Prescaler Register, TPIU_ACPR
-    swo_rate_prescaler = [0x00000013]  # SWO freq = Clock/(SWOSCALAR +1). 0x27 for 2MHz, 0x13 for 4MHz
+    # SWO freq = Clock/(SWOSCALAR +1). 0x27 for 2MHz, 0x13 for 4MHz
+    swo_rate_prescaler = [int(cpu_speed / swo_speed - 1)]
+    if logging_on:
+        log("using SWO rate prescaler %d" % int(cpu_speed / swo_speed - 1))
 
     itm_tcr = 0xe0000e80  # Trace Control Register, ITM_TCR
     # the value 0001000f will enable local timestamps, value 0001000d or 00010009  will disable them
@@ -347,7 +352,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         itm_tcr_config = [0x0001030f]
     else:
         if logging_on:
-            log("no or invalid ts_prescaler chosen. Setting it to 64", "\n")
+            log("no or invalid ts_prescaler chosen. Setting it to 64\n")
         itm_tcr_config = [0x0001030f]
 
     int_prio1 = 0xe0000040  # Interrupt Priority Registers, NVIC_IPR0-NVIC_IPR123
@@ -372,8 +377,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         jlink.memory_write32(dwt_mask0, dwt_mask0_value)
         jlink.memory_write32(dwt_fun0, dwt_fun0_value)
         if logging_on:
-            log("function0 = ", hex(config_value))
-            log("new value comp0= ", hex(jlink.memory_read32(dwt_comp0, 1)[0]), "\n")
+            log("function0 = " + hex(config_value))
+            log("new value comp0 = " + hex(jlink.memory_read32(dwt_comp0, 1)[0]) + "\n")
     else:  # if comparator0 is not used, configure it to not trace anything
         dwt_fun0 = 0xe0001028  # Comparator Function registers, DWT_FUNCTIONn
         jlink.memory_write32(dwt_fun0, [0x0])  # zero will disable the comparator
@@ -393,8 +398,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         jlink.memory_write32(dwt_mask1, dwt_mask1_value)
         jlink.memory_write32(dwt_fun1, dwt_fun1_value)
         if logging_on:
-            log("function1 = ", hex(config_value1))
-            log("new value comp1= ", hex(jlink.memory_read32(dwt_comp1, 1)[0]), "\n")
+            log("function1 = " + hex(config_value1))
+            log("new value comp1 = %" % hex(jlink.memory_read32(dwt_comp1, 1)[0]) + "\n")
     else:  # if comparator0 is not used, configure it to not trace anything
         dwt_fun1 = 0xe0001038  # Comparator Function registers, DWT_FUNCTIONn
         jlink.memory_write32(dwt_fun1, [0x0])  # zero will disable the comparator
@@ -414,8 +419,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         jlink.memory_write32(dwt_mask2, dwt_mask2_value)
         jlink.memory_write32(dwt_fun2, dwt_fun2_value)
         if logging_on:
-            log("function2 = ", hex(config_value2))
-            log("new value comp2= ", hex(jlink.memory_read32(dwt_comp2, 1)[0]), "\n")
+            log("function2 = " + hex(config_value2))
+            log("new value comp2 = " + hex(jlink.memory_read32(dwt_comp2, 1)[0]) + "\n")
     else:  # if comparator0 is not used, configure it to not trace anything
         dwt_fun2 = 0xe0001048  # Comparator Function registers, DWT_FUNCTIONn
         jlink.memory_write32(dwt_fun2, [0x0])  # zero will disable the comparator
@@ -435,8 +440,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         jlink.memory_write32(dwt_mask3, dwt_mask3_value)
         jlink.memory_write32(dwt_fun3, dwt_fun3_value)
         if logging_on:
-            log("function3 = ", hex(config_value3))
-            log("new value comp3= ", hex(jlink.memory_read32(dwt_comp3, 1)[0]), "\n")
+            log("function3 = " + hex(config_value3))
+            log("new value comp3 = " + hex(jlink.memory_read32(dwt_comp3, 1)[0]) + "\n")
     else:  # if comparator0 is not used, configure it to not trace anything
         dwt_fun3 = 0xe0001058  # Comparator Function registers, DWT_FUNCTIONn
         jlink.memory_write32(dwt_fun3, [0x0])  # zero will disable the comparator
@@ -479,7 +484,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
     return 0
 
 
-def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_ms=2, filename='swo_read_log', cpu_speed=None):
+def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_ms=2, filename='swo_read_log', swo_speed=None, cpu_speed=None):
     """
     Starts the SWO reading from the SWO buffer, Resets the MCU but halts the execution
     
@@ -544,12 +549,15 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
         jlink.coresight_configure()
         jlink.set_reset_strategy(pylink.enums.JLinkResetStrategyCortexM3.RESETPIN)
 
-        if cpu_speed:
-            swo_speed = jlink.swo_supported_speeds(cpu_speed, 10)[0]    # pick the fastest supported speed
+        if not swo_speed:
+            if cpu_speed:
+                swo_speed = jlink.swo_supported_speeds(cpu_speed, 10)[0]    # pick the fastest supported speed
+            else:
+                swo_speed = 4000000   # use the max. SWO speed
         else:
-            swo_speed = 4000000   # use the max. SWO speed
+            swo_speed = int(swo_speed)
         if logging_on:
-            log('using SWO speed %d Hz' % swo_speed)
+            log('target CPU speed is %d Hz, using SWO speed %d Hz' % (cpu_speed, swo_speed))
 
         # Start logging serial wire output.
         if cpu_speed:

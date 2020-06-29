@@ -50,12 +50,13 @@ loopdelay = 10     # SWO read loop delay in ms (recommended values: 10 - 100ms)
 #
 ##############################################################################
 def usage():
-    print("Usage: %s --output --platform [--stop] [--config] [--help]" % sys.argv[0])
+    print("Usage: %s --output --platform [--stop] [--config] [--speed] [--help]" % sys.argv[0])
     print("Options:")
     print("  --output=<string>\t\toutput filename")
     print("  --platform=<string>\t\tplatform name (e.g. dpp2lora or nrf5)")
     print("  --config=<string>\t\tDWT configuration, up to 4 comma separated value pairs of variable address and mode.")
     print("  --stop\t\t\tOptional. Causes the program to stop a possibly running instance of the serial reader service.")
+    print("  --speed\t\t\tOptional. The CPU clock frequency of the target device.")
     print("  --help\t\t\tOptional. Print this help.")
 ### END usage()
 
@@ -119,7 +120,8 @@ def main(argv):
     platform = None
     dwtconf  = None
     reset    = False
-    cpuspeed = None
+    cpuspeed = 48000000 #None
+    swospeed = 4000000
 
     # Get config:
     config = flocklab.get_config()
@@ -146,6 +148,8 @@ def main(argv):
         elif opt in ("-s", "--speed"):
             try:
                 cpuspeed = int(arg)
+                if cpuspeed < 1000000:    # must be at least 1 MHz
+                    cpuspeed = None
             except:
                 pass
         else:
@@ -171,6 +175,9 @@ def main(argv):
 
     # make sure the mux is enabled
     flocklab.tg_mux_en(True)
+
+    if swospeed > cpuspeed:
+        swospeed = cpuspeed
 
     # DWT config provided?
     # Note: configure service before daemonizing the process
@@ -217,14 +224,15 @@ def main(argv):
                                               trace_address0=dwtvalues[0][0], access_mode0=dwtvalues[0][1], trace_pc0=dwtvalues[0][2],
                                               trace_address1=dwtvalues[1][0], access_mode1=dwtvalues[1][1], trace_pc1=dwtvalues[1][2],
                                               trace_address2=dwtvalues[2][0], access_mode2=dwtvalues[2][1], trace_pc2=dwtvalues[2][2],
-                                              trace_address3=dwtvalues[3][0], access_mode3=dwtvalues[3][1], trace_pc3=dwtvalues[3][2])
+                                              trace_address3=dwtvalues[3][0], access_mode3=dwtvalues[3][1], trace_pc3=dwtvalues[3][2],
+                                              swo_speed=swospeed, cpu_speed=cpuspeed)
         except:
-            flocklab.error_logandexit("Failed to configure data trace service.")
+            flocklab.error_logandexit("Failed to configure data trace service (%s).\n%s" % (str(sys.exc_info()[1]), traceback.format_exc()))
 
     if reset:
         flocklab.tg_reset(False)
 
-    logger.info("Starting SWO read... (output file: %s, CPU speed: %s)." % (filename, str(cpuspeed)))
+    logger.info("Starting SWO read... (output file: %s, CPU speed: %s, SWO speed: %s)." % (filename, str(cpuspeed), str(swospeed)))
 
     # run process in background
     daemon.daemonize(pidfile=pidfile, closedesc=True)
@@ -236,7 +244,7 @@ def main(argv):
     signal.signal(signal.SIGINT, sigterm_handler)
 
     # Start SWO read
-    dwt.read_swo_buffer(device_name=flocklab.jlink_mcu_str(platform), loop_delay_in_ms=loopdelay, filename=filename, cpu_speed=cpuspeed)
+    dwt.read_swo_buffer(device_name=flocklab.jlink_mcu_str(platform), loop_delay_in_ms=loopdelay, filename=filename, swo_speed=swospeed, cpu_speed=cpuspeed)
 
     # Remove PID file
     if os.path.isfile(pidfile):
