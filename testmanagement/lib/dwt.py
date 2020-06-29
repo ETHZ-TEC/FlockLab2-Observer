@@ -479,7 +479,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
     return 0
 
 
-def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_ms=2, filename='swo_read_log'):
+def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_ms=2, filename='swo_read_log', cpu_speed=None):
     """
     Starts the SWO reading from the SWO buffer, Resets the MCU but halts the execution
     
@@ -544,15 +544,20 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
         jlink.coresight_configure()
         jlink.set_reset_strategy(pylink.enums.JLinkResetStrategyCortexM3.RESETPIN)
 
-        # swo_speed = jlink.swo_supported_speeds(cpu_speed, 10)[0]
-        #log("supported speeds: %s" % str(jlink.swo_supported_speeds(64000000, 10)))
-        swo_speed = 4000000   # use the max. SWO speed
+        if cpu_speed:
+            swo_speed = jlink.swo_supported_speeds(cpu_speed, 10)[0]    # pick the fastest supported speed
+        else:
+            swo_speed = 4000000   # use the max. SWO speed
+        if logging_on:
+            log('using SWO speed %d Hz' % swo_speed)
 
         # Start logging serial wire output.
-        jlink.swo_start(swo_speed)
+        if cpu_speed:
+            jlink.swo_enable(cpu_speed=cpu_speed, swo_speed=swo_speed, port_mask=0x01)   # enable SWO on the target and set the CPU and SWO speed
+        else:
+            jlink.swo_start(swo_speed)
         jlink.swo_flush()
-        jlink.swo_start(swo_speed)
-        #log.write("after connecting")
+
         loop_delay_in_s = loop_delay_in_ms/1000
 
         #jlink.reset(ms=10, halt=True)  # -> also seems to work without this
