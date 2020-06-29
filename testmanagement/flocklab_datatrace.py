@@ -116,6 +116,7 @@ def main(argv):
     filename = None
     platform = None
     dwtconf  = None
+    reset    = False
 
     # Get config:
     config = flocklab.get_config()
@@ -155,59 +156,73 @@ def main(argv):
     if len(flocklab.get_pids('flocklab_datatrace')) > 1:
         flocklab.error_logandexit("There is already an instance of %s running." % sys.argv[0])
 
-    daemon.daemonize(pidfile=pidfile, closedesc=True)
-
     # init logger AFTER daemonizing the process
     logger = flocklab.get_logger()
     if not logger:
         flocklab.error_logandexit("Could not get logger.")
 
+    # DWT config provided?
+    # Note: configure service before daemonizing the process
+    if dwtconf:
+        try:
+            # make sure target is released from reset state before configuring data trace
+            if flocklab.gpio_get(flocklab.gpio_tg_nrst) == 0:
+                flocklab.tg_reset()
+                reset = True
+            # parse
+            dwtvalues = []
+            values = dwtconf.split(',')
+            prevval = None
+            for val in values:
+                if "0x" in val:
+                    # variable address
+                    if prevval:
+                        dwtvalues.append([int(prevval, 0), 'w', False])    # use default mode
+                    prevval = val
+                elif prevval:
+                    # mode definition (a variable address must precede it)
+                    mode    = val.lower()
+                    trackpc = False
+                    if 'pc' in mode:
+                        trackpc = True
+                    if 'rw' in mode:
+                        mode = 'rw'
+                    elif 'r' in mode:
+                        mode = 'r'
+                    else:
+                        mode = 'w'    # default mode
+                    dwtvalues.append([int(prevval, 0), mode, trackpc])
+                    prevval = None
+            # config valid?
+            if len(dwtvalues) > 0:
+                for elem in dwtvalues:
+                    logger.info("Config found: addr=0x%x, mode=%s, pc=%s" % (elem[0], elem[1], str(elem[2])))
+                # fill up the unused variables with zeros
+                while len(dwtvalues) < 4:
+                    dwtvalues.append([None, None, None])
+                # apply config
+                logger.info("Configuring data trace service for MCU %s with prescaler %d..." % (flocklab.jlink_mcu_str(platform), prescaler))
+                dwt.config_dwt_for_data_trace(device_name=flocklab.jlink_mcu_str(platform), ts_prescaler=prescaler,
+                                              trace_address0=dwtvalues[0][0], access_mode0=dwtvalues[0][1], trace_pc0=dwtvalues[0][2],
+                                              trace_address1=dwtvalues[1][0], access_mode1=dwtvalues[1][1], trace_pc1=dwtvalues[1][2],
+                                              trace_address2=dwtvalues[2][0], access_mode2=dwtvalues[2][1], trace_pc2=dwtvalues[2][2],
+                                              trace_address3=dwtvalues[3][0], access_mode3=dwtvalues[3][1], trace_pc3=dwtvalues[3][2])
+        except:
+            flocklab.error_logandexit("Failed to configure data trace service.")
+
+    if reset:
+        flocklab.tg_reset(False)
+
+    logger.info("Starting SWO read... (output file: %s)." % filename)
+
+    # run process in background
+    daemon.daemonize(pidfile=pidfile, closedesc=True)
+
+    # note: 'logger' is not valid anymore at this point
+
     # register signal handlers
     signal.signal(signal.SIGTERM, sigterm_handler)
     signal.signal(signal.SIGINT, sigterm_handler)
-
-    # DWT config provided?
-    if dwtconf:
-        # parse
-        dwtvalues = []
-        values = dwtconf.split(',')
-        prevval = None
-        for val in values:
-            if "0x" in val:
-                # variable address
-                if prevval:
-                    dwtvalues.append([int(prevval, 0), 'w', False])    # use default mode
-                prevval = val
-            elif prevval:
-                # mode definition (a variable address must precede it)
-                mode    = val.lower()
-                trackpc = False
-                if 'pc' in mode:
-                    trackpc = True
-                if 'rw' in mode:
-                    mode = 'rw'
-                elif 'r' in mode:
-                    mode = 'r'
-                else:
-                    mode = 'w'    # default mode
-                dwtvalues.append([int(prevval, 0), mode, trackpc])
-                prevval = None
-        # config valid?
-        if len(dwtvalues) > 0:
-            for elem in dwtvalues:
-                logger.info("Config found: addr=0x%x, mode=%s, pc=%s" % (elem[0], elem[1], str(elem[2])))
-            # fill up the unused variables with zeros
-            while len(dwtvalues) < 4:
-                dwtvalues.append([None, None, None])
-            # apply config
-            logger.info("Configuring data trace service for MCU %s with prescaler %d..." % (flocklab.jlink_mcu_str(platform), prescaler))
-            dwt.config_dwt_for_data_trace(device_name=flocklab.jlink_mcu_str(platform), ts_prescaler=prescaler,
-                                          trace_address0=dwtvalues[0][0], access_mode0=dwtvalues[0][1], trace_pc0=dwtvalues[0][2],
-                                          trace_address1=dwtvalues[1][0], access_mode1=dwtvalues[1][1], trace_pc1=dwtvalues[1][2],
-                                          trace_address2=dwtvalues[2][0], access_mode2=dwtvalues[2][1], trace_pc2=dwtvalues[2][2],
-                                          trace_address3=dwtvalues[3][0], access_mode3=dwtvalues[3][1], trace_pc3=dwtvalues[3][2])
-
-    logger.info("Starting SWO read... (output file: %s)." % filename)
 
     # Start SWO read
     dwt.read_swo_buffer(device_name=flocklab.jlink_mcu_str(platform), loop_delay_in_ms=loopdelay, filename=filename)

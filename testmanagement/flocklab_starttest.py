@@ -301,6 +301,7 @@ def main(argv):
         # data trace config
         dwtconfs = list(tree.find('obsDebugConf').getiterator('dataTraceConf'))
         if dwtconfs:
+            logger.debug("Config for data trace service found.")
             dwtvalues = []
             varnames  = []
             for dwtconf in dwtconfs:
@@ -311,16 +312,10 @@ def main(argv):
             datatracefile = "%s/%d/datatrace_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
             # write the variable names as the first line into the file
             with open(datatracefile, "w") as f:
-                f.write("%s\n\n" % (" ".join(varnames)))
+                f.write("%s\n" % (" ".join(varnames)))
                 f.flush()
-            # release target from reset state before starting data trace
-            flocklab.tg_reset()
             if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile) != flocklab.SUCCESS:
                 flocklab.error_logandexit("Failed to start data tracing service.")
-            time.sleep(8)    # give the data trace service some time to initialize
-            # put the target back into reset state
-            flocklab.tg_reset(False)
-            logger.debug("Data trace service configured.")
         # make sure mux is enabled
         flocklab.tg_mux_en(True)
         if port > 0:
