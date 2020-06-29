@@ -119,6 +119,7 @@ def main(argv):
     platform = None
     dwtconf  = None
     reset    = False
+    cpuspeed = None
 
     # Get config:
     config = flocklab.get_config()
@@ -127,7 +128,7 @@ def main(argv):
 
     # Get command line parameters.
     try:
-        opts, args = getopt.getopt(argv, "sho:p:c:", ["stop", "help", "output=", "platform=", "config="])
+        opts, args = getopt.getopt(argv, "sho:p:c:s:", ["stop", "help", "output=", "platform=", "config=", "speed="])
     except(getopt.GetoptError) as err:
         flocklab.error_logandexit(str(err), errno.EINVAL)
     for opt, arg in opts:
@@ -142,6 +143,11 @@ def main(argv):
             platform = arg
         elif opt in ("-c", "--config"):
             dwtconf = arg
+        elif opt in ("-s", "--speed"):
+            try:
+                cpuspeed = int(arg)
+            except:
+                pass
         else:
             flocklab.error_logandexit("Unknown option '%s'." % (opt), errno.EINVAL)
 
@@ -163,6 +169,9 @@ def main(argv):
     if not logger:
         flocklab.error_logandexit("Could not get logger.")
 
+    # make sure the mux is enabled
+    flocklab.tg_mux_en(True)
+
     # DWT config provided?
     # Note: configure service before daemonizing the process
     if dwtconf:
@@ -171,8 +180,6 @@ def main(argv):
             if flocklab.gpio_get(flocklab.gpio_tg_nrst) == 0:
                 flocklab.tg_reset()
                 reset = True
-            # make sure the mux is enabled
-            flocklab.tg_mux_en(True)
             # parse
             dwtvalues = []
             values = dwtconf.split(',')
@@ -217,7 +224,7 @@ def main(argv):
     if reset:
         flocklab.tg_reset(False)
 
-    logger.info("Starting SWO read... (output file: %s)." % filename)
+    logger.info("Starting SWO read... (output file: %s, CPU speed: %s)." % (filename, str(cpuspeed)))
 
     # run process in background
     daemon.daemonize(pidfile=pidfile, closedesc=True)
@@ -229,7 +236,7 @@ def main(argv):
     signal.signal(signal.SIGINT, sigterm_handler)
 
     # Start SWO read
-    dwt.read_swo_buffer(device_name=flocklab.jlink_mcu_str(platform), loop_delay_in_ms=loopdelay, filename=filename)
+    dwt.read_swo_buffer(device_name=flocklab.jlink_mcu_str(platform), loop_delay_in_ms=loopdelay, filename=filename, cpu_speed=cpuspeed)
 
     # Remove PID file
     if os.path.isfile(pidfile):
