@@ -59,9 +59,10 @@ do
     LIST_DIR="ls /usr/local/lib/python2.7/dist-packages"
     REMOVE_FILES="sudo rm -r /usr/local/lib/python2.7/dist-packages/python_msp430_tools-0.6.egg-info"
     REMOVE_JLINKFILES="rm -r observer/jlink/JLink*"
+    MOVE_LOGS_TO_SDCARD="sudo rm -rf /var/log; sudo mkdir /media/card/log; sudo chmod 777 /media/card/log; mkdir /media/card/log/flocklab; sudo ln -sf /media/card/log /var/log; sudo reboot"
 
     # choose the command to execute
-    #COMMAND=$REMOVE_JLINKFILES
+    #COMMAND=$LIST_DIR
     #ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
     # or update repository files:
     rsync ${RSYNCPARAMS} -q -e "ssh -q -p ${PORT}" . ${USER}@${HOSTPREFIX}${OBS}:observer 2>&1

@@ -91,13 +91,15 @@ def stop_daemon():
                 pid = p
                 break
     if pid:
-        logger.info("Sending SIGTERM signal to process %d" % pid)
+        logger.debug("Sending SIGTERM signal to process %d" % pid)
         try:
             os.kill(pid, signal.SIGTERM)
             os.waitpid(pid, 0)
         except OSError:
             # process probably didn't exist -> ignore error
-            pass
+            logger.debug("Process %d does not exist" % pid)
+            # delete the PID file
+            os.remove(pidfile)
     else:
         logger.info("No daemon process found.")
     return flocklab.SUCCESS
@@ -169,6 +171,8 @@ def main(argv):
             if flocklab.gpio_get(flocklab.gpio_tg_nrst) == 0:
                 flocklab.tg_reset()
                 reset = True
+            # make sure the mux is enabled
+            flocklab.tg_mux_en(True)
             # parse
             dwtvalues = []
             values = dwtconf.split(',')

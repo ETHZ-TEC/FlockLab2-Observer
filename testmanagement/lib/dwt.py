@@ -45,17 +45,29 @@ except ImportError:
     import io as StringIO
 import sys
 import time
+import datetime
+import traceback
 
 
 jlinklibpath = '/opt/jlink/libjlinkarm.so'
-logging_on   = False
+logging_on   = False      # debug prints enabled?
 running      = True
+debuglogfile = '/home/flocklab/log/dwt_daemon.log'
 
 
 def stop_swo_read():
     global running
     running = False
 ### END sigterm_handler()
+
+
+def log(msg):
+    try:
+        with open(debuglogfile, "a") as f:
+            f.write("%s  %s\n" % (str(datetime.datetime.now()), msg.strip()))
+            f.flush()
+    except:
+        print("Failed to append message '%s' to log file." % msg)
 
 
 def disable_and_reset_all_comparators(jlink_serial=None, device_name='STM32L433CC'):
@@ -77,8 +89,8 @@ def disable_and_reset_all_comparators(jlink_serial=None, device_name='STM32L433C
     except TypeError:  # if the type is None we just pass
         pass
     if not isinstance(device_name, str):
-        print('the device name must be a string like "STM32L433CC" ')
-        print('setting the device name to default: "STM32L433CC"')
+        log('the device name must be a string like "STM32L433CC" ')
+        log('setting the device name to default: "STM32L433CC"')
         device_name = 'STM32L433CC'
 
 
@@ -136,12 +148,12 @@ def disable_and_reset_all_comparators(jlink_serial=None, device_name='STM32L433C
     jlink.halt()
 
     if logging_on:
-        print("\n", "all comparators are reset. To be sure the comparators are disabled check if the last four bits"
+        log("\n", "all comparators are reset. To be sure the comparators are disabled check if the last four bits"
                     " of the function value are zero")
-        print("reset value comp0 function = ", hex(jlink.memory_read32(dwt_fun0, 1)[0]))
-        print("reset value comp1 function = ", hex(jlink.memory_read32(dwt_fun1, 1)[0]))
-        print("reset value comp2 function = ", hex(jlink.memory_read32(dwt_fun2, 1)[0]))
-        print("reset value comp3 function = ", hex(jlink.memory_read32(dwt_fun3, 1)[0]), "\n")
+        log("reset value comp0 function = ", hex(jlink.memory_read32(dwt_fun0, 1)[0]))
+        log("reset value comp1 function = ", hex(jlink.memory_read32(dwt_fun1, 1)[0]))
+        log("reset value comp2 function = ", hex(jlink.memory_read32(dwt_fun2, 1)[0]))
+        log("reset value comp3 function = ", hex(jlink.memory_read32(dwt_fun3, 1)[0]), "\n")
 
     return 0
 
@@ -207,7 +219,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
                 config = 0x3
             else:
                 if logging_on:
-                    print("only PC tracing set, automatically select RW")
+                    log("only PC tracing set, automatically select RW")
                 config = 0x1
 
         else:  # tracing data only
@@ -219,7 +231,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
                 config = 0x2
             else:
                 if logging_on:
-                    print("access_mode must be r,w or rw. default is w")
+                    log("access_mode must be r,w or rw. default is w")
                 config = 0xd
 
         return config
@@ -237,8 +249,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         except TypeError:  # if the type is None we just pass
             pass
         if not isinstance(dev_name, str):
-            print('the device name must be a string like "STM32L433CC" ')
-            print('setting the device name to default: "STM32L433CC"')
+            log('the device name must be a string like "STM32L433CC" ')
+            log('setting the device name to default: "STM32L433CC"')
             dev_name = 'STM32L433CC'
         try:
             ts_pres = int(ts_pres)
@@ -299,16 +311,16 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
     dwt_fun3 = 0xe0001058
 
     if logging_on:
-        print("\n", "function values at start of config")
-        print("reset value comp0 function = ", hex(jlink.memory_read32(dwt_fun0, 1)[0]))
-        print("reset value comp1 function = ", hex(jlink.memory_read32(dwt_fun1, 1)[0]))
-        print("reset value comp2 function = ", hex(jlink.memory_read32(dwt_fun2, 1)[0]))
-        print("reset value comp3 function = ", hex(jlink.memory_read32(dwt_fun3, 1)[0]), "\n")
+        log("\n", "function values at start of config")
+        log("reset value comp0 function = ", hex(jlink.memory_read32(dwt_fun0, 1)[0]))
+        log("reset value comp1 function = ", hex(jlink.memory_read32(dwt_fun1, 1)[0]))
+        log("reset value comp2 function = ", hex(jlink.memory_read32(dwt_fun2, 1)[0]))
+        log("reset value comp3 function = ", hex(jlink.memory_read32(dwt_fun3, 1)[0]), "\n")
 
-        print("old value comp0 = ", hex(jlink.memory_read32(0xe0001020, 1)[0]))
-        print("old value comp1= ", hex(jlink.memory_read32(0xe0001030, 1)[0]))
-        print("old value comp2= ", hex(jlink.memory_read32(0xe0001040, 1)[0]))
-        print("old value comp3= ", hex(jlink.memory_read32(0xe0001050, 1)[0]), "\n")
+        log("old value comp0 = ", hex(jlink.memory_read32(0xe0001020, 1)[0]))
+        log("old value comp1= ", hex(jlink.memory_read32(0xe0001030, 1)[0]))
+        log("old value comp2= ", hex(jlink.memory_read32(0xe0001040, 1)[0]))
+        log("old value comp3= ", hex(jlink.memory_read32(0xe0001050, 1)[0]), "\n")
 
     """general registers"""
     demcr = 0xe000edfc  # Debug Exception and Monitor Control Register, DEMCR
@@ -335,7 +347,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         itm_tcr_config = [0x0001030f]
     else:
         if logging_on:
-            print("no or invalid ts_prescaler chosen. Setting it to 64", "\n")
+            log("no or invalid ts_prescaler chosen. Setting it to 64", "\n")
         itm_tcr_config = [0x0001030f]
 
     int_prio1 = 0xe0000040  # Interrupt Priority Registers, NVIC_IPR0-NVIC_IPR123
@@ -360,8 +372,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         jlink.memory_write32(dwt_mask0, dwt_mask0_value)
         jlink.memory_write32(dwt_fun0, dwt_fun0_value)
         if logging_on:
-            print("function0 = ", hex(config_value))
-            print("new value comp0= ", hex(jlink.memory_read32(dwt_comp0, 1)[0]), "\n")
+            log("function0 = ", hex(config_value))
+            log("new value comp0= ", hex(jlink.memory_read32(dwt_comp0, 1)[0]), "\n")
     else:  # if comparator0 is not used, configure it to not trace anything
         dwt_fun0 = 0xe0001028  # Comparator Function registers, DWT_FUNCTIONn
         jlink.memory_write32(dwt_fun0, [0x0])  # zero will disable the comparator
@@ -381,8 +393,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         jlink.memory_write32(dwt_mask1, dwt_mask1_value)
         jlink.memory_write32(dwt_fun1, dwt_fun1_value)
         if logging_on:
-            print("function1 = ", hex(config_value1))
-            print("new value comp1= ", hex(jlink.memory_read32(dwt_comp1, 1)[0]), "\n")
+            log("function1 = ", hex(config_value1))
+            log("new value comp1= ", hex(jlink.memory_read32(dwt_comp1, 1)[0]), "\n")
     else:  # if comparator0 is not used, configure it to not trace anything
         dwt_fun1 = 0xe0001038  # Comparator Function registers, DWT_FUNCTIONn
         jlink.memory_write32(dwt_fun1, [0x0])  # zero will disable the comparator
@@ -402,8 +414,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         jlink.memory_write32(dwt_mask2, dwt_mask2_value)
         jlink.memory_write32(dwt_fun2, dwt_fun2_value)
         if logging_on:
-            print("function2 = ", hex(config_value2))
-            print("new value comp2= ", hex(jlink.memory_read32(dwt_comp2, 1)[0]), "\n")
+            log("function2 = ", hex(config_value2))
+            log("new value comp2= ", hex(jlink.memory_read32(dwt_comp2, 1)[0]), "\n")
     else:  # if comparator0 is not used, configure it to not trace anything
         dwt_fun2 = 0xe0001048  # Comparator Function registers, DWT_FUNCTIONn
         jlink.memory_write32(dwt_fun2, [0x0])  # zero will disable the comparator
@@ -423,8 +435,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         jlink.memory_write32(dwt_mask3, dwt_mask3_value)
         jlink.memory_write32(dwt_fun3, dwt_fun3_value)
         if logging_on:
-            print("function3 = ", hex(config_value3))
-            print("new value comp3= ", hex(jlink.memory_read32(dwt_comp3, 1)[0]), "\n")
+            log("function3 = ", hex(config_value3))
+            log("new value comp3= ", hex(jlink.memory_read32(dwt_comp3, 1)[0]), "\n")
     else:  # if comparator0 is not used, configure it to not trace anything
         dwt_fun3 = 0xe0001058  # Comparator Function registers, DWT_FUNCTIONn
         jlink.memory_write32(dwt_fun3, [0x0])  # zero will disable the comparator
@@ -486,6 +498,10 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
       int: True if the program was halted by Key interrupt
 
     """
+
+    if logging_on:
+        log("starting swo reader...")
+
     # convert in case wrong type given as input
     try:
         jlink_serial = int(jlink_serial)
@@ -493,8 +509,8 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
         pass
 
     if not isinstance(device_name, str):
-        print('the device name must be a string like "STM32L433CC" ')
-        print('setting the device name to default: "STM32L433CC"')
+        log('the device name must be a string like "STM32L433CC" ')
+        log('setting the device name to default: "STM32L433CC"')
         device_name = 'STM32L433CC'
 
     try:
@@ -503,62 +519,66 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
         pass
 
     if not isinstance(filename, str):
-        print('the file name must be a string like "swo_read_log" ')
-        print('setting the file name to default: "swo_read_log"')
+        log('the file name must be a string like "swo_read_log" ')
+        log('setting the file name to default: "swo_read_log"')
         filename = 'swo_read_log'
 
-
-
-    buf = StringIO.StringIO()
-    jlinklib = pylink.library.Library(dllpath=jlinklibpath)
-    jlink = pylink.JLink(lib=jlinklib, log=buf.write, detailed_log=buf.write)
-
-    # Output the information about the program.
-    #sys.stdout.write('Press Ctrl-C to Exit\n')
-
-    #log = open("/tmp/log", "w")
-    # reconnect
-    if jlink_serial:  # if have several emulators connected, user can specify one by the serial number
-        jlink.open(serial_no=jlink_serial)
-    else:
-        jlink.open()
-    jlink.set_tif(pylink.enums.JLinkInterfaces.SWD)
-    jlink.connect(device_name, verbose=True)
-    jlink.coresight_configure()
-    jlink.set_reset_strategy(pylink.enums.JLinkResetStrategyCortexM3.RESETPIN)
-    #print("after connecting in the read_swo_buffer function  halted() is ", jlink.halted())
-    #log.write("after connecting")
-
-    # swo_speed = jlink.swo_supported_speeds(cpu_speed, 10)[0]
-    swo_speed = 4000000
-    # Start logging serial wire output.
-    jlink.swo_start(swo_speed)
-    jlink.swo_flush()
-    jlink.swo_start(swo_speed)
-    #log.write("after connecting")
-    loop_delay_in_s = loop_delay_in_ms/1000
-
-    #jlink.reset(ms=10, halt=True)  # ATTENTION we need this reset for SWO reader to work.
-
-    file = open(filename, "a")   # append to file
-
-    # catch the keyboard interrupt telling execution to stop
     try:
-        while running:
-            global_time = time.time()
-            num_bytes = jlink.swo_num_bytes()
-            if num_bytes:
-                data = jlink.swo_read(0, num_bytes, remove=True)
-                file.write(' '.join(str(x) for x in data) + "\n" + str(global_time) + "\n")
-            time.sleep(loop_delay_in_s)  # time in seconds to sleep.
-    except KeyboardInterrupt:
-        pass
-    jlink.swo_stop()
-    jlink.swo_flush()
-    jlink.close()
-    file.flush()
-    file.close()
-    #sys.stdout.write('\n')
+        buf = StringIO.StringIO()
+        jlinklib = pylink.library.Library(dllpath=jlinklibpath)
+        jlink = pylink.JLink(lib=jlinklib, log=buf.write, detailed_log=buf.write)
+
+        # reconnect
+        if jlink_serial:  # if have several emulators connected, user can specify one by the serial number
+            jlink.open(serial_no=jlink_serial)
+        else:
+            jlink.open()
+        jlink.set_tif(pylink.enums.JLinkInterfaces.SWD)
+
+        try:
+            jlink.connect(device_name, verbose=True)
+        except:
+            log('could not connect to the target')
+            return 1
+
+        jlink.coresight_configure()
+        jlink.set_reset_strategy(pylink.enums.JLinkResetStrategyCortexM3.RESETPIN)
+
+        # swo_speed = jlink.swo_supported_speeds(cpu_speed, 10)[0]
+        #log("supported speeds: %s" % str(jlink.swo_supported_speeds(64000000, 10)))
+        swo_speed = 4000000   # use the max. SWO speed
+
+        # Start logging serial wire output.
+        jlink.swo_start(swo_speed)
+        jlink.swo_flush()
+        jlink.swo_start(swo_speed)
+        #log.write("after connecting")
+        loop_delay_in_s = loop_delay_in_ms/1000
+
+        #jlink.reset(ms=10, halt=True)  # -> also seems to work without this
+
+        file = open(filename, "a")   # append to file
+
+        # catch the keyboard interrupt telling execution to stop
+        try:
+            while running:
+                global_time = time.time()
+                num_bytes = jlink.swo_num_bytes()
+                if num_bytes:
+                    data = jlink.swo_read(0, num_bytes, remove=True)
+                    file.write(' '.join(str(x) for x in data) + "\n" + str(global_time) + "\n")
+                time.sleep(loop_delay_in_s)  # time in seconds to sleep.
+        except KeyboardInterrupt:
+            pass
+        jlink.swo_stop()
+        jlink.swo_flush()
+        jlink.close()
+        file.flush()
+        file.close()
+
+    except:
+        log('an error occurred in read_swo_buffer(): %s\n%s' % (str(sys.exc_info()[1]), traceback.format_exc()))
+        return 1
 
     return 0
 
