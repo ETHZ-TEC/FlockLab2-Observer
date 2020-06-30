@@ -173,8 +173,9 @@ def main(argv):
     if not logger:
         flocklab.error_logandexit("Could not get logger.")
 
-    # make sure the mux is enabled
+    # make sure the mux (for SWO/SWD) and actuation (nRST) is enabled
     flocklab.tg_mux_en(True)
+    flocklab.tg_act_en(True)
 
     if swospeed > cpuspeed:
         swospeed = cpuspeed

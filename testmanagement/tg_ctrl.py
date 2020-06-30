@@ -119,10 +119,12 @@ def main(argv):
                 print("power state: OFF")
 
         elif opt in ("-r", "--reset"):
+            flocklab.tg_act_en(True)  # make sure actuation is enabled
             flocklab.tg_reset()
             print("target reset")
 
         elif opt in ("--reset-low"):
+            flocklab.tg_act_en(True)  # make sure actuation is enabled
             flocklab.tg_reset(False)
             print("holding target in reset state")
 
