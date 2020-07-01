@@ -37,7 +37,7 @@ INSTALL=1       # whether to recompile and install programs on the observer (wil
 PORT=2322
 USER="flocklab"
 HOSTPREFIX="fl-"
-OBSIDS="02 03 04 05 06 07 08 09 10 11 12"
+OBSIDS="01 02 03 04 05 06 07 08 09 10 11 12 17 25"
 RSYNCPARAMS=" -a -z -c --timeout=5 --exclude=.git --no-perms --no-owner --no-group"
 
 # check arguments
