@@ -1120,10 +1120,16 @@ def stop_gdb_server():
 # start_data_trace
 #
 ##############################################################################
-def start_data_trace(platform=None, dwtconfig=None, outputfile=None):
+def start_data_trace(platform=None, dwtconfig=None, outputfile=None, cpuspeed=None):
     if not platform or not outputfile or not dwtconfig:
         return FAILED
-    cmd = [config.get("observer", "datatraceservice"), '--output=%s' % outputfile, '--platform=%s' % platform, '--config=%s' % dwtconfig]
+    if not cpuspeed:
+        # use the default speed
+        if "dpp2lora" in platform.lower():
+            cpuspeed = 80000000
+        elif "nrf5" in platform.lower():
+            cpuspeed = 64000000
+    cmd = [config.get("observer", "datatraceservice"), '--output=%s' % outputfile, '--platform=%s' % platform, '--config=%s' % dwtconfig, '--speed=%d' % parse_int(cpuspeed)]
     p = subprocess.Popen(cmd)
     rs = p.wait()
     if rs != SUCCESS:

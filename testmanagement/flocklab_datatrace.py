@@ -33,7 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 Author: Reto Da Forno
 """
 
-import os, sys, getopt, signal, socket, time, subprocess, errno, queue, serial, select, multiprocessing, threading, traceback, struct
+import os, sys, getopt, signal, socket, time, subprocess, errno, queue, serial, select, multiprocessing, threading, traceback, struct, math
 import lib.daemon as daemon
 import lib.flocklab as flocklab
 import lib.dwt as dwt
@@ -120,7 +120,7 @@ def main(argv):
     platform = None
     dwtconf  = None
     reset    = False
-    cpuspeed = 48000000 #None
+    cpuspeed = None
     swospeed = 4000000
 
     # Get config:
@@ -177,8 +177,15 @@ def main(argv):
     flocklab.tg_mux_en(True)
     flocklab.tg_act_en(True)
 
-    if swospeed > cpuspeed:
-        swospeed = cpuspeed
+    # make sure the SWO speed is an integer multple of cpuspeed
+    if cpuspeed and swospeed:
+        if swospeed > cpuspeed:
+            swospeed = cpuspeed
+        else:
+            div = cpuspeed / swospeed
+            if int(div) * swospeed != cpuspeed:
+                swospeed = int(cpuspeed / math.ceil(div))
+                logger.info("SWO speed adjusted to %d" % swospeed)
 
     # DWT config provided?
     # Note: configure service before daemonizing the process

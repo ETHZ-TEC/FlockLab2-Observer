@@ -560,15 +560,15 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
             log('target CPU speed is %d Hz, using SWO speed %d Hz' % (cpu_speed, swo_speed))
 
         # Start logging serial wire output.
-        if cpu_speed:
-            jlink.swo_enable(cpu_speed=cpu_speed, swo_speed=swo_speed, port_mask=0x01)   # enable SWO on the target and set the CPU and SWO speed
-        else:
-            jlink.swo_start(swo_speed)
+        #if cpu_speed:
+        #    jlink.swo_enable(cpu_speed=cpu_speed, swo_speed=swo_speed, port_mask=0xffffffff)   # enable SWO on the target and set the CPU and SWO speed
+        #else:
+        jlink.swo_start(swo_speed)
         jlink.swo_flush()
 
         loop_delay_in_s = loop_delay_in_ms/1000
 
-        #jlink.reset(ms=10, halt=True)  # -> also seems to work without this
+        #jlink.reset(ms=10, halt=True)  # -> also seems to work without this (at least if the target is held in reset state)
 
         file = open(filename, "a")   # append to file
 

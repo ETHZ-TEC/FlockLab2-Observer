@@ -295,6 +295,9 @@ def main(argv):
         remoteIp = "0.0.0.0"
         if tree.find('obsDebugConf/remoteIp') != None:
             remoteIp = tree.findtext('obsDebugConf/remoteIp')
+        cpuSpeed = None
+        if tree.find('obsDebugConf/cpuSpeed') != None:
+            cpuSpeed = flocklab.parse_int(tree.findtext('obsDebugConf/cpuSpeed'))
         port = 0
         if tree.find('obsDebugConf/gdbPort') != None:
             port = int(tree.findtext('obsDebugConf/gdbPort'))
@@ -314,7 +317,7 @@ def main(argv):
             with open(datatracefile, "w") as f:
                 f.write("%s\n" % (" ".join(varnames)))
                 f.flush()
-            if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile) != flocklab.SUCCESS:
+            if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile, cpuSpeed) != flocklab.SUCCESS:
                 flocklab.error_logandexit("Failed to start data tracing service.")
         # make sure mux is enabled
         flocklab.tg_mux_en(True)
