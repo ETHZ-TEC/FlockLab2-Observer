@@ -271,8 +271,8 @@ def main(argv):
             if settingcount > 2:
                 actuationused = True
             elif serialport == None and not debugserviceused:
-                # if two or less actuations are scheduled, then it's only the reset pins -> disable actuation during the test if debugging service not used
-                act_events.append(['A', 1000])    # 1ms after startup
+                # if two or less actuations are scheduled, then it's only the reset pins -> disable actuation during the test if debugging service & serial proxy not used
+                act_events.append(['A', 10001000])    # 10.001s after startup -> latest point where target will be released from reset state
                 act_events.append(['a', flocklab.parse_int((teststoptime - teststarttime) * 1000000) - 1000])    # reactivate actuation just before the end of the test (when the reset pin needs to be pulled low)
                 settingcount = settingcount + 2
                 logger.debug("Actuation will be disabled during the test.")
