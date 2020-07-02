@@ -301,6 +301,8 @@ def main(argv):
         port = 0
         if tree.find('obsDebugConf/gdbPort') != None:
             port = int(tree.findtext('obsDebugConf/gdbPort'))
+        # make sure mux is enabled
+        flocklab.tg_mux_en(True)
         # data trace config
         dwtconfs = list(tree.find('obsDebugConf').getiterator('dataTraceConf'))
         if dwtconfs:
@@ -319,8 +321,6 @@ def main(argv):
                 f.flush()
             if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile, cpuSpeed) != flocklab.SUCCESS:
                 flocklab.error_logandexit("Failed to start data tracing service.")
-        # make sure mux is enabled
-        flocklab.tg_mux_en(True)
         if port > 0:
             # start GDB server 10s after test start
             if flocklab.start_gdb_server(platform, port, int(teststarttime - time.time() + 10)) != flocklab.SUCCESS:
