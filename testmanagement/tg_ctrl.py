@@ -71,8 +71,8 @@ def usage():
     print("  --select, -s\t\tselect the target slot (1 - 4)")
     print("  --target, -t\t\tget the currently selected (active) target slot")
     print("  --voltage, -v\t\tset the target voltage (1.1 - 3.6)")
-    print("  --mux, -m\t\tenable or disable the MUX")
-    print("  --actuation, -a\tenable or disable actuation")
+    print("  --mux, -m\t\tenable or disable the MUX (pass '?' to poll the current state)")
+    print("  --actuation, -a\tenable or disable actuation (pass '?' to poll the current state)")
     print("  --reset, -r\t\treset the target")
     print("  --reset-low\t\tset the target reset low")
     print("  --temperature\t\tget the current temperature (SHT31 sensor on the observer)")
@@ -152,7 +152,9 @@ def main(argv):
                 print("invalid voltage")
 
         elif opt in ("-m", "--mux"):
-            if arg.lower() in ("e", "en", "enable", "1", "on"):
+            if arg in ("?"):
+                print("MUX state: %d" % flocklab.tg_mux_state())
+            elif arg.lower() in ("e", "en", "enable", "1", "on"):
                 flocklab.tg_mux_en(True)
                 print("MUX enabled")
             else:
@@ -160,7 +162,9 @@ def main(argv):
                 print("MUX disabled")
 
         elif opt in ("-a", "--act", "--actuation"):
-            if arg.lower() in ("e", "en", "enable", "1", "on"):
+            if arg in ("?"):
+                print("actuation state: %d" % flocklab.tg_act_state())
+            elif arg.lower() in ("e", "en", "enable", "1", "on"):
                 flocklab.tg_act_en(True)
                 print("actuation enabled")
             else:
