@@ -336,7 +336,41 @@ def main(argv):
             flocklab.tg_mux_en(False)
             logger.debug("Disabling MUX.")
 
-    # GPIO tracing (must be started after the debug service) ---
+    # Serial (must be started after the debug service) ---
+    if tree.find('obsSerialConf') != None:
+        logger.debug("Found config for serial service.")
+        baudrate = tree.findtext('obsSerialConf/baudrate')
+        serialport = tree.findtext('obsSerialConf/port')
+        if serialport == None:
+            serialport = "serial"
+        serialfile = "%s/%d/serial_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+        if "swo" in serialport.lower():
+            # logging via SWO pin
+            cpuspeed = tree.findtext('obsSerialConf/cpuSpeed')
+            # MUX must be enabled and target released from reset state
+            flocklab.tg_mux_en(True)
+            flocklab.tg_reset()
+            if flocklab.start_swo_logger(platform, serialfile, cpuspeed, None) != flocklab.SUCCESS:
+                flocklab.tg_off()
+                flocklab.error_logandexit("Failed to start SWO serial logger.")
+            # wait some time to let the services start up, then put the target back into reset state
+            time.sleep(5)
+            flocklab.tg_reset(False)
+        elif not socketport:
+            # serial forwarder (proxy) not used -> logging only (use the faster C implementation)
+            if flocklab.start_serial_logging(serialport, baudrate, serialfile, teststarttime, teststoptime - teststarttime) != flocklab.SUCCESS:
+                flocklab.tg_off()
+                flocklab.error_logandexit("Failed to start serial logging service.")
+        else:
+            outputdir = "%s/%d" % (config.get("observer", "testresultfolder"), testid)
+            if flocklab.start_serial_service(serialport, baudrate, socketport, outputdir, debug) != flocklab.SUCCESS:
+                flocklab.tg_off()
+                flocklab.error_logandexit("Failed to start serial service.")
+        logger.debug("Started and configured serial service.")
+    else:
+        logger.debug("No config for serial service found.")
+
+    # GPIO tracing (must be started after the serial and debug service) ---
     if tracingserviceused:
         logger.debug("Found config for GPIO monitoring.")
         # move the old log file
@@ -394,29 +428,6 @@ def main(argv):
         logger.debug("Power measurement will start at %s (output: %s, sampling rate: %dHz, duration: %ds)." % (str(starttime), outputfile, samplingrate, duration))
     else:
         logger.debug("No config for powerprofiling service found.")
-
-    # Serial (must be started after the debug service) ---
-    if tree.find('obsSerialConf') != None:
-        logger.debug("Found config for serial service.")
-        baudrate = tree.findtext('obsSerialConf/baudrate')
-        serialport = tree.findtext('obsSerialConf/port')
-        if serialport == None:
-            serialport = "serial"
-        if not socketport:
-            # serial forwarder (proxy) not used -> logging only
-            serialfile = "%s/%d/serial_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-            # if only logging is required, use the faster C implementation
-            if flocklab.start_serial_logging(serialport, baudrate, serialfile, teststarttime, teststoptime - teststarttime) != flocklab.SUCCESS:
-                flocklab.tg_off()
-                flocklab.error_logandexit("Failed to start serial logging service.")
-        else:
-            outputdir = "%s/%d" % (config.get("observer", "testresultfolder"), testid)
-            if flocklab.start_serial_service(serialport, baudrate, socketport, outputdir, debug) != flocklab.SUCCESS:
-                flocklab.tg_off()
-                flocklab.error_logandexit("Failed to start serial service.")
-        logger.debug("Started and configured serial service.")
-    else:
-        logger.debug("No config for serial service found.")
 
     # Timesync log ---
     try:

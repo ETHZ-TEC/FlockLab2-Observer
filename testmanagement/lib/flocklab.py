@@ -452,6 +452,16 @@ def tg_mux_en(enable=True):
 
 ##############################################################################
 #
+# tg_mux_state - get multiplexer state
+#
+##############################################################################
+def tg_mux_state():
+    return (gpio_get(gpio_tg_mux_nen) == 0)
+### END tg_mux_state()
+
+
+##############################################################################
+#
 # tg_act_en - enable target actuation
 #
 ##############################################################################
@@ -462,6 +472,16 @@ def tg_act_en(enable=True):
         gpio_set(gpio_tg_act_nen)
     return SUCCESS
 ### END tg_mux_en()
+
+
+##############################################################################
+#
+# tg_act_state - get actuation state
+#
+##############################################################################
+def tg_act_state():
+    return (gpio_get(gpio_tg_act_nen) == 0)
+### END tg_act_state()
 
 
 ##############################################################################
@@ -551,6 +571,16 @@ def tg_reset(release=True):
         gpio_set(gpio_tg_nrst)
     return SUCCESS
 ### END tg_reset()
+
+
+##############################################################################
+#
+# tg_reset_state - get reset state
+#
+##############################################################################
+def tg_reset_state():
+    return gpio_get(gpio_tg_nrst)
+### END tg_reset_state()
 
 
 ##############################################################################
@@ -1144,12 +1174,54 @@ def start_data_trace(platform=None, dwtconfig=None, outputfile=None, cpuspeed=No
 #
 ##############################################################################
 def stop_data_trace():
+    if not config:
+        return FAILED
     cmd = [config.get("observer", "datatraceservice"), '--stop']
     p = subprocess.Popen(cmd)
     rs = p.wait()
     if rs not in (SUCCESS, errno.ENOPKG):
         return FAILED
     return SUCCESS
+### END stop_data_trace()
+
+
+##############################################################################
+#
+# start_swo_logger
+#
+##############################################################################
+def start_swo_logger(platform=None, outputfile=None, cpuspeed=None, swospeed=None):
+    if not platform or not outputfile or not config:
+        return FAILED
+    # note: MUX must be enabled for this to work
+    cmd = [config.get("observer", "swologger"), '--output=%s' % outputfile, '--platform=%s' % platform]
+    if cpuspeed:
+        cmd.append('--cpuspeed=%d' % parse_int(cpuspeed))
+    if swospeed:
+        cmd.append('--swospeed=%d' % parse_int(swospeed))
+    p = subprocess.Popen(cmd)
+    rs = p.wait()
+    if rs != SUCCESS:
+        return FAILED
+    return SUCCESS
+### END start_swo_logger()
+
+
+##############################################################################
+#
+# stop_swo_logger
+#
+##############################################################################
+def stop_swo_logger():
+    if not config:
+        return FAILED
+    cmd = [config.get("observer", "swologger"), '--stop']
+    p = subprocess.Popen(cmd)
+    rs = p.wait()
+    if rs not in (SUCCESS, errno.ENOPKG):
+        return FAILED
+    return SUCCESS
+### END stop_swo_logger()
 
 
 ##############################################################################

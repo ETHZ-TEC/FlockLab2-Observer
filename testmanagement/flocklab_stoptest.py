@@ -169,43 +169,34 @@ def main(argv):
         sys.exit(flocklab.SUCCESS)
     
     # Activate interface ---
-    if slotnr:
-        flocklab.tg_select(slotnr)
-        logger.debug("Activated interface %d." % slotnr)
-    else:
-        # Assume that the interface is still activated.
-        slotnr = flocklab.tg_get_selected()
-        errors.append("Could not activate interface because slot number could not be determined. Working on currently active interface %d." % slotnr)
-    
+    if flashdefaultimage:
+        if slotnr:
+            flocklab.tg_select(slotnr)
+            logger.debug("Activated interface %d." % slotnr)
+        else:
+            # Assume that the interface is still activated.
+            slotnr = flocklab.tg_get_selected()
+            errors.append("Could not activate interface because slot number could not be determined. Working on currently active interface %d." % slotnr)
+      
     # Reset all services ---
     if flocklab.stop_serial_service(debug) != flocklab.SUCCESS:
         errors.append("Failed to stop serial service.")
-    else:
-        logger.debug("Stopped serial service.")
     if flocklab.stop_serial_logging() != flocklab.SUCCESS:
         errors.append("Failed to stop serial logging service.")
-    else:
-        logger.debug("Stopped serial logging service.")
+    if flocklab.stop_swo_logger() != flocklab.SUCCESS:
+        errors.append("Failed to stop SWO serial logger.")
     if flocklab.stop_gpio_tracing() != flocklab.SUCCESS:
         errors.append("Failed to stop GPIO tracing service.")
-    else:
-        logger.debug("Stopped GPIO tracing.")
     if flocklab.stop_gpio_actuation() != flocklab.SUCCESS:
         errors.append("Failed to stop GPIO actuation service.")
-    else:
-        logger.debug("Stopped GPIO actuation.")
     if flocklab.stop_pwr_measurement() != flocklab.SUCCESS:
         errors.append("Failed to stop power measurement.")
-    else:
-        logger.debug("Stopped power measurement.")
     if flocklab.stop_gdb_server() != flocklab.SUCCESS:
         errors.append("Failed to stop debug service.")
-    else:
-        logger.debug("Stopped debug service.")
     if flocklab.stop_data_trace() != flocklab.SUCCESS:
         errors.append("Failed to stop data trace service.")
-    else:
-        logger.debug("Stopped data trace service.")
+    
+    logger.info("All services stopped.")
     
     # wait for all background services to stop
     time.sleep(10)
