@@ -33,7 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 Author: Reto Da Forno
 """
 
-import os, sys, getopt, signal, socket, time, subprocess, errno, queue, serial, select, multiprocessing, threading, traceback, struct, math
+import os, sys, getopt, signal, time, subprocess, errno, select, multiprocessing, threading, traceback, math
 import lib.daemon as daemon
 import lib.flocklab as flocklab
 import lib.dwt as dwt
@@ -42,6 +42,8 @@ import lib.dwt as dwt
 pidfile   = None
 prescaler = 16     # prescaler for local timestamps
 loopdelay = 10     # SWO read loop delay in ms (recommended values: 10 - 100ms)
+
+scriptname = os.path.splitext(os.path.basename(__file__))[0]
 
 
 ##############################################################################
@@ -55,7 +57,7 @@ def usage():
     print("  --output=<string>\t\toutput filename")
     print("  --platform=<string>\t\tplatform name (e.g. dpp2lora or nrf5)")
     print("  --config=<string>\t\tDWT configuration, up to 4 comma separated value pairs of variable address and mode.")
-    print("  --stop\t\t\tOptional. Causes the program to stop a possibly running instance of the serial reader service.")
+    print("  --stop\t\t\tOptional. Causes the program to stop a possibly running instance of the data trace service.")
     print("  --speed\t\t\tOptional. The CPU clock frequency of the target device.")
     print("  --help\t\t\tOptional. Print this help.")
 ### END usage()
@@ -86,21 +88,22 @@ def stop_daemon():
         pass
     if not pid:
         # take the first PID that isn't our PID
-        pids = flocklab.get_pids('flocklab_datatrace')
+        pids = flocklab.get_pids(scriptname)
         for p in pids:
             if p != os.getpid():
                 pid = p
                 break
     if pid:
-        logger.debug("Sending SIGTERM signal to process %d" % pid)
+        logger.debug("Sending SIGTERM signal to data trace process %d..." % pid)
         try:
             os.kill(pid, signal.SIGTERM)
             os.waitpid(pid, 0)
         except OSError:
             # process probably didn't exist -> ignore error
-            logger.debug("Process %d does not exist" % pid)
+            logger.debug("Process %d does not exist." % pid)
             # delete the PID file
-            os.remove(pidfile)
+            if os.path.isfile(pidfile):
+                os.remove(pidfile)
     else:
         logger.info("No daemon process found.")
     return flocklab.SUCCESS
@@ -130,7 +133,7 @@ def main(argv):
 
     # Get command line parameters.
     try:
-        opts, args = getopt.getopt(argv, "sho:p:c:s:", ["stop", "help", "output=", "platform=", "config=", "speed="])
+        opts, args = getopt.getopt(argv, "eho:p:c:s:", ["stop", "help", "output=", "platform=", "config=", "speed="])
     except(getopt.GetoptError) as err:
         flocklab.error_logandexit(str(err), errno.EINVAL)
     for opt, arg in opts:
@@ -160,15 +163,15 @@ def main(argv):
         if not filename or not platform:
             flocklab.error_logandexit("No output file or platform specified.", errno.EINVAL)
 
-    pidfile = "%s/flocklab_datatrace.pid" % (config.get("observer", "pidfolder"))
+    pidfile = "%s/%s.pid" % (config.get("observer", "pidfolder"), scriptname)
 
     if stop:
         sys.exit(stop_daemon())
 
-    if len(flocklab.get_pids('flocklab_datatrace')) > 1:
+    if len(flocklab.get_pids(scriptname)) > 1:
         flocklab.error_logandexit("There is already an instance of %s running." % sys.argv[0])
 
-    # init logger AFTER daemonizing the process
+    # init logger
     logger = flocklab.get_logger()
     if not logger:
         flocklab.error_logandexit("Could not get logger.")
@@ -240,7 +243,7 @@ def main(argv):
     if reset:
         flocklab.tg_reset(False)
 
-    logger.info("Starting SWO read... (output file: %s, CPU speed: %s, SWO speed: %s)." % (filename, str(cpuspeed), str(swospeed)))
+    logger.info("Starting SWO read (output file: %s, CPU speed: %s, SWO speed: %s)." % (filename, str(cpuspeed), str(swospeed)))
 
     # run process in background
     daemon.daemonize(pidfile=pidfile, closedesc=True)
