@@ -836,6 +836,29 @@ def get_pids(process_name=None):
 
 ##############################################################################
 #
+# program_target
+#
+##############################################################################
+def program_target(filename=None, platform=None, core=0, debug=False):
+    if not config or not filename or not platform:
+        return FAILED
+    cmd = [config.get("observer", "progscript"), '--image=%s' % filename, '--target=%s' % platform, '--core=%d' % core]
+    if debug:
+        cmd.append("--debug")
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    (out, err) = p.communicate()
+    if (p.returncode != SUCCESS):
+        #shutil.move(image, '/tmp/failed_image_%s' % os.path.basename(image))
+        #logger.debug("Moved file to /tmp. Command was: %s" % (" ".join(cmd)))
+        if logger:
+            logger.debug("Programming failed with error: %s. Output of script:\n%s" % (err.strip(), out.strip()))
+        return FAILED
+    return SUCCESS
+### END program_target()
+
+
+##############################################################################
+#
 # start_pwr_measurement
 #
 ##############################################################################

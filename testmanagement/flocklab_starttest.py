@@ -37,6 +37,9 @@ import os, sys, subprocess, getopt, errno, tempfile, time, shutil, serial, xml.e
 import lib.flocklab as flocklab
 
 
+stopallservices = False          # whether to stop all services before starting a test
+
+
 ##############################################################################
 #
 # Usage
@@ -168,14 +171,21 @@ def main(argv):
         flocklab.error_logandexit("Slot number could not be determined.")
 
     # Make sure all services are stopped ---
-    p = subprocess.Popen([config.get("observer", "serialservice"), '--stop'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    (out, err) = p.communicate()
-    if (p.returncode not in (flocklab.SUCCESS, errno.ENOPKG)):
-        flocklab.error_logandexit("Error %d when trying to stop a potentially running serial service script: %s" % (p.returncode, str(err).strip()))
-    flocklab.stop_serial_logging()
-    flocklab.stop_gpio_tracing()
-    flocklab.stop_pwr_measurement()
-    flocklab.stop_gdb_server()
+    if stopallservices:
+        flocklab.stop_serial_service()
+        flocklab.stop_serial_logging()
+        flocklab.stop_swo_logger()
+        flocklab.stop_gpio_actuation()
+        flocklab.stop_gpio_tracing()
+        flocklab.stop_pwr_measurement()
+        flocklab.stop_gdb_server()
+        flocklab.stop_data_trace()
+
+    # Delete old logs
+    if os.path.isfile(flocklab.rllog):
+        os.remove(flocklab.rllog)
+    if os.path.isfile(flocklab.tracinglog):
+        os.remove(flocklab.tracinglog)
 
     # Enable MUX and power
     flocklab.tg_off()
@@ -192,19 +202,11 @@ def main(argv):
             if platform not in flocklab.tg_platforms:
                 flocklab.tg_off()
                 flocklab.error_logandexit("Unknown platform %s. Not known how to program this platform." % platform)
-            cmd = [config.get("observer", "progscript"), '--image=%s' % image, '--target=%s' % (platform), '--core=%d' % core]
-            #if debug:
-            #    cmd.append("--debug")
             logger.debug("Going to flash image to platform %s (core %d)..." % (platform, core))
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-            (out, err) = p.communicate()
-            if (p.returncode != flocklab.SUCCESS):
+            if flocklab.program_target(image, platform, core) != flocklab.SUCCESS:
                 flocklab.tg_off()
-                shutil.move(image, '/tmp/failed_image_%s' % os.path.basename(image))
-                logger.debug("Moved file to /tmp. Command was: %s" % (" ".join(cmd)))
-                logger.debug("Programming failed. Output of script:\n%s" % (out.strip()))
-                flocklab.error_logandexit("Error %d when programming target image:\n%s" % (p.returncode, err.strip()))
-            logger.debug("Programmed target with image %s" % (image))
+                flocklab.error_logandexit("An error occurred while programming the target image.")
+            logger.debug("Programmed target with image %s." % (image))
 
     # Hold target in reset state
     flocklab.tg_reset(False)

@@ -60,7 +60,7 @@ def usage():
     print("  --cpuspeed\t\t\tThe CPU clock frequency of the target device.")
     print("  --swospeed\t\t\tThe SWO speed (baudrate).")
     print("  --stop\t\t\tOptional. Causes the program to stop a possibly running instance of the serial reader service.")
-    print"   --debug\t\t\tOptional. Enable verbose logging.")
+    print("   --debug\t\t\tOptional. Enable verbose logging.")
     print("  --help\t\t\tOptional. Print this help.")
 ### END usage()
 

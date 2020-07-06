@@ -215,27 +215,21 @@ def main(argv):
     
     # Flash target with default image ---
     if flashdefaultimage:
-        # allow some time for the above services to terminate properly before accessing the serial port for programming ---
-        time.sleep(10)
         if platform:
             core = 0
             while True:
                 try:
-                    imgfile = config.get("defaultimages", "img%d_%s" % (core,platform))
+                    imgfile = config.get("defaultimages", "img%d_%s" % (core, platform))
                     optional_reprogramming = False
                 except configparser.NoOptionError:
                     try:
-                        imgfile = config.get("defaultimages", "optional_img%d_%s" % (core,platform))
+                        imgfile = config.get("defaultimages", "optional_img%d_%s" % (core, platform))
                         optional_reprogramming = True
                     except configparser.NoOptionError:
                         break
-                cmd = [config.get("observer", "progscript"), '--image=%s/%s' % (config.get("observer", "defaultimgfolder"), imgfile), '--target=%s' % (platform), '--core=%d' % core]
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                (out, err) = p.communicate()
-                rs = p.returncode
-                if (rs != flocklab.SUCCESS):
+                if flocklab.program_target("%s/%s" % (config.get("observer", "defaultimgfolder"), imgfile), platform, core) != flocklab.SUCCESS:
                     if not optional_reprogramming:
-                        errors.append("Could not flash target with default image for core %d because error %d occurred (%s)." % (core, rs, err.strip()))
+                        errors.append("Could not flash target with default image for core %d." % (core))
                 else:
                     logger.debug("Reprogrammed target with default image.")
                 core = core + 1
