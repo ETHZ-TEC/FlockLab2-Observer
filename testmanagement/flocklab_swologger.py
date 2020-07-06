@@ -39,7 +39,7 @@ import lib.daemon as daemon
 
 
 # globals
-debug        = True
+debug        = False
 running      = True
 pidfile      = None
 jlinkswopath = '/opt/jlink/JLinkSWOViewerCLExe'
@@ -53,13 +53,14 @@ waitfor      = "-----------------------------------------------"
 #
 ##############################################################################
 def usage():
-    print("Usage: %s --output --platform [--cpuspeed] [--swospeed] [--stop] [--help]" % sys.argv[0])
+    print("Usage: %s --output --platform [--cpuspeed] [--swospeed] [--stop] [--debug] [--help]" % sys.argv[0])
     print("Options:")
     print("  --output=<string>\t\toutput filename")
     print("  --platform=<string>\t\tplatform name (e.g. dpp2lora or nrf5)")
     print("  --cpuspeed\t\t\tThe CPU clock frequency of the target device.")
     print("  --swospeed\t\t\tThe SWO speed (baudrate).")
     print("  --stop\t\t\tOptional. Causes the program to stop a possibly running instance of the serial reader service.")
+    print"   --debug\t\t\tOptional. Enable verbose logging.")
     print("  --help\t\t\tOptional. Print this help.")
 ### END usage()
 
@@ -145,7 +146,7 @@ def stop_logger():
             # process probably didn't exist -> ignore error
             logger.debug("Process %d does not exist." % pid)
     else:
-        logger.info("No daemon process found.")
+        logger.debug("No daemon process found.")
     return flocklab.SUCCESS
 ### END stop_logger()
 
@@ -157,6 +158,7 @@ def stop_logger():
 ##############################################################################
 def main(argv):
     global pidfile
+    global debug
 
     stop      = False
     filename  = None
@@ -173,7 +175,7 @@ def main(argv):
 
     # Get command line parameters.
     try:
-        opts, args = getopt.getopt(argv, "eho:p:ls:b:", ["stop", "help", "output=", "platform=", "logger", "cpuspeed=", "swospeed="])
+        opts, args = getopt.getopt(argv, "eho:p:ls:b:", ["stop", "help", "output=", "platform=", "logger", "cpuspeed=", "swospeed=", "debug"])
     except(getopt.GetoptError) as err:
         flocklab.error_logandexit(str(err), errno.EINVAL)
     for opt, arg in opts:
@@ -188,6 +190,8 @@ def main(argv):
             stop = True
         elif opt in ("-l", "--logger"):
             logger = True
+        elif opt in ("--debug"):
+            debug = True
         elif opt in ("-s", "--cpuspeed"):
             cpuspeed = flocklab.parse_int(arg)
             if cpuspeed < 1000000 or cpuspeed > 100000000:
@@ -243,6 +247,8 @@ def main(argv):
         cmd.append(str(swospeed))
     jlinkproc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     cmd = [config.get("observer", "swologger"), '--logger', '--output=%s' % filename]
+    if debug:
+        cmd.append("--debug")
     loggerproc = subprocess.Popen(cmd, stdin=jlinkproc.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     # wait for the process to finish
