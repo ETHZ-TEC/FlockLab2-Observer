@@ -75,6 +75,8 @@ def usage():
     print("  --actuation, -a\tenable or disable actuation (pass '?' to poll the current state)")
     print("  --reset, -r\t\treset the target")
     print("  --reset-low\t\tset the target reset low")
+    print("  --sig1\t\tset SIG1 pin level")
+    print("  --sig2\t\tset SIG2 pin level")
     print("  --temperature\t\tget the current temperature (SHT31 sensor on the observer)")
     print("  --humidity\t\tget the current humidity (SHT31 sensor on the observer)")
     print("  --help, -h\t\tOptional. Print this help.")
@@ -91,7 +93,7 @@ def main(argv):
     # Get command line parameters
     try:
         # Note: a ':' indicates that the option requires an argument
-        opts, args = getopt.getopt(argv, "hedprs:m:a:tv:", ["help", "enable", "disable", "power", "reset", "select=", "mux=", "actuation=", "target", "voltage=", "reset-low", "temperature", "humidity", "temp", "humi"])
+        opts, args = getopt.getopt(argv, "hedprs:m:a:tv:", ["help", "enable", "disable", "power", "reset", "select=", "mux=", "actuation=", "target", "voltage=", "reset-low", "temperature", "humidity", "temp", "humi", "sig1=", "sig2="])
     except getopt.GetoptError as err:
         print(str(err))
         sys.exit(errno.EINVAL)
@@ -188,6 +190,15 @@ def main(argv):
                 print("%.1f" % (data[1]))
             else:
                 print("humidity: %.1f%%" % data[1])
+
+        elif opt in ("--sig1", "--sig2"):
+            val = flocklab.parse_int(arg)
+            if opt in "--sig1":
+                flocklab.set_pin(flocklab.gpio_tg_sig1, val)
+                print("SIG1 pin set to %s" % str(val))
+            else:
+                flocklab.set_pin(flocklab.gpio_tg_sig2, val)
+                print("SIG2 pin set to %s" % str(val))
 ### END main()
 
 if __name__ == "__main__":
