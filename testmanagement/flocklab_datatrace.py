@@ -39,6 +39,7 @@ import lib.flocklab as flocklab
 import lib.dwt as dwt
 
 
+debug     = False
 pidfile   = None
 prescaler = 16     # prescaler for local timestamps
 loopdelay = 10     # SWO read loop delay in ms (recommended values: 10 - 100ms)
@@ -79,7 +80,7 @@ def sigterm_handler(signum, frame):
 #
 ##############################################################################
 def stop_daemon():
-    logger = flocklab.get_logger()
+    logger = flocklab.get_logger(debug=debug)
     # try to get pid from file first
     pid = None
     try:
@@ -105,7 +106,7 @@ def stop_daemon():
             if os.path.isfile(pidfile):
                 os.remove(pidfile)
     else:
-        logger.info("No daemon process found.")
+        logger.debug("No daemon process found.")
     return flocklab.SUCCESS
 ### END stop_on_api()
 
@@ -117,6 +118,7 @@ def stop_daemon():
 ##############################################################################
 def main(argv):
     global pidfile
+    global debug
 
     stop     = False
     filename = None
@@ -148,6 +150,8 @@ def main(argv):
             platform = arg
         elif opt in ("-c", "--config"):
             dwtconf = arg
+        elif opt in ("--debug"):
+            debug = True
         elif opt in ("-s", "--speed"):
             try:
                 cpuspeed = int(arg)
@@ -172,7 +176,7 @@ def main(argv):
         flocklab.error_logandexit("There is already an instance of %s running." % sys.argv[0])
 
     # init logger
-    logger = flocklab.get_logger()
+    logger = flocklab.get_logger(debug=debug)
     if not logger:
         flocklab.error_logandexit("Could not get logger.")
 
