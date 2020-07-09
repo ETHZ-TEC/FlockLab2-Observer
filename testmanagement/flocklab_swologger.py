@@ -227,7 +227,7 @@ def main(argv):
     if not logger:
         flocklab.error_logandexit("Could not get logger.")
 
-    logger.info("Starting SWO logger (output file: %s, platform: %s, cpu speed: %s)." % (filename, flocklab.jlink_mcu_str(platform), str(cpuspeed)))
+    logger.info("Starting SWO logger (output file: %s, platform: %s, cpu speed: %s)." % (filename, platform, str(cpuspeed)))
 
     # make sure MUX is enabled
     if not flocklab.tg_mux_state():

@@ -1213,7 +1213,7 @@ def stop_data_trace():
 # start_swo_logger
 #
 ##############################################################################
-def start_swo_logger(platform=None, outputfile=None, cpuspeed=None, swospeed=None):
+def start_swo_logger(platform=None, outputfile=None, cpuspeed=None, swospeed=None, debug=False):
     if not platform or not outputfile or not config:
         return FAILED
     # note: MUX must be enabled for this to work
@@ -1222,6 +1222,8 @@ def start_swo_logger(platform=None, outputfile=None, cpuspeed=None, swospeed=Non
         cmd.append('--cpuspeed=%d' % parse_int(cpuspeed))
     if swospeed:
         cmd.append('--swospeed=%d' % parse_int(swospeed))
+    if debug:
+        cmd.append('--debug')
     p = subprocess.Popen(cmd)
     rs = p.wait()
     if rs != SUCCESS:

@@ -352,7 +352,7 @@ def main(argv):
             # MUX must be enabled and target released from reset state
             flocklab.tg_mux_en(True)
             flocklab.tg_reset()
-            if flocklab.start_swo_logger(platform, serialfile, cpuspeed, None) != flocklab.SUCCESS:
+            if flocklab.start_swo_logger(platform, serialfile, cpuspeed, None, True) != flocklab.SUCCESS:
                 flocklab.tg_off()
                 flocklab.error_logandexit("Failed to start SWO serial logger.")
             # wait some time to let the services start up, then put the target back into reset state

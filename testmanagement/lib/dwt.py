@@ -218,9 +218,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
             elif access_mode == 'rw':
                 config = 0x3
             else:
-                if logging_on:
-                    log("only PC tracing set, automatically select RW")
-                config = 0x1
+                config = 0x1    # PC only
 
         else:  # tracing data only
             if access_mode == 'r':
