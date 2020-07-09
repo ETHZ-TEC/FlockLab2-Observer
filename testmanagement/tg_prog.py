@@ -384,6 +384,10 @@ def main(argv):
                 rs = 1
         else:
             rs = prog_swd(imagefile, "STM32L433CC")
+            # power cycle to make sure the debug circuit is disabled
+            flocklab.tg_pwr_en(False)
+            time.sleep(1)
+            flocklab.tg_pwr_en(True)
     elif target == 'nrf5':
         rs = prog_swd(imagefile, "nRF52840_xxAA")
     elif target in ('tmote', 'telosb', 'sky'):
