@@ -49,6 +49,8 @@
 
 #define SUBTRACT_TRANSMIT_TIME      1    // subtract the estimated transfer time over uart from the receive timestamp
 #define TIME_OFFSET                 100  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
+#define CANONICAL_MODE              1    // whether to use termios in canonical mode (line-based)
+#define RECEIVE_BUFFER_SIZE         1024
 
 
 bool running = true;
@@ -109,7 +111,6 @@ int set_interface_attributes(int fd, int speed)
     return 1;
   }
 
-  /* canonical input processing mode (line by line) */
   speed_t baudrate = convert_to_baudrate(speed);
   if (cfsetospeed(&tty, baudrate) != 0 ||
       cfsetispeed(&tty, baudrate) != 0) {
@@ -125,10 +126,19 @@ int set_interface_attributes(int fd, int speed)
 
   /* see http://man7.org/linux/man-pages/man3/termios.3.html for details about the flags */
   tty.c_oflag  = 0;           /* no output processing */
+#if CANONICAL_MODE
   tty.c_lflag |= ICANON;      /* canonical mode */
+#else  /* CANONICAL_MODE */
+  tty.c_lflag &= ~ICANON;     /* clear canonical mode bit */
+  cfmakeraw(&tty);
+  tty.c_cc[VMIN]  = 1;        /* at least 1 character */
+  tty.c_cc[VTIME] = 5;        /* read timeout of 500ms */
+#endif /* CANONICAL_MODE */
   tty.c_iflag  = 0;           /* clear input flags */
-  tty.c_iflag |= IGNCR;       /* ignore carriages return */
-  tty.c_iflag |= ISTRIP;      /* strip off 8th bit (ensures character is ASCII) */
+  tty.c_iflag |= IGNCR;       /* ignore carriage return */
+  //tty.c_iflag |= ISTRIP;      /* strip off 8th bit (ensures character is ASCII) */
+  //tty.c_iflag |= INPCK;       /* enable input paritiy checking */
+  //tty.c_iflag |= IGNPAR;      /* ignore framing and parity errors */
 
   printf("tty config: 0x%x, 0x%x, 0x%x, 0x%x\n", tty.c_iflag, tty.c_oflag, tty.c_cflag, tty.c_lflag);
 
@@ -142,8 +152,8 @@ int set_interface_attributes(int fd, int speed)
 
 int main(int argc, char** argv)
 {
-  unsigned char   rcvbuf[1024];
-  char            printbuf[4096];
+  unsigned char   rcvbuf[RECEIVE_BUFFER_SIZE];
+  char            printbuf[RECEIVE_BUFFER_SIZE + 128];
   const char*     portname    = "/dev/ttyS5";
   const char*     outfilename = NULL;
   FILE*           logfile     = NULL;
@@ -152,6 +162,10 @@ int main(int argc, char** argv)
   unsigned int    starttime   = 0;
   unsigned int    duration    = 0;
   struct timespec currtime;
+#if !CANONICAL_MODE
+  struct timespec prevtime;
+  unsigned long   bufofs      = 0;
+#endif /* CANONICAL_MODE */
 
   if (argc > 1) {
     // first parameter is the port
@@ -222,13 +236,16 @@ int main(int argc, char** argv)
     tcflush(fd, TCIFLUSH);
   }
 
+#if !CANONICAL_MODE
+
   while (running && (duration == 0 || (unsigned int)time(NULL) < (starttime + duration))) {
     //memset(rcvbuf, 0, sizeof(rcvbuf));
-    int len = read(fd, rcvbuf, sizeof(rcvbuf) - 1);
+    int len = read(fd, rcvbuf + bufofs, sizeof(rcvbuf) - 1 - bufofs);
     if (len > 0) {
+      // take a timestamp
       clock_gettime(CLOCK_REALTIME, &currtime);
       currtime.tv_nsec = currtime.tv_nsec / 1000;   // convert to us
-#if SUBTRACT_TRANSMIT_TIME
+  #if SUBTRACT_TRANSMIT_TIME
       int transmit_time = (10000000 / baudrate) * len + TIME_OFFSET;   // 10 clock cycles per symbol (byte), plus const offset
       if (currtime.tv_nsec < transmit_time) {
         currtime.tv_sec--;
@@ -236,7 +253,70 @@ int main(int argc, char** argv)
       } else {
         currtime.tv_nsec -= transmit_time;
       }
-#endif /* SUBTRACT_TRANSMIT_TIME */
+  #endif /* SUBTRACT_TRANSMIT_TIME */
+      if (bufofs == 0) {
+        // start of a string -> store the timestamp
+        prevtime = currtime;
+      }
+      bufofs += len;
+      rcvbuf[bufofs] = 0;  // terminate the string
+      do {
+        // look for a newline character
+        char* nlpos = strchr((char*)rcvbuf, '\n');
+        if (nlpos) {
+          *nlpos = 0;      // terminate the string
+          nlpos++;
+        } else if (bufofs < (sizeof(rcvbuf) - 1)) {
+          // no newline found and buffer not yet full -> abort
+          break;
+        }
+        if (logfile) {
+          int prlen = sprintf(printbuf, "%ld.%06ld,%s\n", prevtime.tv_sec, prevtime.tv_nsec, rcvbuf);
+          fwrite(printbuf, prlen, 1, logfile);
+          //fflush(logfile);
+        } else {
+          printf("[%ld.%06ld] %s\n", prevtime.tv_sec, prevtime.tv_nsec, rcvbuf);
+          fflush(stdout);
+        }
+        // copy the remainder of the input string to the beginning of the buffer
+        if (nlpos) {
+          bufofs = 0;
+          while (*nlpos) {
+            rcvbuf[bufofs++] = *nlpos++;
+          }
+          prevtime = currtime;   // update the timestamp
+          rcvbuf[bufofs] = 0;
+        } else {
+          // there is no remainder -> clear the receive buffer
+          bufofs = 0;
+          rcvbuf[0] = 0;
+          break;
+        }
+      } while (1);
+
+    } else if (len < 0) {
+      printf("read error: %s\n", strerror(errno));
+      break;
+    }
+  }
+
+#else /* CANONICAL_MODE */
+
+  while (running && (duration == 0 || (unsigned int)time(NULL) < (starttime + duration))) {
+    //memset(rcvbuf, 0, sizeof(rcvbuf));
+    int len = read(fd, rcvbuf, sizeof(rcvbuf) - 1);
+    if (len > 0) {
+      clock_gettime(CLOCK_REALTIME, &currtime);
+      currtime.tv_nsec = currtime.tv_nsec / 1000;   // convert to us
+  #if SUBTRACT_TRANSMIT_TIME
+      int transmit_time = (10000000 / baudrate) * len + TIME_OFFSET;   // 10 clock cycles per symbol (byte), plus const offset
+      if (currtime.tv_nsec < transmit_time) {
+        currtime.tv_sec--;
+        currtime.tv_nsec = 1000000 - (transmit_time - currtime.tv_nsec);
+      } else {
+        currtime.tv_nsec -= transmit_time;
+      }
+  #endif /* SUBTRACT_TRANSMIT_TIME */
       rcvbuf[len] = 0;  /* just to be sure, but should already be terminated by zero character in canonical mode */
       if (logfile) {
         int prlen = sprintf(printbuf, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
@@ -257,6 +337,8 @@ int main(int argc, char** argv)
       printf("read timeout\n");
     }
   }
+
+#endif /* CANONICAL_MODE */
 
   if (logfile) {
     fclose(logfile);
