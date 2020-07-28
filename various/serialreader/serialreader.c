@@ -131,6 +131,7 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
   } else {
     tty.c_lflag &= ~ICANON;   /* clear canonical mode bit */
     cfmakeraw(&tty);
+    memset(tty.c_cc, 0, sizeof(tty.c_cc));
     /* note: at 1MBaud, there will be one byte every 10us (and one interrupt per byte if VMIN is set to 1) */
     tty.c_cc[VMIN]  = 64;     /* at least 64 characters */
     tty.c_cc[VTIME] = 1;      /* read timeout of 100ms */
