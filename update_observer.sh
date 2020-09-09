@@ -41,7 +41,7 @@ INSTALL=1       # whether to recompile and install programs on the observer (wil
 PORT=2322
 USER="flocklab"
 HOSTPREFIX="fl-"
-OBSIDS="01 02 03 04 05 06 07 08 09 10 11 12 15 17 25"
+OBSIDS="01 02 03 04 05 06 07 08 09 10 11 12 15 17 25 20"
 SRCDIR="."
 DESTDIR="observer"
 RSYNCPARAMS=" -a -z -c --timeout=5 --exclude=.git --no-perms --no-owner --no-group"  # --delete
@@ -124,14 +124,15 @@ do
                 echo "Failed!"
             fi
         fi
-        if [[ $CHANGEDFILES = *device_tree_overlay/* ]]; then
-            getpw
-            echo "Installing new device tree overlay... "
-            echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/device_tree_overlay && sudo ./install.sh'
-            if [ $? -ne 0 ]; then
-                echo "Failed!"
-            fi
-        fi
+        # do not update device tree overlay since we have different versions for different observers
+        #if [[ $CHANGEDFILES = *device_tree_overlay/* ]]; then
+        #    getpw
+        #    echo "Installing new device tree overlay... "
+        #    echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/device_tree_overlay && sudo ./install.sh'
+        #    if [ $? -ne 0 ]; then
+        #        echo "Failed!"
+        #    fi
+        #fi
         if [[ $CHANGEDFILES = *rocketlogger/* ]]; then
             getpw
             echo "Compiling and installing new RocketLogger software... "
