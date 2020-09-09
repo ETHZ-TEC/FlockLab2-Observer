@@ -78,4 +78,14 @@ echo 0 > /sys/class/gpio/gpio89/value # Target_SIG1
 echo 0 > /sys/class/gpio/gpio88/value # Target_SIG2
 echo 0 > /sys/class/gpio/gpio81/value # Target_PROG
 
+# device specific config
+grep "refid PTP" > /dev/null    # PTP used as timesync source?
+if [ $? -eq 0 ]; then
+  # configure pin 8.07 (GPIO66) as output
+  config-pin -a P807 out
+  echo 0 > /sys/class/gpio/gpio67/value       # GNSS_nRST
+  # restart ptp4l
+  sleep 10
+  systemctl restart ptp4l
+fi
 

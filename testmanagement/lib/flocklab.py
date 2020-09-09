@@ -1334,3 +1334,22 @@ def parse_float(s):
                 logger.warn("Could not parse %s to float." % (str(s)))
     return res
 ### END parse_float()
+
+
+##############################################################################
+#
+# get_timesync_method()   returns the used time sync method on this observer
+#
+##############################################################################
+def get_timesync_method():
+    p = subprocess.Popen(['chronyc', 'sources'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    out, err = p.communicate(None)
+    if p.returncode == 0:
+        lines = out.split('\n')
+        for line in lines:
+            if "* PTP" in line:
+                return "PTP"
+            elif "* PPS" in line:
+                return "GPS"
+    return "NTP"
+### END get_timesync_method

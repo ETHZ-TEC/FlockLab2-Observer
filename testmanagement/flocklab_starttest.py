@@ -268,6 +268,18 @@ def main(argv):
         except:
             flocklab.tg_off()
             flocklab.error_logandexit("Could not determine test start time (%s)." % str(sys.exc_info()[1]))
+        # generate PPS pulses on observers with PTP time synchronization
+        if flocklab.get_timesync_method() == "PTP":
+            num_pulses = (teststoptime - teststarttime) + 2
+            period     = 1.0
+            if num_pulses > 1000:
+                period = 10.0
+                num_pulses = num_pulses / 10 + 1
+            periodic_evts = flocklab.generate_periodic_act_events('PPS', 0, period, 0.1, num_pulses)
+            if periodic_evts:
+                logger.debug("%d PPS pulses will be generated during the test" % num_pulses)
+                settingcount = settingcount + 1
+                act_events.extend(periodic_evts)
         # actuation service required?
         if settingcount > 0:
             if settingcount > 2:
