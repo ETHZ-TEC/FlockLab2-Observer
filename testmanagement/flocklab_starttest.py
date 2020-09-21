@@ -327,6 +327,7 @@ def main(argv):
                 dwtvalues.append(dwtconf.findtext('variable'))
                 varnames.append(dwtconf.findtext('varName'))
                 dwtvalues.append(dwtconf.findtext('mode'))
+                dwtvalues.append(dwtconf.findtext('size'))
                 logger.debug("Found data trace config: addr=%s, mode=%s." % (dwtconf.findtext('variable'), dwtconf.findtext('mode')))
             datatracefile = "%s/%d/datatrace_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
             # write the variable names as the first line into the file

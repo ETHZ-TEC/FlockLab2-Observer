@@ -159,10 +159,10 @@ def disable_and_reset_all_comparators(jlink_serial=None, device_name='STM32L433C
 
 # trace address must be in hex
 def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_prescaler=64,
-                              trace_address0=None, access_mode0='w', trace_pc0=0,
-                              trace_address1=None, access_mode1='w', trace_pc1=0,
-                              trace_address2=None, access_mode2='w', trace_pc2=0,
-                              trace_address3=None, access_mode3='w', trace_pc3=0,
+                              trace_address0=None, access_mode0='w', trace_pc0=0, size0=4,
+                              trace_address1=None, access_mode1='w', trace_pc1=0, size1=4,
+                              trace_address2=None, access_mode2='w', trace_pc2=0, size2=4,
+                              trace_address3=None, access_mode3='w', trace_pc3=0, size3=4,
                               swo_speed=4000000, cpu_speed=80000000):
     """
     Configures the coresight components to trace variables with the DWT module
@@ -186,6 +186,8 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         trace_pc1 (int): specifies if the PC should also be traced for variable 1 (if non-zero, PC is traced)
         trace_pc2(int): specifies if the PC should also be traced for variable 2 (if non-zero, PC is traced)
         trace_pc3 (int): specifies if the PC should also be traced for variable 3 (if non-zero, PC is traced)
+
+        sizen (int): size of the traced variable in bytes (allowed values: 1, 2 and 4)
 
     Returns:
       int: True if configuration was successful
@@ -285,6 +287,21 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
 
         return jlink_ser, dev_name, ts_pres, trace_addr0, trace_addr1, trace_addr2, trace_addr3, swo_speed, cpu_speed
 
+    def convert_varsize(size):
+        # convert variable size in bytes to the corresponding DWT mask register value
+        try:
+            size = int(size)
+            if size == 1:
+                size = 0
+            elif size == 2:
+                size = 1
+            else:
+                size = 2    # default (4 bytes)
+        except:
+            size = 2        # default (4 bytes)
+        return size
+
+
     # convert in case wrong type given as input
     result = convert_type(jlink_serial, device_name, ts_prescaler, trace_address0, trace_address1,
                           trace_address2, trace_address3, swo_speed, cpu_speed)
@@ -365,7 +382,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         dwt_comp0 = 0xe0001020  # Comparator registers, DWT_COMP0
         dwt_comp0_value = [trace_address0]
         dwt_mask0 = 0xe0001024  # Comparator Mask registers, DWT_MASKn
-        dwt_mask0_value = [0x00000002]  # size of the mask
+        dwt_mask0_value = [convert_varsize(size0)]  # size of the mask
 
         config_value = determine_config_value(trace_pc0, access_mode0)
         dwt_fun0 = 0xe0001028  # Comparator Function registers, DWT_FUNCTIONn
@@ -386,7 +403,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         dwt_comp1 = 0xe0001030  # Comparator registers, DWT_COMP1
         dwt_comp1_value = [trace_address1]
         dwt_mask1 = 0xe0001034  # Comparator Mask registers, DWT_MASKn
-        dwt_mask1_value = [0x00000002]  # size of the mask
+        dwt_mask1_value = [convert_varsize(size1)]  # size of the mask
 
         config_value1 = determine_config_value(trace_pc1, access_mode1)
         dwt_fun1 = 0xe0001038  # Comparator Function registers, DWT_FUNCTIONn
@@ -407,7 +424,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         dwt_comp2 = 0xe0001040  # Comparator registers, DWT_COMP2
         dwt_comp2_value = [trace_address2]
         dwt_mask2 = 0xe0001044  # Comparator Mask registers, DWT_MASKn
-        dwt_mask2_value = [0x00000002]  # size of the mask
+        dwt_mask2_value = [convert_varsize(size2)]  # size of the mask
 
         config_value2 = determine_config_value(trace_pc2, access_mode2)
         dwt_fun2 = 0xe0001048  # Comparator Function registers, DWT_FUNCTIONn
@@ -428,7 +445,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         dwt_comp3 = 0xe0001050  # Comparator registers, DWT_COMP3
         dwt_comp3_value = [trace_address3]
         dwt_mask3 = 0xe0001054  # Comparator Mask registers, DWT_MASKn
-        dwt_mask3_value = [0x00000002]  # size of the mask
+        dwt_mask3_value = [convert_varsize(size3)]  # size of the mask
 
         config_value3 = determine_config_value(trace_pc3, access_mode3)
         dwt_fun3 = 0xe0001058  # Comparator Function registers, DWT_FUNCTIONn

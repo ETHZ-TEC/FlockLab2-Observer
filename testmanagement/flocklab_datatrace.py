@@ -57,7 +57,7 @@ def usage():
     print("Options:")
     print("  --output=<string>\t\toutput filename")
     print("  --platform=<string>\t\tplatform name (e.g. dpp2lora or nrf5)")
-    print("  --config=<string>\t\tDWT configuration, up to 4 comma separated value pairs of variable address and mode.")
+    print("  --config=<string>\t\tDWT configuration, up to 4 comma separated value tuples of variable address, access mode and variable size.")
     print("  --stop\t\t\tOptional. Causes the program to stop a possibly running instance of the data trace service.")
     print("  --speed\t\t\tOptional. The CPU clock frequency of the target device.")
     print("  --help\t\t\tOptional. Print this help.")
@@ -205,41 +205,39 @@ def main(argv):
             # parse
             dwtvalues = []
             values = dwtconf.split(',')
-            prevval = None
-            for val in values:
-                if "0x" in val:
-                    # variable address
-                    if prevval:
-                        dwtvalues.append([int(prevval, 0), 'w', False])    # use default mode
-                    prevval = val
-                elif prevval:
-                    # mode definition (a variable address must precede it)
-                    mode    = val.lower()
-                    trackpc = False
-                    if 'pc' in mode:
-                        trackpc = True
-                    if 'rw' in mode:
-                        mode = 'rw'
-                    elif 'r' in mode:
-                        mode = 'r'
-                    else:
-                        mode = 'w'    # default mode
-                    dwtvalues.append([int(prevval, 0), mode, trackpc])
-                    prevval = None
+            num_triples = int(len(values) / 3) * 3
+            idx = 0
+            while idx < num_triples:
+                var  = values[idx]                # first element of the tuple is the variable address
+                mode = values[idx + 1].lower()    # second element of the tuple is the access mode
+                size = flocklab.parse_int(values[idx + 2])    # third element is the variable size in bytes
+                idx  = idx + 3
+                if "0x" not in var:
+                    continue
+                tracepc = False
+                if 'pc' in mode:
+                    tracepc = True
+                if 'rw' in mode:
+                    mode = 'rw'
+                elif 'r' in mode:
+                    mode = 'r'
+                else:
+                    mode = 'w'    # default mode
+                dwtvalues.append([int(var, 0), mode, tracepc, size])
             # config valid?
             if len(dwtvalues) > 0:
                 for elem in dwtvalues:
-                    logger.info("Config found: addr=0x%x, mode=%s, pc=%s" % (elem[0], elem[1], str(elem[2])))
+                    logger.info("Config found: addr=0x%x, mode=%s, pc=%s, size=%d" % (elem[0], elem[1], str(elem[2]), elem[3]))
                 # fill up the unused variables with zeros
                 while len(dwtvalues) < 4:
-                    dwtvalues.append([None, None, None])
+                    dwtvalues.append([None, None, None, None])
                 # apply config
                 logger.info("Configuring data trace service for MCU %s with prescaler %d..." % (flocklab.jlink_mcu_str(platform), prescaler))
                 dwt.config_dwt_for_data_trace(device_name=flocklab.jlink_mcu_str(platform), ts_prescaler=prescaler,
-                                              trace_address0=dwtvalues[0][0], access_mode0=dwtvalues[0][1], trace_pc0=dwtvalues[0][2],
-                                              trace_address1=dwtvalues[1][0], access_mode1=dwtvalues[1][1], trace_pc1=dwtvalues[1][2],
-                                              trace_address2=dwtvalues[2][0], access_mode2=dwtvalues[2][1], trace_pc2=dwtvalues[2][2],
-                                              trace_address3=dwtvalues[3][0], access_mode3=dwtvalues[3][1], trace_pc3=dwtvalues[3][2],
+                                              trace_address0=dwtvalues[0][0], access_mode0=dwtvalues[0][1], trace_pc0=dwtvalues[0][2], size0=dwtvalues[0][3],
+                                              trace_address1=dwtvalues[1][0], access_mode1=dwtvalues[1][1], trace_pc1=dwtvalues[1][2], size1=dwtvalues[1][3],
+                                              trace_address2=dwtvalues[2][0], access_mode2=dwtvalues[2][1], trace_pc2=dwtvalues[2][2], size2=dwtvalues[2][3],
+                                              trace_address3=dwtvalues[3][0], access_mode3=dwtvalues[3][1], trace_pc3=dwtvalues[3][2], size3=dwtvalues[3][3],
                                               swo_speed=swospeed, cpu_speed=cpuspeed)
         except:
             flocklab.error_logandexit("Failed to configure data trace service (%s).\n%s" % (str(sys.exc_info()[1]), traceback.format_exc()))
