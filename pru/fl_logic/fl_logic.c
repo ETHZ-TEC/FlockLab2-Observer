@@ -62,7 +62,7 @@
 #define SAMPLING_RATE_LOW     100000                // alternative, lowest sampling rate
 #define CYCLE_COUNTER_RES     6250000               // cycle counter resolution
 #define MAX_TIME_SCALING_DEV  0.001                 // max deviation for time scaling (1 +/- x)
-#define MAX_TIME_SCALE_CHANGE 0.000002              // max rate of change for the time scaling factor between two sync points (PPS pulses)
+#define MAX_TIME_SCALE_CHANGE 0.000005              // max rate of change for the time scaling factor between two sync points (PPS pulses)
 #define MAX_PRU_DELAY         10000000              // max delay for the PRU startup / stop handshake (in us)
 #define PRU1_FIRMWARE         "/lib/firmware/fl_pru1_logic.bin"       // must be a binary file
 #define PRU1_FIRMWARE_CCOUNT  "/lib/firmware/fl_pru1_logic_cc.bin"    // must be a binary file
