@@ -135,7 +135,7 @@ def main(argv):
 
     # Get command line parameters.
     try:
-        opts, args = getopt.getopt(argv, "eho:p:c:s:", ["stop", "help", "output=", "platform=", "config=", "speed="])
+        opts, args = getopt.getopt(argv, "eho:p:c:s:d", ["stop", "help", "output=", "platform=", "config=", "speed=", "debug"])
     except(getopt.GetoptError) as err:
         flocklab.error_logandexit(str(err), errno.EINVAL)
     for opt, arg in opts:
