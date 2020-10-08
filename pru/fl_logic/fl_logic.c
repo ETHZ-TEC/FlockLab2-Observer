@@ -92,6 +92,7 @@
 #define EXTRAOPT_RELATIVE_TIME      0x00000200      // return results with relative timestamps only, no time scaling will be applied
 #define EXTRAOPT_USE_BB_PINNAMES    0x00000400      // use BeagleBone pin names instead of FlockLab pin names (only available if option EXTRAOPT_RELATIVE_TIME is selected)
 #define EXTRAOPT_PRINT_TO_STDOUT    0x00000800      // print all log messages to stdout
+#define EXTRAOPT_INCL_MONOTONIC     0x00001000      // include monotonic timestamp in the results csv file
 
 
 // PARAMETER CHECK
@@ -585,7 +586,7 @@ void parse_tracing_data_noscaling(const char* filename)
 
 
 // convert binary tracing data to a csv file
-void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigned long stoptime_s)
+void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigned long stoptime_s, bool incl_monotonic)
 {
   char     buffer[SPRINTF_BUFFER_LENGTH];
   FILE*    data_file                = NULL;
@@ -681,7 +682,11 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
         if (i == 7 && !first_or_last_sample) {
           i = 8;
         }
-        sprintf(buffer, "%u.%07u,%.7f,%s,%u\n", realtime_time_s, realtime_time_frac, monotonic_time, pin_mapping[i], pin_state);
+        if (incl_monotonic) {
+          sprintf(buffer, "%u.%07u,%.7f,%s,%u\n", realtime_time_s, realtime_time_frac, monotonic_time, pin_mapping[i], pin_state);
+        } else {
+          sprintf(buffer, "%u.%07u,%s,%u\n", realtime_time_s, realtime_time_frac, pin_mapping[i], pin_state);
+        }
         fwrite(buffer, strlen(buffer), 1, csv_file);
         line_cnt++;
       }
@@ -703,7 +708,7 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
 
 
 // convert binary tracing data to a csv file (does stepwise scaling)
-void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s, unsigned long stoptime_s, unsigned long offset)
+void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s, unsigned long stoptime_s, unsigned long offset, bool incl_monotonic)
 {
   char     buffer[SPRINTF_BUFFER_LENGTH];
   FILE*    data_file            = NULL;
@@ -802,7 +807,11 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
                 idx++;
               }
               // format: timestamp,ticks,pin,state(0/1)
-              sprintf(buffer, "%u.%07u,%.7f,%s,%u\n", realtime_time_s, realtime_time_frac, monotonic_time, pin_mapping[idx], pin_state);
+              if (incl_monotonic) {
+                sprintf(buffer, "%u.%07u,%.7f,%s,%u\n", realtime_time_s, realtime_time_frac, monotonic_time, pin_mapping[idx], pin_state);
+              } else {
+                sprintf(buffer, "%u.%07u,%s,%u\n", realtime_time_s, realtime_time_frac, pin_mapping[idx], pin_state);
+              }
               fwrite(buffer, strlen(buffer), 1, csv_file);
               line_cnt++;   // # lines written
             }
@@ -968,9 +977,9 @@ int main(int argc, char** argv)
   if (extra_options & EXTRAOPT_RELATIVE_TIME) {
     parse_tracing_data_noscaling(filename);
   } else if (extra_options & EXTRAOPT_SIMPLE_SCALING) {
-    parse_tracing_data(filename, starttime, stoptime);
+    parse_tracing_data(filename, starttime, stoptime, (extra_options & EXTRAOPT_INCL_MONOTONIC) != 0);
   } else {
-    parse_tracing_data_stepwise(filename, starttime, stoptime, offset);
+    parse_tracing_data_stepwise(filename, starttime, stoptime, offset, (extra_options & EXTRAOPT_INCL_MONOTONIC) != 0);
   }
 
   fl_log(LOG_DEBUG, "terminated");
