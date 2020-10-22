@@ -203,7 +203,10 @@ def main(argv):
     
     # add some more info to the timesync log ---
     try:
-        flocklab.log_timesync_info(testid=testid, includepps=True)
+        if flocklab.get_timesync_method() == "GPS":
+            flocklab.log_timesync_info(testid=testid, includepps=True)
+        else:
+            flocklab.log_timesync_info(testid=testid, includepps=False)
     except:
         errors.append("An error occurred while collecting timesync info: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
     
