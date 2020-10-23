@@ -217,7 +217,7 @@ def main(argv):
                 tracepc = False
                 if 'pc' in mode:
                     tracepc = True
-                if 'rw' in mode:
+                if 'rw' in mode or ('r' in mode and 'w' in mode):
                     mode = 'rw'
                 elif 'r' in mode:
                     mode = 'r'

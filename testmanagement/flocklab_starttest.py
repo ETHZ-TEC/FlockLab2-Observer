@@ -212,7 +212,6 @@ def main(argv):
     flocklab.tg_reset(False)
 
     # Set voltage ---
-    msg = None
     if flocklab.tg_set_vcc(voltage) != flocklab.SUCCESS:
         flocklab.tg_off()
         flocklab.error_logandexit("Failed to set target voltage to %.1fV" % (voltage))
@@ -335,6 +334,7 @@ def main(argv):
                 f.write("%s\n" % (" ".join(varnames)))
                 f.flush()
             if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile, cpuSpeed) != flocklab.SUCCESS:
+                flocklab.tg_off()
                 flocklab.error_logandexit("Failed to start data tracing service.")
         if port > 0:
             # start GDB server 10s after test start
@@ -382,8 +382,6 @@ def main(argv):
                 flocklab.tg_off()
                 flocklab.error_logandexit("Failed to start serial service.")
         logger.debug("Started and configured serial service.")
-    else:
-        logger.debug("No config for serial service found.")
 
     # GPIO tracing (must be started after the serial and debug service) ---
     if tracingserviceused:
@@ -419,8 +417,6 @@ def main(argv):
         # touch the file
         open(tracingfile + ".csv", 'a').close()
         logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x, offset: %u, options: 0x%x)." % (tracingfile, pins, offset, extra_options))
-    else:
-        logger.debug("No config for GPIO monitoring service found.")
 
     # Power profiling ---
     if powerprofilingused:
@@ -441,8 +437,6 @@ def main(argv):
             flocklab.tg_off()
             flocklab.error_logandexit("Failed to start power measurement.")
         logger.debug("Power measurement will start at %s (output: %s, sampling rate: %dHz, duration: %ds)." % (str(starttime), outputfile, samplingrate, duration))
-    else:
-        logger.debug("No config for powerprofiling service found.")
 
     # Timesync log ---
     try:
