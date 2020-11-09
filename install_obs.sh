@@ -226,6 +226,14 @@ chmod 664 /etc/systemd/system/flocklab.service
 systemctl daemon-reload && systemctl enable flocklab.service > /dev/null 2>> $ERRORLOG
 check_retval "Failed to enable FlockLab service." "FlockLab service enabled."
 
+##########################################################
+# install cronjobs
+CRONTAB="/etc/crontab"
+# run ping watchdog every hour
+grep "ping_watchdog" ${CRONTAB} > /dev/null 2>&1 || echo "0  *    * * *   root    /bin/bash /home/flocklab/observer/scripts/ping_watchdog.sh 2>&1 | /usr/bin/logger -t flocklab" >> ${CRONTAB}
+
+##########################################################
+
 # cleanup
 apt-get --assume-yes autoremove > /dev/null 2>> $ERRORLOG
 
