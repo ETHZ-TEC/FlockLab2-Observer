@@ -31,13 +31,8 @@
 # Author: Reto Da Forno
 #
 
-# FlockLab2 observer: switch from GPS to PTP time synchronization
+# FlockLab2 observer: switch from PTP to GNSS time synchronization
 # execute this script as root user on the observer
-#
-# notes:
-# - the package linuxptp is already installed at this point
-# - we do not need phc2sys on the slaves since we use chrony to sync to PTP
-# - disable all unnecessary time sync services (ntp, timesyncd)
 
 HOMEDIR="/home/flocklab"
 
@@ -54,61 +49,37 @@ if [[ $(id -u) -ne 0 ]]; then
   exit 1
 fi
 
-# remove gmtimer
-rm /etc/modules-load.d/pps_gmtimer.conf
+# install gmtimer
+cd ${HOMEDIR}/observer/various/pps-gmtimer && make install
+echo "pps-gmtimer" > /etc/modules-load.d/pps_gmtimer.conf
 depmod
 
-# make sure the pin P8.07 is not excluded from the pinmux
-sed -i 's/ P8_07_pinmux/ \/\/P8_07_pinmux/' ${HOMEDIR}/observer/device_tree_overlay/BB-FLOCKLAB2.dts
+# make sure the pin P8.07 is excluded from the pinmux
+sed -i 's/ \/\/P8_07_pinmux/ P8_07_pinmux/' ${HOMEDIR}/observer/device_tree_overlay/BB-FLOCKLAB2.dts
 cd ${HOMEDIR}/observer/device_tree_overlay && ./install.sh
 
 # configure LinuxPTP (ptp4l)
-PTPCONF="[global]
-twoStepFlag         1
-slaveOnly           1
-priority1           128
-priority2           128
-clockClass          255
-clockAccuracy       0x20
-domainNumber        0
-logging_level       7
-verbose             0
-time_stamping       hardware
-step_threshold      1.0
-summary_interval    0
-
-[eth0]
-logAnnounceInterval 1
-logSyncInterval     0
-delay_mechanism     E2E
-network_transport   UDPv4
-tsproc_mode         raw
-delay_filter        moving_median
-delay_filter_length 10"
-
-echo "${PTPCONF}" > /etc/linuxptp/ptp4l.conf
-systemctl enable ptp4l
-systemctl start ptp4l
+systemctl stop ptp4l
+systemctl disable ptp4l
 
 # configure Chrony
-CHRONYCONF="# take PTP for timesync
-refclock PHC /dev/ptp0 refid PTP poll 0
-# Uncomment the following line to turn logging on.
-#log tracking measurements statistics
-# Log files location.
+CHRONYCONF="driftfile /var/lib/chrony/chrony.drift
 logdir /var/log/chrony
-# turn on rtc synchronization
 rtcsync
-# Step the system clock instead of slewing it if the adjustment is larger than 1sec
-makestep 1 -1"
+makestep 1 3
+# GPSD via SHM
+refclock PPS /dev/pps0 refid PPS precision 1e-7 poll 4 filter 128
+#refclock SHM 0 refid PPS2 precision 1e-7 lock GPS
+#refclock SHM 1 refid GPS precision 1e-1 offset 0.136 noselect
+#refclock PHC /dev/ptp0 poll 3 dpoll -2 offset 0.0 noselect
+# NTP servers
+server 129.132.2.21 minpoll 5 maxpoll 6
+server 129.132.2.22 minpoll 5 maxpoll 6
+server time.ethz.ch minpoll 5 maxpoll 6
+server time1.ethz.ch minpoll 5 maxpoll 6
+server time2.ethz.ch minpoll 5 maxpoll 6"
 
 echo "${CHRONYCONF}" > /etc/chrony/chrony.conf
 systemctl restart chrony
-
-# disable NTP and timesync daemon
-systemctl stop ntp
-systemctl disable ntp
-systemctl stop systemd-timesyncd
-systemctl disable systemd-timesyncd
 
 reboot
