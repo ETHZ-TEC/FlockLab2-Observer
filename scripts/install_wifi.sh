@@ -31,15 +31,19 @@
 # Author: Reto Da Forno
 #
 
-# FlockLab2 observer: switch from GPS to PTP time synchronization
-# execute this script as root user on the observer
-#
-# notes:
-# - the package linuxptp is already installed at this point
-# - we do not need phc2sys on the slaves since we use chrony to sync to PTP
-# - disable all unnecessary time sync services (ntp, timesyncd)
+# FlockLab2 observer: install wifi drivers and configure the interface
 
 HOMEDIR="/home/flocklab"
+
+# check the arguments
+if [ $# -lt 2 ]; then
+  echo "Not enough arguments provided. Usage:
+  ${0} [wifi SSID] [wifi password]"
+  exit 1
+fi
+
+WIFISSID=$2
+WIFIPW=$3
 
 # check if this is a flocklab observer
 hostname | grep "fl-" > /dev/null 2>&1
@@ -54,62 +58,27 @@ if [[ $(id -u) -ne 0 ]]; then
   exit 1
 fi
 
-# remove gmtimer
-rm /etc/modules-load.d/pps_gmtimer.conf
-depmod
+# convert the wifi password to a wpa hash
+WIFIPASSPHRASE=$(wpa_passphrase ${WIFISSID} ${WIFIPW} | sed -n 's/^[^#]*psk=\([0-9a-f]*\)/\1/p')
+if [ $? -ne 0 ]; then
+  echo "wpa_passphrase failed to execute"
+  exit 2
+fi
 
-# make sure the pin P8.07 is not excluded from the pinmux
-sed -i 's/ P8_07_pinmux/ \/\/P8_07_pinmux/' ${HOMEDIR}/observer/device_tree_overlay/BB-FLOCKLAB2.dts
-cd ${HOMEDIR}/observer/device_tree_overlay && ./install.sh
+# install driver for wifi dongle
+apt-get install firmware-linux-free
 
-# configure LinuxPTP (ptp4l)
-PTPCONF="[global]
-twoStepFlag         1
-slaveOnly           1
-priority1           128
-priority2           128
-clockClass          255
-clockAccuracy       0x20
-domainNumber        0
-logging_level       7
-verbose             0
-time_stamping       hardware
-step_threshold      1.0
-summary_interval    0
+# configure connman
+WIFICONFIGFILE="/var/lib/connman/wifi.config"
+echo "[service_home]
+Type = wifi
+Name = ${WIFISSID}
+Security = wpa2-psk
+Passphrase = ${WIFIPASSPHRASE}" > ${WIFICONFIGFILE}
 
-[eth0]
-logAnnounceInterval 1
-logSyncInterval     0
-delay_mechanism     E2E
-network_transport   UDPv4
-tsproc_mode         raw
-delay_filter        moving_median
-delay_filter_length 10"
-
-echo "${PTPCONF}" > /etc/linuxptp/ptp4l.conf
-systemctl enable ptp4l
-systemctl start ptp4l
-
-# configure Chrony
-CHRONYCONF="# take PTP for timesync
-refclock PHC /dev/ptp0 refid PTP poll 0
-# Uncomment the following line to turn logging on.
-#log tracking measurements statistics
-# Log files location.
-logdir /var/log/chrony
-# turn on rtc synchronization
-rtcsync
-# Step the system clock instead of slewing it if the adjustment is larger than 1sec
-makestep 1 -1"
-
-echo "${CHRONYCONF}" > /etc/chrony/chrony.conf
-systemctl restart chrony
-
-# disable NTP and timesync daemon
-systemctl stop ntp
-systemctl disable ntp
-systemctl stop systemd-timesyncd
-systemctl disable systemd-timesyncd
+# add cronjob that checks wifi connectivity periodically (workaround for issue with connman)
+CRONTAB="/etc/crontab"
+grep "wlan0" ${CRONTAB} > /dev/null 2>&1 || echo "*/10 *  * * *   root    /bin/bash /home/flocklab/observer/scripts/ping_watchdog.sh wlan0 2>&1 | /usr/bin/logger -t flocklab" >> ${CRONTAB}
 
 echo "done, rebooting system..."
 

@@ -82,4 +82,6 @@ server time2.ethz.ch minpoll 5 maxpoll 6"
 echo "${CHRONYCONF}" > /etc/chrony/chrony.conf
 systemctl restart chrony
 
+echo "done, rebooting system..."
+
 reboot
