@@ -47,6 +47,7 @@ import sys
 import time
 import datetime
 import traceback
+import numpy as np
 
 
 jlinklibpath = '/opt/jlink/libjlinkarm.so'
@@ -68,6 +69,27 @@ def log(msg):
             f.flush()
     except:
         print("Failed to append message '%s' to log file." % msg)
+
+
+def measure_sleep_overhead(numSamples=100, sleepTime=0.001):
+    """
+    Measure the overhead of time.sleep() which is platform (kernel version) dependent.
+    Overhead can vary up to 300us with different kernel versions.
+
+    Parameters:
+        numSamples (int): number of samples for measuring sleep overhead
+        device_name (string): the device name (eg STM32L433CC)
+
+    Returns:
+      overhead of time.sleep() in seconds
+
+    """
+    a = np.empty([numSamples], dtype=np.float64)
+    for i in range(numSamples):
+        a[i] = time.time()
+        time.sleep(sleepTime)
+    diff = np.diff(a)
+    return np.mean(diff) - sleepTime
 
 
 def disable_and_reset_all_comparators(jlink_serial=None, device_name='STM32L433CC'):
@@ -502,7 +524,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
 def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_ms=2, filename='swo_read_log', swo_speed=None, cpu_speed=None):
     """
     Starts the SWO reading from the SWO buffer, Resets the MCU but halts the execution
-    
+
     The function reads the out the whole SWO buffer after every loop_delay_in_ms and saves its raw contents
     together with the python timestamp (time.time()) in the file "filename".
     The reset will toggle the reset pin such that it is on high again. The execution will be halted but
@@ -583,19 +605,49 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
 
         loop_delay_in_s = loop_delay_in_ms/1000
 
+        sleep_overhead = measure_sleep_overhead()
+
         #jlink.reset(ms=10, halt=True)  # -> also seems to work without this (at least if the target is held in reset state)
 
         file = open(filename, "a")   # append to file
 
         # catch the keyboard interrupt telling execution to stop
         try:
+            # # DEBUG START
+            # numSamples = 3000
+            # tmp_arr_global = np.empty([numSamples], dtype=np.float64)
+            # tmp_arr_comp = np.empty([numSamples], dtype=np.float64)
+            # # DEBUG END
+            # vars for loopdelay compensation
+            last_global_time = None
+            delta = 5e-6
+            comp_val = 0
+            # for i in range(numSamples): # DEBUG
             while running:
+                # log global timestamp and data (if data is available)
                 global_time = time.time()
+                # tmp_arr_global[i] = global_time # DEBUG
                 num_bytes = jlink.swo_num_bytes()
                 if num_bytes:
                     data = jlink.swo_read(0, num_bytes, remove=True)
                     file.write(' '.join(str(x) for x in data) + "\n" + str(global_time) + "\n")
-                time.sleep(loop_delay_in_s)  # time in seconds to sleep.
+
+                # update loopdelay compensation value (control loop)
+                if last_global_time:
+                    if global_time - last_global_time > loop_delay_in_s:
+                        comp_val -= delta
+                    else:
+                        comp_val += delta
+                # tmp_arr_comp[i] = comp_val # DEBUG
+                last_global_time = global_time
+
+                # sleep
+                time_used = time.time() - global_time
+                time_sleep = (loop_delay_in_s) - sleep_overhead - time_used + comp_val
+                if time_sleep > 0:
+                    time.sleep(time_sleep)
+            # np.savetxt('/home/flocklab/tmp_arr_global.txt', tmp_arr_global) # DEBUG
+            # np.savetxt('/home/flocklab/tmp_arr_comp.txt', tmp_arr_comp) # DEBUG
         except KeyboardInterrupt:
             pass
         jlink.swo_stop()
@@ -609,4 +661,3 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
         return 1
 
     return 0
-
