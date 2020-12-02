@@ -331,7 +331,7 @@ def main(argv):
             datatracefile = "%s/%d/datatrace_%s.log" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
             # write the variable names as the first line into the file
             with open(datatracefile, "w") as f:
-                f.write("%s\n" % (" ".join(varnames)))
+                f.write("%s " % (" ".join(varnames)))
                 f.flush()
             if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile, cpuSpeed) != flocklab.SUCCESS:
                 flocklab.tg_off()

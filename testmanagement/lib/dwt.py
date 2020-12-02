@@ -605,11 +605,13 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
 
         loop_delay_in_s = loop_delay_in_ms/1000
 
-        sleep_overhead = measure_sleep_overhead()
-
         #jlink.reset(ms=10, halt=True)  # -> also seems to work without this (at least if the target is held in reset state)
 
         file = open(filename, "a")   # append to file
+
+        # determine sleep overhead (this differs on different linux versions by about 0.3ms -> can be used to fingerprint platform)
+        sleep_overhead = measure_sleep_overhead()
+        file.write(str(sleep_overhead)+"\n") # write sleep_overhead as last element of first line (to distinguish observer platforms (Linux version) for correction of time offset)
 
         # catch the keyboard interrupt telling execution to stop
         try:
