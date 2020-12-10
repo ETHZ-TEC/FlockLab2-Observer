@@ -119,7 +119,7 @@ do
         if [[ $CHANGEDFILES = *actuation* ]]; then
             getpw
             echo "Installing new actuation service module... "
-            echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/various/actuation && sudo make install'
+            echo $PASSWORD | ssh -q -tt ${USER}@${HOSTPREFIX}${OBS} 'cd ~/observer/various/actuation && sudo make install && sudo rmmod fl_actuation && sudo insmod fl_actuation.ko'
             if [ $? -ne 0 ]; then
                 echo "Failed!"
             fi

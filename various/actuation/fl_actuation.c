@@ -55,7 +55,7 @@
 #define DEVICE_NAME         "flocklab_act"      // name of the device in '/dev/'
 #define TIMER_MODE          HRTIMER_MODE_ABS    // absolute or relative
 #define TIMER_ID            CLOCK_REALTIME      // realtime or monotonic
-#define TIMER_OFS_US        -120                // timer offset compensation in microseconds, applies to the start marker only
+#define TIMER_OFS_US        -90                // timer offset compensation in microseconds, applies to the start marker only
 #define MIN_PERIOD          10                  // minimum time between two consecutive actuation events, in microseconds
 #define DEVICE_BUFFER_SIZE  8192                // max. buffer size for character device
 #define EVENT_QUEUE_SIZE    1024                // limits the max. number of actuations that can be registered at a time; must be a power of 2
@@ -123,6 +123,7 @@ static struct semaphore   queue_sem;                      // protects access to 
 static act_event_t        event_queue[EVENT_QUEUE_SIZE];  // array to hold all events
 static unsigned int       read_idx  = 0;                  // read index for the event queue
 static unsigned int       write_idx = 0;                  // write index for the event queue
+static unsigned int       skipped_events = 0;
 static const act_event_t* next_evt = NULL;
 static bool               timer_running = false;
 
@@ -315,8 +316,10 @@ static enum hrtimer_restart timer_expired(struct hrtimer* tim)
           // busy wait for the remaining time
           ndelay(delta);
           gpio_update(FLOCKLAB_PPS_PIN, pps_lvl);
+        } else {
+          // else: too late or too early -> skip this event
+          skipped_events++;
         }
-        // else: skip this event
 
       } else {
         /* regular pin */
@@ -338,8 +341,9 @@ static enum hrtimer_restart timer_expired(struct hrtimer* tim)
     timer_reset(tim, next_evt->ofs + extra_ofs);
     return HRTIMER_RESTART;
   } else {
-    LOG("timer stopped\n");
-    timer_running = false;
+    LOG("timer stopped (%u events skipped)\n", skipped_events);
+    skipped_events = 0;
+    timer_running  = false;
     return HRTIMER_NORESTART;
   }
 }
@@ -350,8 +354,9 @@ static void timer_set(ktime_t t_exp)
   // make sure the timer is not running anymore
   hrtimer_cancel(&timer);
   timer.function = timer_expired;
-  timer_running = true;
-  next_evt = NULL;
+  timer_running  = true;
+  skipped_events = 0;
+  next_evt       = NULL;
   hrtimer_start(&timer, t_exp, TIMER_MODE);
 }
 
@@ -417,8 +422,9 @@ static void parse_argument(const char* arg)
       // set SIG pins back to default state
       gpio_clr(FLOCKLAB_SIG1_PIN);
       gpio_clr(FLOCKLAB_SIG2_PIN);
-      timer_running = false;
-      errcnt = 0;
+      timer_running  = false;
+      skipped_events = 0;
+      errcnt         = 0;
 
     } else if (*arg == 'L' || *arg == 'l') {
       // set pin low

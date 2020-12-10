@@ -274,7 +274,9 @@ def main(argv):
             if num_pulses > 1000:
                 period = 10.0
                 num_pulses = flocklab.parse_int(num_pulses / 10 + 1)
-            periodic_evts = flocklab.generate_periodic_act_events('PPS', 0, period, 0.1, num_pulses)
+            act_events.append(['P', 0])
+            act_events.append(['p', 100000])
+            periodic_evts = flocklab.generate_periodic_act_events('PPS', 0.999950, period, 0.1, num_pulses)   # add slack time: schedule wakeups 50us before the full second
             if periodic_evts:
                 logger.debug("%d PPS pulses will be generated during the test" % num_pulses)
                 settingcount = settingcount + 1
