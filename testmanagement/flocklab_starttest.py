@@ -136,6 +136,7 @@ def main(argv):
     noimage             = False
     actuationused       = False
     resetactuationused  = False
+    abortonerror        = False
     tracingserviceused  = tree.find('obsGpioMonitorConf') != None
     debugserviceused    = tree.find('obsDebugConf') != None
     powerprofilingused  = tree.find('obsPowerprofConf') != None
@@ -159,6 +160,8 @@ def main(argv):
         slotnr = int(tree.find('obsTargetConf/slotnr').text)
         if not noimage:
             platform = tree.find('obsTargetConf/platform').text.lower()
+        if (tree.find('obsTargetConf/abortOnError') != None) and (tree.find('obsTargetConf/abortOnError').text.lower() == 'yes'):
+            abortonerror = True
     except:
         flocklab.error_logandexit("XML: could not find mandatory element(s) in element <obsTargetConf>")
 
@@ -243,7 +246,8 @@ def main(argv):
                 # reset pin comes with absolute timestamps and determine the test start / stop
                 resets.append(pinconf.find('timestamp').text)
                 continue
-            settingcount = settingcount + 1
+            actuationused = True
+            settingcount  = settingcount + 1
             if pin == 'nRST':   # target reset actuation during the test
                 resetactuationused = True
             cmd = flocklab.level_str2abbr(pinconf.find('level').text, pin)
@@ -260,9 +264,10 @@ def main(argv):
             teststarttime = flocklab.parse_int(resets[0])   # 1st reset actuation is the reset release = start of test
             teststoptime  = flocklab.parse_int(resets[-1])  # last reset actuation is the test stop time
             # note: in case the tracing service is used, it will override the reset actuation with more precise actuation
-            act_events.append(['R', 0])                                                            # reset high at offset 0
-            act_events.append(['r', flocklab.parse_int((teststoptime - teststarttime) * 1000000)]) # reset low at end of test
-            settingcount = settingcount + 2;
+            if (not abortonerror) or (not tracingserviceused) or resetactuationused:
+                act_events.append(['R', 0])                                                            # reset high at offset 0
+                act_events.append(['r', flocklab.parse_int((teststoptime - teststarttime) * 1000000)]) # reset low at end of test
+                settingcount = settingcount + 2;
             logger.debug("Test will run from %u to %u." % (teststarttime, teststoptime))
         except:
             flocklab.tg_off()
@@ -281,20 +286,24 @@ def main(argv):
                 logger.debug("%d PPS pulses will be generated during the test" % num_pulses)
                 settingcount = settingcount + 1
                 act_events.extend(periodic_evts)
-        # actuation service required?
+        if (not actuationused) and (serialport == None) and (not debugserviceused):
+            # if there are no scheduled pin actuations, then disable actuation during the test if debugging service & serial proxy not used
+            act_events.append(['A', 10001000])    # 10.001s after startup -> latest point where target will be released from reset state
+            act_events.append(['a', flocklab.parse_int((teststoptime - teststarttime) * 1000000) - 1000])    # reactivate actuation just before the end of the test (when the reset pin needs to be pulled low)
+            settingcount = settingcount + 2
+            logger.debug("Actuation will be disabled during the test.")
+        # any actuations scheduled?
         if settingcount > 0:
-            if settingcount > 2:
-                actuationused = True
-            elif serialport == None and not debugserviceused:
-                # if two or less actuations are scheduled, then it's only the reset pins -> disable actuation during the test if debugging service & serial proxy not used
-                act_events.append(['A', 10001000])    # 10.001s after startup -> latest point where target will be released from reset state
-                act_events.append(['a', flocklab.parse_int((teststoptime - teststarttime) * 1000000) - 1000])    # reactivate actuation just before the end of the test (when the reset pin needs to be pulled low)
-                settingcount = settingcount + 2
-                logger.debug("Actuation will be disabled during the test.")
             if flocklab.start_gpio_actuation(teststarttime, act_events) != flocklab.SUCCESS:
-                flocklab.tg_off()
-                flocklab.error_logandexit("Failed to start GPIO actuation service.")
+                msg = "Failed to start GPIO actuation service."
+                if abortonerror or not tracingserviceused:
+                    flocklab.tg_off()
+                    flocklab.error_logandexit(msg)
+                else:
+                    flocklab.log_test_error(testid, msg)
             logger.debug("GPIO actuation service configured (%u actuations scheduled)." % settingcount)
+        else:
+            logger.debug("No GPIO actuations scheduled.")
     else:
         flocklab.tg_off()
         flocklab.error_logandexit("No config for GPIO setting service found. Can't determine test start or stop time.")
@@ -336,13 +345,21 @@ def main(argv):
                 f.write("%s " % (" ".join(varnames)))
                 f.flush()
             if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile, cpuSpeed) != flocklab.SUCCESS:
-                flocklab.tg_off()
-                flocklab.error_logandexit("Failed to start data tracing service.")
+                msg = "Failed to start data tracing service."
+                if abortonerror:
+                    flocklab.tg_off()
+                    flocklab.error_logandexit(msg)
+                else:
+                    flocklab.log_test_error(testid, msg)
         if port > 0:
             # start GDB server 10s after test start
             if flocklab.start_gdb_server(platform, port, int(teststarttime - time.time() + 10)) != flocklab.SUCCESS:
-                flocklab.tg_off()
-                flocklab.error_logandexit("Failed to start debug service.")
+                msg = "Failed to start debug service."
+                if abortonerror:
+                    flocklab.tg_off()
+                    flocklab.error_logandexit(msg)
+                else:
+                    flocklab.log_test_error(testid, msg)
             else:
                 logger.debug("GDB server will be listening on port %d." % port)
         logger.debug("Debug service configured.")
@@ -368,21 +385,33 @@ def main(argv):
             flocklab.tg_mux_en(True)
             flocklab.tg_reset()
             if flocklab.start_swo_logger(platform, serialfile, cpuspeed, None, True) != flocklab.SUCCESS:
-                flocklab.tg_off()
-                flocklab.error_logandexit("Failed to start SWO serial logger.")
+                msg = "Failed to start SWO serial logger."
+                if abortonerror:
+                    flocklab.tg_off()
+                    flocklab.error_logandexit(msg)
+                else:
+                    flocklab.log_test_error(testid, msg)
             # wait some time to let the services start up, then put the target back into reset state
             time.sleep(5)
             flocklab.tg_reset(False)
         elif not socketport:
             # serial forwarder (proxy) not used -> logging only (use the faster C implementation)
             if flocklab.start_serial_logging(serialport, baudrate, serialfile, teststarttime, teststoptime - teststarttime) != flocklab.SUCCESS:
-                flocklab.tg_off()
-                flocklab.error_logandexit("Failed to start serial logging service.")
+                msg = "Failed to start serial logging service."
+                if abortonerror:
+                    flocklab.tg_off()
+                    flocklab.error_logandexit(msg)
+                else:
+                    flocklab.log_test_error(testid, msg)
         else:
             outputdir = "%s/%d" % (config.get("observer", "testresultfolder"), testid)
             if flocklab.start_serial_service(serialport, baudrate, socketport, outputdir, debug) != flocklab.SUCCESS:
-                flocklab.tg_off()
-                flocklab.error_logandexit("Failed to start serial service.")
+                msg = "Failed to start serial service."
+                if abortonerror:
+                    flocklab.tg_off()
+                    flocklab.error_logandexit(msg)
+                else:
+                    flocklab.log_test_error(testid, msg)
         logger.debug("Started and configured serial service.")
 
     # GPIO tracing (must be started after the serial and debug service) ---
@@ -414,8 +443,12 @@ def main(argv):
             extra_options = extra_options | 0x00000002    # do not control the reset pin with the PRU
             logger.debug("Target reset actuations scheduled, won't control reset pin with PRU.")
         if flocklab.start_gpio_tracing(tracingfile, teststarttime, teststoptime, pins, offset, extra_options) != flocklab.SUCCESS:
-            flocklab.tg_off()
-            flocklab.error_logandexit("Failed to start GPIO tracing service.")
+            msg = "Failed to start GPIO tracing service."
+            if abortonerror:
+                flocklab.tg_off()
+                flocklab.error_logandexit(msg)
+            else:
+                flocklab.log_test_error(testid, msg)
         # touch the file
         open(tracingfile + ".csv", 'a').close()
         logger.debug("Started GPIO tracing (output file: %s, pins: 0x%x, offset: %u, options: 0x%x)." % (tracingfile, pins, offset, extra_options))
@@ -436,8 +469,12 @@ def main(argv):
         # Start profiling
         outputfile = "%s/%d/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
         if flocklab.start_pwr_measurement(out_file=outputfile, sampling_rate=samplingrate, start_time=starttime, num_samples=int((duration + 1) * samplingrate)) != flocklab.SUCCESS:
-            flocklab.tg_off()
-            flocklab.error_logandexit("Failed to start power measurement.")
+            msg = "Failed to start power measurement."
+            if abortonerror:
+                flocklab.tg_off()
+                flocklab.error_logandexit(msg)
+            else:
+                flocklab.log_test_error(testid, msg)
         logger.debug("Power measurement will start at %s (output: %s, sampling rate: %dHz, duration: %ds)." % (str(starttime), outputfile, samplingrate, duration))
 
     # Timesync log ---
@@ -445,8 +482,12 @@ def main(argv):
         flocklab.log_timesync_info(testid=testid)
         flocklab.store_pps_count(testid)
     except:
-        flocklab.tg_off()
-        flocklab.error_logandexit("Failed to collect timesync info (%s, %s)." % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
+        msg = "Failed to collect timesync info (%s, %s)." % (str(sys.exc_info()[0]), str(sys.exc_info()[1]))
+        if abortonerror:
+            flocklab.tg_off()
+            flocklab.error_logandexit(msg)
+        else:
+            flocklab.log_test_error(testid, msg)
 
     flocklab.gpio_clr(flocklab.gpio_led_error)
     logger.info("Test successfully started.")
