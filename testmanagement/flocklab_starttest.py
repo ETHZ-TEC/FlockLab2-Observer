@@ -272,11 +272,12 @@ def main(argv):
         except:
             flocklab.tg_off()
             flocklab.error_logandexit("Could not determine test start time (%s)." % str(sys.exc_info()[1]))
-        # generate PPS pulses on observers with PTP time synchronization
-        if flocklab.get_timesync_method() == "PTP":
-            num_pulses = (teststoptime - teststarttime) + 2
-            period     = 1.0
-            if num_pulses > 1000:
+        # generate PPS pulses on observers with PTP time synchronization (required for GPIO tracing only)
+        if flocklab.get_timesync_method() == "PTP" and tracingserviceused:
+            actuationused = True
+            num_pulses    = (teststoptime - teststarttime) + 2
+            period        = 1.0
+            if (num_pulses * 2 + settingcount + 4) > flocklab.max_act_events:
                 period = 10.0
                 num_pulses = flocklab.parse_int(num_pulses / 10 + 1)
             act_events.append(['P', 0])
@@ -284,16 +285,23 @@ def main(argv):
             periodic_evts = flocklab.generate_periodic_act_events('PPS', 0.999950, period, 0.1, num_pulses)   # add slack time: schedule wakeups 50us before the full second
             if periodic_evts:
                 logger.debug("%d PPS pulses will be generated during the test" % num_pulses)
-                settingcount = settingcount + 1
                 act_events.extend(periodic_evts)
+            else:
+                msg = "failed to schedule PPS pulse generation (required for GPIO tracing on a PTP-synced observer)"
+                if abortonerror:
+                    flocklab.tg_off()
+                    flocklab.error_logandexit(msg)
+                else:
+                    flocklab.log_test_error(testid, msg)
+        # if there are no scheduled pin actuations and neither debugging nor the serial proxy is used, then disable actuation during the test
         if (not actuationused) and (serialport == None) and (not debugserviceused):
-            # if there are no scheduled pin actuations, then disable actuation during the test if debugging service & serial proxy not used
             act_events.append(['A', 10001000])    # 10.001s after startup -> latest point where target will be released from reset state
             act_events.append(['a', flocklab.parse_int((teststoptime - teststarttime) * 1000000) - 1000])    # reactivate actuation just before the end of the test (when the reset pin needs to be pulled low)
-            settingcount = settingcount + 2
+            settingcount  = settingcount + 2
+            actuationused = True
             logger.debug("Actuation will be disabled during the test.")
         # any actuations scheduled?
-        if settingcount > 0:
+        if actuationused:
             if flocklab.start_gpio_actuation(teststarttime, act_events) != flocklab.SUCCESS:
                 msg = "Failed to start GPIO actuation service."
                 if abortonerror or not tracingserviceused:
