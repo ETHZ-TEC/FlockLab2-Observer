@@ -111,8 +111,7 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
   }
 
   speed_t baudrate = convert_to_baudrate(speed);
-  if (cfsetospeed(&tty, baudrate) != 0 ||
-      cfsetispeed(&tty, baudrate) != 0) {
+  if (cfsetispeed(&tty, baudrate) != 0) {     /* cfsetospeed(&tty, baudrate) not needed */
     return 2;
   }
 
@@ -125,6 +124,8 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
 
   /* see http://man7.org/linux/man-pages/man3/termios.3.html for details about the flags */
   tty.c_oflag  = 0;           /* no output processing */
+  tty.c_lflag  = 0;           /* clear local flags */
+
   if (canonical_mode) {
     printf("using canonical mode");
     tty.c_lflag |= ICANON;    /* canonical mode */
@@ -134,7 +135,7 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
     memset(tty.c_cc, 0, sizeof(tty.c_cc));
     /* note: at 1MBaud, there will be one byte every 10us (and one interrupt per byte if VMIN is set to 1) */
     tty.c_cc[VMIN]  = 64;     /* at least 64 characters */
-    tty.c_cc[VTIME] = 1;      /* read timeout of 100ms */
+    tty.c_cc[VTIME] = 5;      /* read timeout of 500ms */
   }
   tty.c_iflag  = 0;           /* clear input flags */
   tty.c_iflag |= IGNCR;       /* ignore carriage return */
@@ -193,7 +194,7 @@ int main(int argc, char** argv)
   }
 
   // open the serial device
-  fd = open(portname, O_RDWR | O_NOCTTY | O_SYNC);
+  fd = open(portname, O_RDONLY | O_NOCTTY);
   if (fd < 0) {
     printf("error opening %s: %s\n", portname, strerror(errno));
     return 1;
