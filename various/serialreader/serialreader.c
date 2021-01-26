@@ -255,6 +255,10 @@ int main(int argc, char** argv)
           currtime.tv_nsec -= transmit_time;
         }
     #endif /* SUBTRACT_TRANSMIT_TIME */
+        // start time after test end?
+        if (currtime.tv_sec >= (int)(starttime + duration)) {
+          break;
+        }
         if (bufofs == 0) {
           // start of a string -> store the timestamp
           prevtime = currtime;
@@ -321,6 +325,10 @@ int main(int argc, char** argv)
           currtime.tv_nsec -= transmit_time;
         }
     #endif /* SUBTRACT_TRANSMIT_TIME */
+        // start time after test end?
+        if (currtime.tv_sec >= (int)(starttime + duration)) {
+          break;
+        }
         rcvbuf[len] = 0;  /* just to be sure, but should already be terminated by zero character in canonical mode */
         if (logfile) {
           int prlen = sprintf(printbuf, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
