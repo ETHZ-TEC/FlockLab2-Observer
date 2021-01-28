@@ -137,10 +137,14 @@ def main(argv):
     actuationused       = False
     resetactuationused  = False
     abortonerror        = False
+    ptpsynced           = False
     tracingserviceused  = tree.find('obsGpioMonitorConf') != None
     debugserviceused    = tree.find('obsDebugConf') != None
     powerprofilingused  = tree.find('obsPowerprofConf') != None
     teststarttime       = 0
+
+    if flocklab.get_timesync_method() == "PTP":
+        ptpsynced = True
 
     imagefiles_to_process = tree.findall('obsTargetConf/image')
     imagefile = {}
@@ -273,19 +277,22 @@ def main(argv):
             flocklab.tg_off()
             flocklab.error_logandexit("Could not determine test start time (%s)." % str(sys.exc_info()[1]))
         # generate PPS pulses on observers with PTP time synchronization (required for GPIO tracing only)
-        if flocklab.get_timesync_method() == "PTP" and tracingserviceused:
+        if ptpsynced and tracingserviceused:
             actuationused = True
-            num_pulses    = (teststoptime - teststarttime) + 2
-            period        = 1.0
-            if (num_pulses * 2 + settingcount + 4) > flocklab.max_act_events:
-                period = 10.0
-                num_pulses = flocklab.parse_int(num_pulses / 10 + 1)
-            act_events.append(['P', 0])
-            act_events.append(['p', 100000])
-            periodic_evts = flocklab.generate_periodic_act_events('PPS', 0.999950, period, 0.1, num_pulses)   # add slack time: schedule wakeups 50us before the full second
+            num_pulses    = flocklab.parse_int((teststoptime - teststarttime - 60) / 60) + 1
+            # 2 pulses at the beginning and 2 at the end, plus one every 60 seconds (note that less pulses reduces the probability of a high shift)
+            testendmicrosecs = (teststoptime - teststarttime) * 1000000
+            act_events.append(['P',       0])
+            act_events.append(['p',  100000])
+            act_events.append(['P', testendmicrosecs +  999950])
+            act_events.append(['p', testendmicrosecs + 1100000])
+            act_events.append(['P', testendmicrosecs + 1999950])
+            act_events.append(['p', testendmicrosecs + 2100000])
+            periodic_evts = flocklab.generate_periodic_act_events('PPS', 0.999950, 60.0, 0.001, num_pulses)   # add slack time: schedule wakeups 50us before the full second
+            num_pulses = num_pulses + 3
             if periodic_evts:
-                logger.debug("%d PPS pulses will be generated during the test" % num_pulses)
                 act_events.extend(periodic_evts)
+                logger.debug("%d PPS pulses will be generated during the test" % num_pulses)
             else:
                 msg = "failed to schedule PPS pulse generation (required for GPIO tracing on a PTP-synced observer)"
                 if abortonerror:

@@ -668,8 +668,8 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
     if (sample_cnt == 0) {                                        // first sample?
       prev_sample          = ~sample & 0xff;                      // invert to make sure all pins get logged
       first_or_last_sample = true;
-    } else if (sample_cnt == ((uint32_t)parsed_size / 4 - 1)) {   // last sample?
-      prev_sample          = (prev_sample ^ 0x80) & 0xff;         // invert nRST bit to make sure it gets logged
+    } else if (sample_cnt == ((uint32_t)parsed_size / 4 - 1)) {         // last sample?
+      prev_sample          = (prev_sample & 0x7f) | (~sample & 0x80);   // invert nRST bit to make sure it gets logged
       first_or_last_sample = true;
     }
     // go through all pins and check whether there has been a change
@@ -789,16 +789,16 @@ void parse_tracing_data_piecewise(const char* filename, unsigned long starttime_
           uint32_t realtime_time_s      = (uint32_t)elapsed_time + last_sync_seconds;
           uint32_t realtime_time_frac   = (uint32_t)((double)(elapsed_time - (uint32_t)elapsed_time) * 1e7);  // if factor '1e7' is changed, don't forget to adjust the print formating below (%07u)
           double monotonic_time         = (double)timestamp_ticks / sampling_rate;                            // for reference, also generate a monotonic timestamp
-          uint32_t diff                 = sample ^ prev_sample;     // get changed pins
-          uint32_t idx                  = 0;
           bool     first_or_last_sample = false;
           if (sample_cnt == 0) {                                    // first sample?
             prev_sample          = ~sample & 0xff;                  // invert to make sure all pins get logged
             first_or_last_sample = true;
-          } else if (end_of_file_found && samples_to_read == 1) {   // last sample?
-            prev_sample          = (prev_sample ^ 0x80) & 0xff;     // invert nRST bit to make sure it gets logged
+          } else if (end_of_file_found && samples_to_read == 1) {           // last sample?
+            prev_sample          = (prev_sample & 0x7f) | (~sample & 0x80); // invert nRST bit to make sure it gets logged
             first_or_last_sample = true;
           }
+          uint32_t idx  = 0;
+          uint32_t diff = sample ^ prev_sample;                     // get changed pins
           // go through all pins and check whether there has been a change
           while (diff) {
             if (diff & 1) {

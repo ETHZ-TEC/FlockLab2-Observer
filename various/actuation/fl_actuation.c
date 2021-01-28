@@ -65,7 +65,7 @@
 #define FLOCKLAB_PPS_PIN    66                  // P8.07 -> must be configured as GPIO output
 #define FLOCKLAB_ACTnEN_PIN 65                  //
 #define PPS_MAX_WAIT_TIME   220000              // max. time to wait before actuating the PPS pin, in ns (set to 0 to disable this feature)
-#define PPS_SHIFT           1000                // shift the PPS generation by x ns (positiv values will lead to an earlier actuation)
+#define PPS_SHIFT           100                 // shift the PPS generation by x ns (positiv values will lead to an earlier actuation)
 #define DEBUG               0
 
 
