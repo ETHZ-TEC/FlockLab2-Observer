@@ -82,7 +82,7 @@
 // extra options:
 #define EXTRAOPT_LOG_LEVEL_DEBUG    0x00000001      // set log level to debug
 #define EXTRAOPT_NO_RECONFIG_RST    0x00000002      // do not reconfigure the reset pin
-#define EXTRAOPT_SIMPLE_SCALING     0x00000004      // if set, time scaling will be done based on the start and stop only instead of step-wide (only has an effect if EXTRAOPT_RELATIVE_TIME not set)
+#define EXTRAOPT_SIMPLE_SCALING     0x00000004      // if set, time scaling will be done based on the start and stop only instead of piecewise (only has an effect if EXTRAOPT_RELATIVE_TIME not set)
 #define EXTRAOPT_SAMPLING_RATE_LOW  0x00000008      // use a low sampling rate (only has an effect if EXTRAOPT_USE_CYCLE_COUNTER and EXTRAOPT_USE_PRU0_HELPER not set)
 #define EXTRAOPT_SAMPLING_RATE_MED  0x00000010      // use a medium sampling rate (only has an effect if EXTRAOPT_USE_CYCLE_COUNTER and EXTRAOPT_USE_PRU0_HELPER not set)
 #define EXTRAOPT_USE_PRU_MEMORY     0x00000020      // use the PRU shared memory (12kb) instead of DDR RAM to store the samples
@@ -626,7 +626,7 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
       // nRST=1
       if (!timestamp_start_obtained) {
         // only store the first occurence
-        timestamp_start_ticks = timestamp_ticks;
+        timestamp_start_ticks    = timestamp_ticks;
         timestamp_start_obtained = true;
       }
     } else {
@@ -656,35 +656,36 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
   sample_cnt = 0;
 
   // go through the whole file again, this time parse and write the data into the csv file
-  // read the first sample
-  fread(&sample, 4, 1, data_file);
-  prev_sample = ~sample & 0xff;
-  do {
-    // data valid? -> at least the cycle counter must be > 0
-    if (sample == 0) {
-      break;
-    }
+  while (fread(&sample, 4, 1, data_file) && (sample != 0) && !abort_conversion) {
     // update the timestamp
-    timestamp_ticks += (sample >> 8);
-    double elapsed_time = (double)timestamp_ticks / sampling_rate * corr_factor;
+    timestamp_ticks              += (sample >> 8);
+    double   elapsed_time         = (double)timestamp_ticks / sampling_rate * corr_factor;
     // note: IEEE 754 double only has 52-bit precision (~16 digits), we need to split the value into full seconds and a fractional portion
-    uint32_t realtime_time_s    = (uint32_t)elapsed_time + starttime_s;
-    uint32_t realtime_time_frac = (uint32_t)((double)(elapsed_time - (uint32_t)elapsed_time) * 1e7);  // if factor '1e7' is changed, don't forget to adjust the print formating below (%07u)
-    double monotonic_time = (double)timestamp_ticks / sampling_rate;
+    uint32_t realtime_time_s      = (uint32_t)elapsed_time + starttime_s;
+    uint32_t realtime_time_frac   = (uint32_t)((double)(elapsed_time - (uint32_t)elapsed_time) * 1e7);  // if factor '1e7' is changed, don't forget to adjust the print formating below (%07u)
+    double   monotonic_time       = (double)timestamp_ticks / sampling_rate;
+    bool     first_or_last_sample = false;
+    if (sample_cnt == 0) {                                        // first sample?
+      prev_sample          = ~sample & 0xff;                      // invert to make sure all pins get logged
+      first_or_last_sample = true;
+    } else if (sample_cnt == ((uint32_t)parsed_size / 4 - 1)) {   // last sample?
+      prev_sample          = (prev_sample ^ 0x80) & 0xff;         // invert nRST bit to make sure it gets logged
+      first_or_last_sample = true;
+    }
     // go through all pins and check whether there has been a change
-    bool first_or_last_sample = (sample_cnt == 0) || (sample_cnt == ((uint32_t)parsed_size / 4 - 1));
     uint32_t i = 0;
     while (i < 8) {
       uint32_t bitmask = (1 << i);
       if ((prev_sample & bitmask) != (sample & bitmask)) {
         uint32_t pin_state = (sample & bitmask) > 0;
-        // format: timestamp,ticks,pin,state(0/1)
         if (i == 7 && !first_or_last_sample) {
-          i = 8;
+          i = 8;    // for the first and last sample, pin 7 will be marked as nRST, for all other samples it is the PPS
         }
         if (incl_monotonic) {
+          // format: timestamp,ticks,pin,state(0/1)
           sprintf(buffer, "%u.%07u,%.7f,%s,%u\n", realtime_time_s, realtime_time_frac, monotonic_time, pin_mapping[i], pin_state);
         } else {
+          // format: timestamp,pin,state(0/1)
           sprintf(buffer, "%u.%07u,%s,%u\n", realtime_time_s, realtime_time_frac, pin_mapping[i], pin_state);
         }
         fwrite(buffer, strlen(buffer), 1, csv_file);
@@ -693,12 +694,8 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
       i++;
     }
     prev_sample = sample;
-    if (sample_cnt == 0) {
-      // clear the nRST bit after the first sample to avoid an issue where the first PPS pulse would not appear in the processed data
-      prev_sample &= ~0x80;
-    }
     sample_cnt++;
-  } while (fread(&sample, 4, 1, data_file) && !abort_conversion);
+  }
 
   fclose(data_file);
   fclose(csv_file);
@@ -707,14 +704,14 @@ void parse_tracing_data(const char* filename, unsigned long starttime_s, unsigne
 }
 
 
-// convert binary tracing data to a csv file (does stepwise scaling)
-void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s, unsigned long stoptime_s, unsigned long offset, bool incl_monotonic)
+// convert binary tracing data to a csv file (does piecewise scaling)
+void parse_tracing_data_piecewise(const char* filename, unsigned long starttime_s, unsigned long stoptime_s, unsigned long offset, bool incl_monotonic)
 {
   char     buffer[SPRINTF_BUFFER_LENGTH];
   FILE*    data_file            = NULL;
   FILE*    csv_file             = NULL;
   uint32_t sample               = 0;
-  uint32_t prev_sample          = 0xffffffff;
+  uint32_t prev_sample          = 0;
   uint32_t line_cnt             = 0;
   uint32_t sample_cnt           = 0;
   uint64_t timestamp_ticks      = 0;
@@ -781,35 +778,39 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
         // go back in the file to the last sync point and read all samples again
         fseek(data_file, last_sync_filepos, SEEK_SET);
         elapsed_ticks = 0;
-        // first loop iteration?
-        if (prev_sample == 0xffffffff) {
-          prev_sample = ~sample & 0xff;
-        }
+        // read the samples again
         while (samples_to_read && fread(&sample, 4, 1, data_file) && !abort_conversion) {
           // update the timestamp
-          elapsed_ticks   += (sample >> 8);     // ticks since last sync point
-          timestamp_ticks += (sample >> 8);     // total ticks since test start
-          double elapsed_time = (double)elapsed_ticks / sampling_rate * corr_factor;
+          elapsed_ticks                += (sample >> 8);            // ticks since last sync point
+          timestamp_ticks              += (sample >> 8);            // total ticks since test start
+          sample                        = sample & 0xff;            // remove upper bits (timestamp)
+          double   elapsed_time         = (double)elapsed_ticks / sampling_rate * corr_factor;
           // note: IEEE 754 double only has 52-bit precision (~16 digits), we need to split the value into full seconds and a fractional portion
-          uint32_t realtime_time_s    = (uint32_t)elapsed_time + last_sync_seconds;
-          uint32_t realtime_time_frac = (uint32_t)((double)(elapsed_time - (uint32_t)elapsed_time) * 1e7);  // if factor '1e7' is changed, don't forget to adjust the print formating below (%07u)
-          // for reference, also generate a monotonic timestamp
-          double monotonic_time = (double)timestamp_ticks / sampling_rate;
+          uint32_t realtime_time_s      = (uint32_t)elapsed_time + last_sync_seconds;
+          uint32_t realtime_time_frac   = (uint32_t)((double)(elapsed_time - (uint32_t)elapsed_time) * 1e7);  // if factor '1e7' is changed, don't forget to adjust the print formating below (%07u)
+          double monotonic_time         = (double)timestamp_ticks / sampling_rate;                            // for reference, also generate a monotonic timestamp
+          uint32_t diff                 = sample ^ prev_sample;     // get changed pins
+          uint32_t idx                  = 0;
+          bool     first_or_last_sample = false;
+          if (sample_cnt == 0) {                                    // first sample?
+            prev_sample          = ~sample & 0xff;                  // invert to make sure all pins get logged
+            first_or_last_sample = true;
+          } else if (end_of_file_found && samples_to_read == 1) {   // last sample?
+            prev_sample          = (prev_sample ^ 0x80) & 0xff;     // invert nRST bit to make sure it gets logged
+            first_or_last_sample = true;
+          }
           // go through all pins and check whether there has been a change
-          sample = sample & 0xff;               // remove upper bits (timestamp)
-          uint32_t diff = sample ^ prev_sample; // get changed pins
-          uint32_t idx = 0;
-          bool     first_or_last_sample = (sample_cnt == 0) || (end_of_file_found && samples_to_read == 1);
           while (diff) {
             if (diff & 1) {
               uint32_t pin_state = (sample >> idx) & 1;
               if (idx == 7 && !first_or_last_sample) {
-                idx++;
+                idx = 8;    // for the first and last sample, pin 7 will be marked as nRST, for all other samples it is the PPS
               }
-              // format: timestamp,ticks,pin,state(0/1)
               if (incl_monotonic) {
+                // format: timestamp,ticks,pin,state(0/1)
                 sprintf(buffer, "%u.%07u,%.7f,%s,%u\n", realtime_time_s, realtime_time_frac, monotonic_time, pin_mapping[idx], pin_state);
               } else {
+                // format: timestamp,pin,state(0/1)
                 sprintf(buffer, "%u.%07u,%s,%u\n", realtime_time_s, realtime_time_frac, pin_mapping[idx], pin_state);
               }
               fwrite(buffer, strlen(buffer), 1, csv_file);
@@ -819,10 +820,6 @@ void parse_tracing_data_stepwise(const char* filename, unsigned long starttime_s
             diff >>= 1;
           }
           prev_sample = sample;
-          if (sample_cnt == 0) {
-            // clear the nRST bit after the first sample to avoid an issue where the first PPS pulse would not appear in the processed data
-            prev_sample &= ~0x80;
-          }
           sample_cnt++;         // total sample count
           samples_to_read--;
         }
@@ -979,7 +976,7 @@ int main(int argc, char** argv)
   } else if (extra_options & EXTRAOPT_SIMPLE_SCALING) {
     parse_tracing_data(filename, starttime, stoptime, (extra_options & EXTRAOPT_INCL_MONOTONIC) != 0);
   } else {
-    parse_tracing_data_stepwise(filename, starttime, stoptime, offset, (extra_options & EXTRAOPT_INCL_MONOTONIC) != 0);
+    parse_tracing_data_piecewise(filename, starttime, stoptime, offset, (extra_options & EXTRAOPT_INCL_MONOTONIC) != 0);
   }
 
   fl_log(LOG_DEBUG, "terminated");
