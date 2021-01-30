@@ -158,6 +158,11 @@ def prog_telosb(imagefile, speed=38400):
         flocklab.log_error("Invalid file format, Intel hex file expected.")
         return -1
 
+    # check if the device exists
+    if not os.path.exists(flocklab.tg_usb_port):
+        flocklab.log_error("Device %s does not exist." % flocklab.tg_usb_port)
+        return flocklab.FAILED
+
     # currently only runs with python2.7
     #cmd = ["msp430-bsl-telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "-V", "-i", "ihex", "-P", imagefile]
     # note: verify option ("-V") removed since it takes too much time (up to 25s)
@@ -369,7 +374,7 @@ def main(argv):
 
     flocklab.tg_on()
     flocklab.tg_reset()
-    time.sleep(0.5)
+    time.sleep(1)
 
     # Flash the target:
     logger.info("Programming target %s with image %s..." % (target, imagefile))
@@ -394,12 +399,13 @@ def main(argv):
         rs = prog_telosb(imagefile)
         if rs == flocklab.FAILED:
             logger.info("Resetting USB hub and power cycling target...")
-            # try to reset the USB hub and try again
-            flocklab.usb_reset()
-            time.sleep(1)
             flocklab.tg_off()
             time.sleep(0.1)
             flocklab.tg_on()
+            time.sleep(0.1)
+            # try to reset the USB hub and try again
+            if flocklab.usb_reset() != flocklab.SUCCESS:
+                logger.error("Failed to reset USB hub.");
             time.sleep(1)
             rs = prog_telosb(imagefile)
     else:
@@ -412,7 +418,7 @@ def main(argv):
     flocklab.tg_reset()
 
     # Return an error if there was one while flashing:
-    if (rs != 0):
+    if (rs != flocklab.SUCCESS):
         flocklab.error_logandexit("Image could not be flashed to target. Error %d occurred." % rs, errno.EIO)
 
     logger.info("Target node flashed successfully.")
