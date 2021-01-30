@@ -318,7 +318,7 @@ def init_gpio():
 def usb_reset():
     if gpio_clr(gpio_usb_nrst) != SUCCESS or gpio_set(gpio_usb_nrst) != SUCCESS:
         return FAILED
-    time.sleep(1)     # give some time for initialization
+    time.sleep(2)     # give some time for initialization
     return SUCCESS
 ### END usb_reset()
 
@@ -1353,3 +1353,15 @@ def get_timesync_method():
                 return "GPS"
     return "NTP"
 ### END get_timesync_method
+
+
+##############################################################################
+#
+# get_default_serialport()   returns the default serial port of a platform
+#
+##############################################################################
+def get_default_serialport(platform=None):
+    if platform and platform.lower() in ("tmote"):
+        return "usb"
+    else:
+        return "serial"

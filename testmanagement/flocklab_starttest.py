@@ -166,6 +166,14 @@ def main(argv):
             platform = tree.find('obsTargetConf/platform').text.lower()
         if (tree.find('obsTargetConf/abortOnError') != None) and (tree.find('obsTargetConf/abortOnError').text.lower() == 'yes'):
             abortonerror = True
+        # find out whether serial logging is used and if so on which port
+        if tree.find('obsSerialConf') != None:
+            serialport = tree.findtext('obsSerialConf/port')
+            # if not specified, use the default port for this platform
+            if serialport:
+                serialport = serialport.lower()
+            else:
+                serialport = flocklab.get_default_serialport(platform)
     except:
         flocklab.error_logandexit("XML: could not find mandatory element(s) in element <obsTargetConf>")
 
@@ -221,8 +229,8 @@ def main(argv):
     # Set voltage ---
     if flocklab.tg_set_vcc(voltage) != flocklab.SUCCESS:
         flocklab.tg_off()
-        flocklab.error_logandexit("Failed to set target voltage to %.1fV" % (voltage))
-    logger.debug("Target voltage set to %.1fV" % voltage)
+        flocklab.error_logandexit("Failed to set target voltage to %.1fV." % (voltage))
+    logger.debug("Target voltage set to %.1fV." % voltage)
 
     # Create test results directory ---
     resfolder = "%s/%d" % (config.get("observer", "testresultfolder"), testid)
@@ -231,7 +239,7 @@ def main(argv):
     except Exception as e:
         flocklab.tg_off()
         flocklab.error_logandexit("Failed to create directory: %s" % str(e))
-    logger.debug("Test results folder '%s' created" % resfolder)
+    logger.debug("Test results folder '%s' created." % resfolder)
 
     # Configure needed services ---
 
@@ -239,10 +247,9 @@ def main(argv):
     flocklab.tg_act_en()  # make sure actuation is enabled
     if (tree.find('obsGpioSettingConf') != None):
         logger.debug("Found config for GPIO actuation.")
-        subtree = tree.find('obsGpioSettingConf')
-        pinconfs = list(subtree.getiterator("pinConf"))
-        settingcount = 0
-        resets = []
+        subtree    = tree.find('obsGpioSettingConf')
+        pinconfs   = list(subtree.getiterator("pinConf"))
+        resets     = []
         act_events = []
         for pinconf in pinconfs:
             pin = pinconf.find('pin').text
@@ -251,7 +258,6 @@ def main(argv):
                 resets.append(pinconf.find('timestamp').text)
                 continue
             actuationused = True
-            settingcount  = settingcount + 1
             if pin == 'nRST':   # target reset actuation during the test
                 resetactuationused = True
             cmd = flocklab.level_str2abbr(pinconf.find('level').text, pin)
@@ -271,7 +277,6 @@ def main(argv):
             if (not abortonerror) or (not tracingserviceused) or resetactuationused:
                 act_events.append(['R', 0])                                                            # reset high at offset 0
                 act_events.append(['r', flocklab.parse_int((teststoptime - teststarttime) * 1000000)]) # reset low at end of test
-                settingcount = settingcount + 2;
             logger.debug("Test will run from %u to %u." % (teststarttime, teststoptime))
         except:
             flocklab.tg_off()
@@ -292,23 +297,22 @@ def main(argv):
             num_pulses = num_pulses + 3
             if periodic_evts:
                 act_events.extend(periodic_evts)
-                logger.debug("%d PPS pulses will be generated during the test" % num_pulses)
+                logger.debug("%d PPS pulses will be generated during the test." % num_pulses)
             else:
-                msg = "failed to schedule PPS pulse generation (required for GPIO tracing on a PTP-synced observer)"
+                msg = "Failed to schedule PPS pulse generation (required for GPIO tracing on a PTP-synced observer)."
                 if abortonerror:
                     flocklab.tg_off()
                     flocklab.error_logandexit(msg)
                 else:
                     flocklab.log_test_error(testid, msg)
         # if there are no scheduled pin actuations and neither debugging nor the serial proxy is used, then disable actuation during the test
-        if (not actuationused) and (serialport == None) and (not debugserviceused):
+        if (not actuationused) and (socketport == None) and (not debugserviceused):
             act_events.append(['A', 10001000])    # 10.001s after startup -> latest point where target will be released from reset state
             act_events.append(['a', flocklab.parse_int((teststoptime - teststarttime) * 1000000) - 1000])    # reactivate actuation just before the end of the test (when the reset pin needs to be pulled low)
-            settingcount  = settingcount + 2
             actuationused = True
             logger.debug("Actuation will be disabled during the test.")
         # any actuations scheduled?
-        if actuationused:
+        if actuationused or len(act_events) > 0:
             if flocklab.start_gpio_actuation(teststarttime, act_events) != flocklab.SUCCESS:
                 msg = "Failed to start GPIO actuation service."
                 if abortonerror or not tracingserviceused:
@@ -316,7 +320,7 @@ def main(argv):
                     flocklab.error_logandexit(msg)
                 else:
                     flocklab.log_test_error(testid, msg)
-            logger.debug("GPIO actuation service configured (%u actuations scheduled)." % settingcount)
+            logger.debug("GPIO actuation service configured (%u actuations scheduled)." % len(act_events))
         else:
             logger.debug("No GPIO actuations scheduled.")
     else:
@@ -389,11 +393,9 @@ def main(argv):
     if tree.find('obsSerialConf') != None:
         logger.debug("Found config for serial service.")
         baudrate = tree.findtext('obsSerialConf/baudrate')
-        serialport = tree.findtext('obsSerialConf/port')
-        if serialport == None:
-            serialport = "serial"
+        # note: serialport has already been extracted further up
         serialfile = "%s/%d/serial_%s.csv" % (config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-        if "swo" in serialport.lower():
+        if "swo" in serialport:
             # logging via SWO pin
             cpuspeed = tree.findtext('obsSerialConf/cpuSpeed')
             # MUX must be enabled and target released from reset state
@@ -409,7 +411,7 @@ def main(argv):
             # wait some time to let the services start up, then put the target back into reset state
             time.sleep(5)
             flocklab.tg_reset(False)
-        elif not socketport:
+        elif not socketport and serialport != "usb":    # note: serial logger seems to have issues with the tmote (USB connection)
             # serial forwarder (proxy) not used -> logging only (use the faster C implementation)
             if flocklab.start_serial_logging(serialport, baudrate, serialfile, teststarttime, teststoptime - teststarttime) != flocklab.SUCCESS:
                 msg = "Failed to start serial logging service."
