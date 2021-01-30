@@ -397,17 +397,21 @@ def main(argv):
         rs = prog_swd(imagefile, "nRF52840_xxAA")
     elif target in ('tmote', 'telosb', 'sky'):
         rs = prog_telosb(imagefile)
-        if rs == flocklab.FAILED:
+        tries = 2
+        while rs == flocklab.FAILED and tries > 0:
             logger.info("Resetting USB hub and power cycling target...")
             flocklab.tg_off()
-            time.sleep(0.1)
-            flocklab.tg_on()
-            time.sleep(0.1)
             # try to reset the USB hub and try again
             if flocklab.usb_reset() != flocklab.SUCCESS:
                 logger.error("Failed to reset USB hub.");
+            flocklab.tg_act_en(True)
+            flocklab.tg_en(True)
+            flocklab.tg_pwr_en(True)
+            time.sleep(0.5)
+            flocklab.tg_mux_en(True)
             time.sleep(1)
             rs = prog_telosb(imagefile)
+            tries = tries - 1
     else:
         logger.error("Unknown target '%s'" % target)
 

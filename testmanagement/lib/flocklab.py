@@ -318,7 +318,7 @@ def init_gpio():
 def usb_reset():
     if gpio_clr(gpio_usb_nrst) != SUCCESS or gpio_set(gpio_usb_nrst) != SUCCESS:
         return FAILED
-    time.sleep(2)     # give some time for initialization
+    time.sleep(1)     # give some time for initialization
     return SUCCESS
 ### END usb_reset()
 
