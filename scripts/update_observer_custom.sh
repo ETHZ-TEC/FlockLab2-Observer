@@ -37,8 +37,17 @@ INSTALL=1       # whether to recompile and install programs on the observer (wil
 PORT=2322
 USER="flocklab"
 HOSTPREFIX="fl-"
-OBSIDS="01 02 03 04 05 06 07 08 09 10 11 12 15 17 25"
+OBSIDS="01 02 03 04 05 06 07 08 09 10 11 12 13 15 16 17 19 20 21 22 23 24 25 26 27 28 29 30 31 32"
 RSYNCPARAMS=" -a -z -c --timeout=5 --exclude=.git --no-perms --no-owner --no-group"
+PASSWORD=""     # script will query password if left blank
+
+
+function getpw {
+    if [ -z "$PASSWORD" ]; then
+        echo "Enter the sudo password for user $USER:"
+        read -s PASSWORD
+    fi
+}
 
 # check arguments
 if [ $# -gt 0 ]; then
@@ -52,6 +61,8 @@ fi
 echo "Going to update files on FlockLab observer(s) $OBSIDS..."
 sleep 2   # give the user time to abort, just in case
 
+getpw
+
 for OBS in $OBSIDS
 do
     # specify custom commands
@@ -60,12 +71,19 @@ do
     REMOVE_FILES="sudo rm -r /usr/local/lib/python2.7/dist-packages/python_msp430_tools-0.6.egg-info"
     REMOVE_JLINKFILES="rm -r observer/jlink/JLink*"
     MOVE_LOGS_TO_SDCARD="sudo rm -rf /var/log; sudo mkdir /media/card/log; sudo chmod 777 /media/card/log; mkdir /media/card/log/flocklab; sudo ln -sf /media/card/log /var/log; sudo reboot"
+    APT_UPGRADE="sudo apt-get update && sudo apt-get --assume-yes dist-upgrade && sudo reboot"
+    PRINT_DMESG="dmesg | tail"
+    SHOW_FL_LOG="tail -n 50 log/flocklab.log | grep -i program"
 
     # choose the command to execute
-    #COMMAND=$LIST_DIR
+    COMMAND=${ }
+
+    # regular command
     #ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
-    # or update repository files:
-    rsync ${RSYNCPARAMS} -q -e "ssh -q -p ${PORT}" . ${USER}@${HOSTPREFIX}${OBS}:observer 2>&1
+    # sudo command
+    #@echo "$PASSWORD" | ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
+    # update repository files
+    #rsync ${RSYNCPARAMS} -q -e "ssh -q -p ${PORT}" . ${USER}@${HOSTPREFIX}${OBS}:observer 2>&1
     if [ $? -eq 0 ]; then
         echo "successfully updated observer ${OBS}"
     else
