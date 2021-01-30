@@ -127,7 +127,7 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
   tty.c_lflag  = 0;           /* clear local flags */
 
   if (canonical_mode) {
-    printf("using canonical mode");
+    printf("using canonical mode\n");
     tty.c_lflag |= ICANON;    /* canonical mode */
   } else {
     tty.c_lflag &= ~ICANON;   /* clear canonical mode bit */
@@ -191,6 +191,7 @@ int main(int argc, char** argv)
   if (argc > 5) {
     // 5th argument is the duration
     duration = strtol(argv[5], NULL, 10);
+    printf("logging duration: %us\n", duration);
   }
 
   // open the serial device
@@ -204,7 +205,6 @@ int main(int argc, char** argv)
     close(fd);
     return 2;
   }
-  tcflush(fd, TCIFLUSH);
 
   printf("connected to port %s (baudrate: %lu)\n", portname, baudrate);
 
@@ -234,8 +234,9 @@ int main(int argc, char** argv)
       sleep(diff_sec - 1);
       usleep(diff_usec);
     }
-    tcflush(fd, TCIFLUSH);
   }
+  // flush input queue
+  tcflush(fd, TCIFLUSH);
 
   // use RAW mode for high baudrates (otherwise data loss will occur)
   if (baudrate > 500000) {
@@ -256,7 +257,7 @@ int main(int argc, char** argv)
         }
     #endif /* SUBTRACT_TRANSMIT_TIME */
         // start time after test end?
-        if (currtime.tv_sec >= (int)(starttime + duration)) {
+        if (duration > 0 && currtime.tv_sec >= (int)(starttime + duration)) {
           break;
         }
         if (bufofs == 0) {
@@ -326,7 +327,7 @@ int main(int argc, char** argv)
         }
     #endif /* SUBTRACT_TRANSMIT_TIME */
         // start time after test end?
-        if (currtime.tv_sec >= (int)(starttime + duration)) {
+        if (duration > 0 && currtime.tv_sec >= (int)(starttime + duration)) {
           break;
         }
         rcvbuf[len] = 0;  /* just to be sure, but should already be terminated by zero character in canonical mode */
