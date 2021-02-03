@@ -73,22 +73,22 @@ do
     MOVE_LOGS_TO_SDCARD="sudo rm -rf /var/log; sudo mkdir /media/card/log; sudo chmod 777 /media/card/log; mkdir /media/card/log/flocklab; sudo ln -sf /media/card/log /var/log; sudo reboot"
     APT_UPGRADE="sudo apt-get update && sudo apt-get --assume-yes dist-upgrade && sudo reboot"
     PRINT_DMESG="dmesg | tail"
-    SHOW_FL_LOG="tail -n 50 log/flocklab.log | grep -i program"
+    SHOW_FL_LOG="tail -n 50 log/flocklab.log"
 
     # choose the command to execute
-    COMMAND=${ }
+    COMMAND=${SHOW_FL_LOG}
+
+    echo "updated observer ${OBS}..."
+    sleep 1
 
     # regular command
-    #ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
+    ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
     # sudo command
     #@echo "$PASSWORD" | ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
     # update repository files
     #rsync ${RSYNCPARAMS} -q -e "ssh -q -p ${PORT}" . ${USER}@${HOSTPREFIX}${OBS}:observer 2>&1
-    if [ $? -eq 0 ]; then
-        echo "successfully updated observer ${OBS}"
-    else
+    if [ $? -ne 0 ]; then
         echo "FAILED to update observer ${OBS}"
-        sleep 1
     fi
 done
 
