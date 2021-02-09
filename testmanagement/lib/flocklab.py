@@ -109,6 +109,7 @@ rl_max_samples  = 100000000
 rl_time_offset  = -0.0037       # rocketlogger is about ~3.7ms behind the actual time
 max_act_events  = 1024          # max. number of actuation events
 i2c_bus         = 2             # I2C2 is used to control the DAC and read the SHT31 sensor
+max_swo_speed   = 4000000       # max. supported SWO speed by the JLink OB debug probe
 
 # paths
 configfile   = '/home/flocklab/observer/testmanagement/config.ini'
@@ -1173,16 +1174,14 @@ def stop_gdb_server():
 # start_data_trace
 #
 ##############################################################################
-def start_data_trace(platform=None, dwtconfig=None, outputfile=None, cpuspeed=None):
+def start_data_trace(platform=None, dwtconfig=None, outputfile=None, cpuspeed=None, prescaler=None, loopdelay=None):
     if not platform or not outputfile or not dwtconfig:
         return FAILED
-    if not cpuspeed:
-        # use the default speed
-        if "dpp2lora" in platform.lower():
-            cpuspeed = 80000000
-        elif "nrf5" in platform.lower():
-            cpuspeed = 64000000
     cmd = [config.get("observer", "datatraceservice"), '--output=%s' % outputfile, '--platform=%s' % platform, '--config=%s' % dwtconfig, '--speed=%d' % parse_int(cpuspeed)]
+    if prescaler:
+        cmd.append('--timescale=%s' % str(prescaler))
+    if loopdelay:
+        cmd.append('--delay=%s' % str(loopdelay))
     p = subprocess.Popen(cmd)
     rs = p.wait()
     if rs != SUCCESS:

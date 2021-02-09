@@ -344,6 +344,12 @@ def main(argv):
         port = 0
         if tree.find('obsDebugConf/gdbPort') != None:
             port = int(tree.findtext('obsDebugConf/gdbPort'))
+        prescaler = None
+        if tree.find('obsDebugConf/prescaler') != None:
+            prescaler = int(tree.findtext('obsDebugConf/prescaler'))
+        loopdelay = None
+        if tree.find('obsDebugConf/loopDelay') != None:
+            loopdelay = int(tree.findtext('obsDebugConf/loopDelay'))
         # make sure mux is enabled
         flocklab.tg_mux_en(True)
         # data trace config
@@ -363,7 +369,7 @@ def main(argv):
             with open(datatracefile, "w") as f:
                 f.write("%s " % (" ".join(varnames)))
                 f.flush()
-            if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile, cpuSpeed) != flocklab.SUCCESS:
+            if flocklab.start_data_trace(platform, ','.join(dwtvalues), datatracefile, cpuSpeed, prescaler, loopdelay) != flocklab.SUCCESS:
                 msg = "Failed to start data tracing service."
                 if abortonerror:
                     flocklab.tg_off()

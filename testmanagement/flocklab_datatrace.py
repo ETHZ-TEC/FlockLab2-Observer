@@ -41,8 +41,8 @@ import lib.dwt as dwt
 
 debug     = False
 pidfile   = None
-prescaler = 16     # prescaler for local timestamps
-loopdelay = 10     # SWO read loop delay in ms (recommended values: 10 - 100ms)
+prescaler = 16     # default prescaler for local timestamps
+loopdelay = 10     # default SWO read loop delay in ms (recommended values: 10 - 100ms)
 
 scriptname = os.path.splitext(os.path.basename(__file__))[0]
 
@@ -119,6 +119,8 @@ def stop_daemon():
 def main(argv):
     global pidfile
     global debug
+    global loopdelay
+    global prescaler
 
     stop     = False
     filename = None
@@ -126,7 +128,7 @@ def main(argv):
     dwtconf  = None
     reset    = False
     cpuspeed = None
-    swospeed = 4000000
+    swospeed = flocklab.max_swo_speed
 
     # Get config:
     config = flocklab.get_config()
@@ -135,7 +137,7 @@ def main(argv):
 
     # Get command line parameters.
     try:
-        opts, args = getopt.getopt(argv, "eho:p:c:s:d", ["stop", "help", "output=", "platform=", "config=", "speed=", "debug"])
+        opts, args = getopt.getopt(argv, "eho:p:c:s:vd:t:", ["stop", "help", "output=", "platform=", "config=", "speed=", "debug", "delay=", "timescale="])
     except(getopt.GetoptError) as err:
         flocklab.error_logandexit(str(err), errno.EINVAL)
     for opt, arg in opts:
@@ -150,6 +152,10 @@ def main(argv):
             platform = arg
         elif opt in ("-c", "--config"):
             dwtconf = arg
+        elif opt in ("-d", "--delay"):
+            loopdelay = flocklab.parse_int(arg)
+        elif opt in ("-t", "--timescale"):    # timestamp prescaler
+            prescaler = flocklab.parse_int(arg)
         elif opt in ("--debug"):
             debug = True
         elif opt in ("-s", "--speed"):
@@ -184,7 +190,7 @@ def main(argv):
     flocklab.tg_mux_en(True)
     flocklab.tg_act_en(True)
 
-    # make sure the SWO speed is an integer multple of cpuspeed
+    # make sure the SWO speed is an integer multiple of cpuspeed
     if cpuspeed and swospeed:
         if swospeed > cpuspeed:
             swospeed = cpuspeed
@@ -232,7 +238,7 @@ def main(argv):
                 while len(dwtvalues) < 4:
                     dwtvalues.append([None, None, None, None])
                 # apply config
-                logger.info("Configuring data trace service for MCU %s with prescaler %d..." % (flocklab.jlink_mcu_str(platform), prescaler))
+                logger.info("Configuring data trace service for MCU %s with prescaler %d and loop delay %dms..." % (flocklab.jlink_mcu_str(platform), prescaler, loopdelay))
                 dwt.config_dwt_for_data_trace(device_name=flocklab.jlink_mcu_str(platform), ts_prescaler=prescaler,
                                               trace_address0=dwtvalues[0][0], access_mode0=dwtvalues[0][1], trace_pc0=dwtvalues[0][2], size0=dwtvalues[0][3],
                                               trace_address1=dwtvalues[1][0], access_mode1=dwtvalues[1][1], trace_pc1=dwtvalues[1][2], size1=dwtvalues[1][3],
