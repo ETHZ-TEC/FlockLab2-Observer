@@ -74,17 +74,20 @@ do
     APT_UPGRADE="sudo apt-get update && sudo apt-get --assume-yes dist-upgrade && sudo reboot"
     PRINT_DMESG="dmesg | tail"
     SHOW_FL_LOG="tail -n 50 log/flocklab.log"
+    SHOW_KERNEL_VS="uname -r"
+    KERNEL_UPDATE="sudo /opt/scripts/tools/update_kernel.sh && sudo apt-get install linux-headers-4.14.108-ti-r137 && sudo reboot"
+    INSTALL_KERNEL_MODULES="cd ~/observer/various/actuation && sudo make install && sudo depmod && sudo reboot"
 
     # choose the command to execute
     COMMAND=${SHOW_FL_LOG}
 
-    echo "updated observer ${OBS}..."
+    echo "observer ${OBS}..."
     sleep 1
 
     # regular command
     ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
     # sudo command
-    #@echo "$PASSWORD" | ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
+    #echo "$PASSWORD" | ssh -q -tt -p ${PORT} ${USER}@${HOSTPREFIX}${OBS} "${COMMAND}"
     # update repository files
     #rsync ${RSYNCPARAMS} -q -e "ssh -q -p ${PORT}" . ${USER}@${HOSTPREFIX}${OBS}:observer 2>&1
     if [ $? -ne 0 ]; then
