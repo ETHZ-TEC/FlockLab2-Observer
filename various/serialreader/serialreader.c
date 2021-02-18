@@ -134,8 +134,8 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
     cfmakeraw(&tty);
     memset(tty.c_cc, 0, sizeof(tty.c_cc));
     /* note: at 1MBaud, there will be one byte every 10us (and one interrupt per byte if VMIN is set to 1) */
-    tty.c_cc[VMIN]  = 64;     /* at least 64 characters */
-    tty.c_cc[VTIME] = 5;      /* read timeout of 500ms */
+    tty.c_cc[VMIN]  = 32;     /* at least 1 character */
+    tty.c_cc[VTIME] = 1;      /* read timeout of 100ms */
   }
   tty.c_iflag  = 0;           /* clear input flags */
   tty.c_iflag |= IGNCR;       /* ignore carriage return */
@@ -167,6 +167,7 @@ int main(int argc, char** argv)
   struct timespec currtime;
   struct timespec prevtime;
   unsigned long   bufofs      = 0;
+  bool            rawmode     = false;
 
   if (argc > 1) {
     // first parameter is the port
@@ -176,6 +177,9 @@ int main(int argc, char** argv)
     // 2nd argument is the baudrate
     baudrate = strtol(argv[2], NULL, 10);
   }
+  /*if (baudrate > 460800) {
+    rawmode = true;
+  }*/
   if (argc > 3) {
     // 3rd argument is the output filename
     outfilename = argv[3];
@@ -200,7 +204,7 @@ int main(int argc, char** argv)
     printf("error opening %s: %s\n", portname, strerror(errno));
     return 1;
   }
-  if (set_interface_attributes(fd, baudrate, baudrate <= 500000) != 0) {
+  if (set_interface_attributes(fd, baudrate, !rawmode) != 0) {
     printf("failed to set attributes for device\n");
     close(fd);
     return 2;
@@ -238,8 +242,7 @@ int main(int argc, char** argv)
   // flush input queue
   tcflush(fd, TCIFLUSH);
 
-  // use RAW mode for high baudrates (otherwise data loss will occur)
-  if (baudrate > 500000) {
+  if (rawmode) {
 
     while (running && (duration == 0 || (unsigned int)time(NULL) < (starttime + duration))) {
       int len = read(fd, rcvbuf + bufofs, sizeof(rcvbuf) - 1 - bufofs);
