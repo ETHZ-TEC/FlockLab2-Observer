@@ -68,36 +68,44 @@ def usage():
 #
 ##############################################################################
 def prog_msp430(imagefile, port, speed=38400):
+    tries = 2
 
-    # both pins low
-    flocklab.gpio_clr(flocklab.gpio_tg_nrst)
-    flocklab.gpio_clr(flocklab.gpio_tg_prog)
-    time.sleep(0.001)
+    while tries:
+        # both pins low
+        flocklab.gpio_clr(flocklab.gpio_tg_nrst)
+        flocklab.gpio_clr(flocklab.gpio_tg_prog)
+        time.sleep(0.001)
 
-    # toggle TEST pin to trigger BSL entry
-    flocklab.gpio_set(flocklab.gpio_tg_prog)
-    time.sleep(0.001)
-    flocklab.gpio_clr(flocklab.gpio_tg_prog)
-    time.sleep(0.001)
-    flocklab.gpio_set(flocklab.gpio_tg_prog)
-    time.sleep(0.001)
+        # toggle TEST pin to trigger BSL entry
+        flocklab.gpio_set(flocklab.gpio_tg_prog)
+        time.sleep(0.001)
+        flocklab.gpio_clr(flocklab.gpio_tg_prog)
+        time.sleep(0.001)
+        flocklab.gpio_set(flocklab.gpio_tg_prog)
+        time.sleep(0.001)
 
-    # release reset
-    flocklab.gpio_set(flocklab.gpio_tg_nrst)
-    time.sleep(0.001)
-    flocklab.gpio_clr(flocklab.gpio_tg_prog)
-    # bootloader should start now
+        # release reset
+        flocklab.gpio_set(flocklab.gpio_tg_nrst)
+        time.sleep(0.001)
+        flocklab.gpio_clr(flocklab.gpio_tg_prog)
+        # bootloader should start now
 
-    # currently only runs with python2.7
-    cmd = ["python2.7", "-m", "msp430.bsl5.uart", "-p", port, "-e", "-S", "-V", "--no-start", "--speed=%d" %speed, "-i", "ihex", "-P", imagefile]
-    if debug:
-        cmd.append("-v")
-        cmd.append("--debug")
-    rs = subprocess.call(cmd)
-    if rs != 0:
+        # currently only runs with python2.7
+        cmd = ["python2.7", "-m", "msp430.bsl5.uart", "-p", port, "-e", "-S", "-V", "--no-start", "--speed=%d" %speed, "-i", "ihex", "-P", imagefile]
+        if debug:
+            cmd.append("-v")
+            cmd.append("--debug")
+        rs = subprocess.call(cmd)
+        if rs == 0:
+            break
+
+        tries = tries - 1
+
+    if tries > 0:
+        return flocklab.SUCCESS
+    else:
         return flocklab.FAILED
-    return flocklab.SUCCESS
-### END reprog_cc430()
+### END reprog_msp430()
 
 
 ##############################################################################
@@ -127,17 +135,17 @@ def prog_msp432(imagefile, port, speed):
             cmd.append("-v")
             cmd.append("--debug")
         rs = subprocess.call(cmd)
-        if rs != 0:
-            if tries <= 1:
-                return flocklab.FAILED
-        else:
+        if rs == 0:
             break
+
         tries = tries - 1
 
-    if tries < 10:
-        flocklab.log_info("Took %d tries to flash the target via BSL." % (11 - tries))
-
-    return flocklab.SUCCESS
+    if tries < 1:
+        return flocklab.FAILED
+    else:
+        if tries < 10:
+            flocklab.log_debug("Took %d tries to flash the target via BSL." % (11 - tries))
+        return flocklab.SUCCESS
 ### END prog_msp432()
 
 
