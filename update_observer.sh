@@ -41,7 +41,7 @@ INSTALL=1       # whether to recompile and install programs on the observer (wil
 PORT=2322
 USER="flocklab"
 HOSTPREFIX="fl-"
-OBSIDS="01 02 03 04 05 06 07 08 09 10 11 12 13 15 16 17 19 20 21 22 23 24 25 26 27 28 29 30 31 32"
+OBSIDSLIST="01 02 03 04 05 06 07 08 09 10 11 12 13 15 16 17 19 20 21 22 23 24 25 26 27 28 29 30 31 32"
 SRCDIR="."
 DESTDIR="observer"
 RSYNCPARAMS=" -a -z -c --timeout=5 --exclude=.git --no-perms --no-owner --no-group"  # --delete
@@ -50,11 +50,9 @@ PASSWORD=""     # script will query password if left blank
 
 # check arguments
 if [ $# -gt 0 ]; then
-    if [[ ! $OBSIDS = *"$1"* ]] || [ ${#1} -ne 2 ]; then
-        echo "Invalid observer $1. Valid options are: ${OBSIDS}."
-        exit 1
-    fi
-    OBSIDS=$1
+    OBSIDS="$@"
+else
+    OBSIDS=$OBSIDSLIST
 fi
 
 echo "Going to update files on FlockLab observer(s) $OBSIDS..."
@@ -71,6 +69,14 @@ function getpw {
 
 for OBS in $OBSIDS
 do
+    if [ ${#OBS} -eq 1 ]; then
+        OBS="0$OBS"
+    fi
+    if [[ ! $OBSIDSLIST = *"$OBS"* ]] || [ ${#OBS} -ne 2 ]; then
+        echo "Invalid observer ID $OBS (skipped)."
+        continue
+    fi
+
     # get a list of modified files (-c option to use checksum to determine changes)
     RES=$(rsync ${RSYNCPARAMS} -i --dry-run -e "ssh -q -p ${PORT}" ${SRCDIR} ${USER}@${HOSTPREFIX}${OBS}:${DESTDIR}  2>&1)
     if [ $? -ne 0 ]; then

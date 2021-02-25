@@ -403,6 +403,10 @@ def main(argv):
             flocklab.tg_pwr_en(True)
     elif target == 'nrf5':
         rs = prog_swd(imagefile, "nRF52840_xxAA")
+        # power cycle to make sure the debug circuit is disabled
+        flocklab.tg_pwr_en(False)
+        time.sleep(1)
+        flocklab.tg_pwr_en(True)
     elif target in ('tmote', 'telosb', 'sky'):
         rs = prog_telosb(imagefile)
         tries = 2
