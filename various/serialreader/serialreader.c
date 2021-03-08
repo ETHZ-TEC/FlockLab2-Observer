@@ -41,6 +41,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdarg.h>
 #include <termios.h>
 #include <unistd.h>
 #include <time.h>
@@ -49,10 +50,70 @@
 
 #define SUBTRACT_TRANSMIT_TIME      1    // subtract the estimated transfer time over uart from the receive timestamp
 #define TIME_OFFSET                 100  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
+#define START_OFFSET_MS             500  // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time)
 #define RECEIVE_BUFFER_SIZE         1024
+#define LOG_VERBOSITY               LOG_DEBUG
+#define LOG_FILENAME                "/home/flocklab/log/serialreader.log"
+#define LOG_PRINT_STDOUT            1    // also print log to stdout?
+
+
+enum log_level {
+  LOG_ERROR = 0,
+  LOG_WARNING = 1,
+  LOG_INFO = 2,
+  LOG_DEBUG = 3,
+};
+typedef enum log_level log_level_t;
 
 
 bool running = true;
+
+
+void fl_log(log_level_t log_level, char const *const format, ...)
+{
+  static const char* levelstr[] = { "ERROR\t", "WARN\t", "INFO\t", "DEBUG\t" };
+
+  // get arguments
+  va_list args;
+  va_start(args, format);
+
+  // get current time
+  time_t time_raw;
+  struct tm *time_info;
+  char time_str[24];
+
+  time(&time_raw);
+  time_info = gmtime(&time_raw);
+  strftime(time_str, sizeof(time_str), "%F %T\t", time_info);
+
+  if (log_level <= LOG_VERBOSITY) {
+    // open log file
+    FILE *log_fp = fopen(LOG_FILENAME, "a");
+    if (log_fp == NULL) {
+      printf("Error: failed to open log file %s\n", LOG_FILENAME);
+    } else {
+      // write time, log level, and message to log file
+      fprintf(log_fp, time_str);
+      fprintf(log_fp, levelstr[log_level]);
+      vfprintf(log_fp, format, args);
+      fprintf(log_fp, "\n");
+      fclose(log_fp);
+    }
+
+    if (LOG_PRINT_STDOUT) {
+      // also print to stdout
+      struct timespec ts;
+      clock_gettime(CLOCK_REALTIME, &ts);
+      printf("[%ld.%03ld] ", ts.tv_sec, ts.tv_nsec / 1000000);
+      printf(levelstr[log_level]);
+      vprintf(format, args);
+      printf("\n");
+      fflush(stdout);
+    }
+  }
+
+  va_end(args);
+}
 
 
 static void sig_handler(int sig_num)
@@ -70,7 +131,7 @@ int register_sighandler(void)
   signal_action.sa_flags = 0;
   if (sigaction(SIGTERM, &signal_action, NULL) < 0 ||
       sigaction(SIGINT, &signal_action, NULL)  < 0) {
-    printf("can't register signal handler");
+    fl_log(LOG_ERROR, "can't register signal handler");
     return 1;
   }
   return 0;
@@ -106,7 +167,7 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
   struct termios tty;
 
   if (tcgetattr(fd, &tty) < 0) {
-    printf("error from tcgetattr: %s\n", strerror(errno));
+    fl_log(LOG_ERROR, "error from tcgetattr: %s", strerror(errno));
     return 1;
   }
 
@@ -127,7 +188,7 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
   tty.c_lflag  = 0;           /* clear local flags */
 
   if (canonical_mode) {
-    printf("using canonical mode\n");
+    fl_log(LOG_DEBUG, "using canonical mode");
     tty.c_lflag |= ICANON;    /* canonical mode */
   } else {
     tty.c_lflag &= ~ICANON;   /* clear canonical mode bit */
@@ -143,10 +204,10 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
   //tty.c_iflag |= INPCK;       /* enable input paritiy checking */
   //tty.c_iflag |= IGNPAR;      /* ignore framing and parity errors */
 
-  printf("tty config: 0x%x, 0x%x, 0x%x, 0x%x\n", tty.c_iflag, tty.c_oflag, tty.c_cflag, tty.c_lflag);
+  fl_log(LOG_DEBUG, "tty config: 0x%x, 0x%x, 0x%x, 0x%x", tty.c_iflag, tty.c_oflag, tty.c_cflag, tty.c_lflag);
 
   if (tcsetattr(fd, TCSANOW, &tty) != 0) {
-    printf("error from tcsetattr: %s\n", strerror(errno));
+    fl_log(LOG_ERROR, "error from tcsetattr: %s", strerror(errno));
     return 3;
   }
   return 0;
@@ -195,31 +256,31 @@ int main(int argc, char** argv)
   if (argc > 5) {
     // 5th argument is the duration
     duration = strtol(argv[5], NULL, 10);
-    printf("logging duration: %us\n", duration);
+    fl_log(LOG_INFO, "logging duration: %us", duration);
   }
 
   // open the serial device
   fd = open(portname, O_RDONLY | O_NOCTTY);
   if (fd < 0) {
-    printf("error opening %s: %s\n", portname, strerror(errno));
+    fl_log(LOG_ERROR, "error opening %s: %s", portname, strerror(errno));
     return 1;
   }
   if (set_interface_attributes(fd, baudrate, !rawmode) != 0) {
-    printf("failed to set attributes for device\n");
+    fl_log(LOG_ERROR, "failed to set attributes for device");
     close(fd);
     return 2;
   }
 
-  printf("connected to port %s (baudrate: %lu)\n", portname, baudrate);
+  fl_log(LOG_INFO, "connected to port %s (baudrate: %lu)", portname, baudrate);
 
   if (outfilename) {
     logfile = fopen(outfilename, "w");
     if (!logfile) {
-      printf("failed to open log file %s\n", outfilename);
+      fl_log(LOG_ERROR, "failed to open log file %s", outfilename);
       close(fd);
       return 3;
     }
-    printf("logging output to file %s\n", outfilename);
+    fl_log(LOG_INFO, "logging output to file %s", outfilename);
   }
 
   if (register_sighandler() != 0) {
@@ -230,10 +291,17 @@ int main(int argc, char** argv)
   if (starttime) {
     struct timespec currtime;
     clock_gettime(CLOCK_REALTIME, &currtime);
-    unsigned int diff_sec  = (starttime - currtime.tv_sec);
-    unsigned int diff_usec = (1000000 - (currtime.tv_nsec / 1000));
-    if ((unsigned long)currtime.tv_sec < starttime) {
-      printf("waiting for start time... (%u.%06uus)", (diff_sec - 1), diff_usec);
+    // append the start offset
+    currtime.tv_sec  += (START_OFFSET_MS / 1000);
+    currtime.tv_nsec += (START_OFFSET_MS % 1000) * 1000000;
+    if (currtime.tv_nsec > 1e9) {
+      currtime.tv_sec++;
+      currtime.tv_nsec -= 1e9;
+    }
+    int diff_sec  = (starttime - currtime.tv_sec);
+    int diff_usec = (1000000 - (currtime.tv_nsec / 1000));
+    if (diff_sec > 0) {
+      fl_log(LOG_DEBUG, "waiting for start time... (%u.%06us)", (diff_sec - 1), diff_usec);
       fflush(stdout);
       sleep(diff_sec - 1);
       usleep(diff_usec);
@@ -305,7 +373,7 @@ int main(int argc, char** argv)
         } while (1);
 
       } else if (len < 0) {
-        printf("read error: %s\n", strerror(errno));
+        fl_log(LOG_ERROR, "read error: %s", strerror(errno));
         break;
       }
     }
@@ -347,10 +415,10 @@ int main(int argc, char** argv)
           fflush(stdout);
         }
       } else if (len < 0) {
-        printf("read error: %s\n", strerror(errno));
+        fl_log(LOG_WARNING, "read error: %s", strerror(errno));
         break;
       } else {  /* len == 0 */
-        printf("read timeout\n");
+        fl_log(LOG_WARNING, "read timeout");
       }
     }
   }
@@ -359,7 +427,7 @@ int main(int argc, char** argv)
     fclose(logfile);
   }
   close(fd);
-  printf("\b\bterminated\n");
+  fl_log(LOG_DEBUG, "\b\bterminated");
 
   return 0;
 }
