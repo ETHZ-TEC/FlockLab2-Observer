@@ -79,12 +79,10 @@ void fl_log(log_level_t log_level, char const *const format, ...)
 
   // get current time
   time_t time_raw;
-  struct tm *time_info;
   char time_str[24];
 
   time(&time_raw);
-  time_info = gmtime(&time_raw);
-  strftime(time_str, sizeof(time_str), "%F %T\t", time_info);
+  strftime(time_str, sizeof(time_str), "%F %T\t", gmtime(&time_raw));
 
   if (log_level <= LOG_VERBOSITY) {
     // open log file
@@ -102,9 +100,7 @@ void fl_log(log_level_t log_level, char const *const format, ...)
 
     if (LOG_PRINT_STDOUT) {
       // also print to stdout
-      struct timespec ts;
-      clock_gettime(CLOCK_REALTIME, &ts);
-      printf("[%ld.%03ld] ", ts.tv_sec, ts.tv_nsec / 1000000);
+      printf(time_str);
       printf(levelstr[log_level]);
       vprintf(format, args);
       printf("\n");
@@ -200,8 +196,8 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
   }
   tty.c_iflag  = 0;           /* clear input flags */
   tty.c_iflag |= IGNCR;       /* ignore carriage return */
+  tty.c_iflag |= IGNBRK;      /* ignore break */
   //tty.c_iflag |= ISTRIP;      /* strip off 8th bit (ensures character is ASCII) */
-  //tty.c_iflag |= INPCK;       /* enable input paritiy checking */
   //tty.c_iflag |= IGNPAR;      /* ignore framing and parity errors */
 
   fl_log(LOG_DEBUG, "tty config: 0x%x, 0x%x, 0x%x, 0x%x", tty.c_iflag, tty.c_oflag, tty.c_cflag, tty.c_lflag);
@@ -373,7 +369,7 @@ int main(int argc, char** argv)
         } while (1);
 
       } else if (len < 0) {
-        fl_log(LOG_ERROR, "read error: %s", strerror(errno));
+        fl_log(LOG_WARNING, "read error: %s", strerror(errno));
         break;
       }
     }
@@ -415,6 +411,7 @@ int main(int argc, char** argv)
           fflush(stdout);
         }
       } else if (len < 0) {
+        fflush(logfile);
         fl_log(LOG_WARNING, "read error: %s", strerror(errno));
         break;
       } else {  /* len == 0 */
@@ -427,7 +424,7 @@ int main(int argc, char** argv)
     fclose(logfile);
   }
   close(fd);
-  fl_log(LOG_DEBUG, "\b\bterminated");
+  fl_log(LOG_DEBUG, "terminated");
 
   return 0;
 }
