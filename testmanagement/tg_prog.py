@@ -155,6 +155,8 @@ def prog_msp432(imagefile, port, speed):
 #
 ##############################################################################
 def prog_telosb(imagefile, speed=38400):
+    tries = 2
+
     if os.path.splitext(imagefile)[1] in (".exe", ".sky"):
         ret = os.system("objcopy -O ihex %s %s.ihex" % (imagefile, imagefile))
         if ret != 0:
@@ -166,22 +168,32 @@ def prog_telosb(imagefile, speed=38400):
         flocklab.log_error("Invalid file format, Intel hex file expected.")
         return -1
 
-    # check if the device exists
-    if not os.path.exists(flocklab.tg_usb_port):
-        flocklab.log_error("Device %s does not exist." % flocklab.tg_usb_port)
-        return flocklab.FAILED
+    while tries:
+        # check if the device exists
+        if not os.path.exists(flocklab.tg_usb_port):
+            flocklab.log_error("Device %s does not exist." % flocklab.tg_usb_port)
+            return flocklab.FAILED
 
-    # currently only runs with python2.7
-    #cmd = ["msp430-bsl-telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "-V", "-i", "ihex", "-P", imagefile]
-    # note: verify option ("-V") removed since it takes too much time (up to 25s)
-    cmd = ["python2.7", "-m", "msp430.bsl.target.telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
-    if debug:
-        cmd.append("-v")
-        cmd.append("--debug")
-    rs = subprocess.call(cmd)
-    if rs != 0:
-        return flocklab.FAILED
-    return flocklab.SUCCESS
+        # currently only runs with python2.7
+        #cmd = ["msp430-bsl-telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "-V", "-i", "ihex", "-P", imagefile]
+        # note: verify option ("-V") removed since it takes too much time (up to 25s)
+        cmd = ["python2.7", "-m", "msp430.bsl.target.telosb", "-p", flocklab.tg_usb_port, "-e", "-S", "--speed=%d" % speed, "-i", "ihex", "-P", imagefile]
+        if debug:
+            cmd.append("-v")
+            cmd.append("--debug")
+        rs = subprocess.call(cmd)
+        if rs == 0:
+            return flocklab.SUCCESS
+        tries = tries - 1
+
+        # power cycle
+        flocklab.log_warning("Power-cycling target...")
+        flocklab.tg_off()
+        time.sleep(0.5)
+        flocklab.tg_on()
+        time.sleep(2)
+
+    return flocklab.FAILED
 ### END reprog_cc430()
 
 
@@ -385,7 +397,7 @@ def main(argv):
     time.sleep(1)
 
     # Flash the target:
-    logger.info("Programming target %s with image %s..." % (target, imagefile))
+    logger.info("Programming target %s in slot %d with image %s..." % (target, flocklab.tg_get_selected(), imagefile))
     rs = flocklab.FAILED
     if target == 'dpp':
         rs = prog_dpp(imagefile, core)
@@ -409,21 +421,19 @@ def main(argv):
         flocklab.tg_pwr_en(True)
     elif target in ('tmote', 'telosb', 'sky'):
         rs = prog_telosb(imagefile)
-        tries = 2
-        while rs == flocklab.FAILED and tries > 0:
-            logger.info("Resetting USB hub and power cycling target...")
-            flocklab.tg_off()
-            # try to reset the USB hub and try again
+        if rs != flocklab.SUCCESS:
+            # reset the USB hub and try again
+            logger.info("Resetting USB hub...")
             if flocklab.usb_reset() != flocklab.SUCCESS:
-                logger.error("Failed to reset USB hub.");
-            flocklab.tg_act_en(True)
-            flocklab.tg_en(True)
-            flocklab.tg_pwr_en(True)
-            time.sleep(0.5)
-            flocklab.tg_mux_en(True)
+                logger.error("Failed to reset USB hub.")
             time.sleep(1)
+            # for some reason, it sometimes takes more than 10 seconds until the device becomes available
+            if not os.path.exists(flocklab.tg_usb_port):
+                logger.warning("Waiting for serial device %s..." % flocklab.tg_usb_port)
+                starttime = time.time()
+                while not os.path.exists(flocklab.tg_usb_port) and (time.time() - starttime) < 20:
+                    time.sleep(1)
             rs = prog_telosb(imagefile)
-            tries = tries - 1
     else:
         logger.error("Unknown target '%s'" % target)
 

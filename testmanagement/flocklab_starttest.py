@@ -204,6 +204,7 @@ def main(argv):
 
     # Enable MUX and power
     flocklab.tg_off()
+    time.sleep(0.1)
     flocklab.tg_on()
 
     # Pull down GPIO setting lines ---

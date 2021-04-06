@@ -851,8 +851,6 @@ def program_target(filename=None, platform=None, core=0, debug=False):
     if (p.returncode != SUCCESS):
         #shutil.move(image, '/tmp/failed_image_%s' % os.path.basename(image))
         #logger.debug("Moved file to /tmp. Command was: %s" % (" ".join(cmd)))
-        if logger:
-            logger.debug("Programming failed with error: %s. Output of script:\n%s" % (err.strip(), out.strip()))
         return FAILED
     return SUCCESS
 ### END program_target()

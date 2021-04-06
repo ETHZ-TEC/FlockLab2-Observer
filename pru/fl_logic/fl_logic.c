@@ -841,7 +841,7 @@ void parse_tracing_data_piecewise(const char* filename, unsigned long starttime_
   }
 
   if ((stoptime_s + 1) != last_sync_seconds) {
-    fl_log(LOG_WARNING, "calculated stop time (%lu) is != real stop time (%lu)", last_sync_seconds, stoptime_s + 1);
+    fl_log(LOG_WARNING, "calculated stop time (%lu) is != actual stop time (%lu)", last_sync_seconds, stoptime_s + 1);
   }
 
   // close files
