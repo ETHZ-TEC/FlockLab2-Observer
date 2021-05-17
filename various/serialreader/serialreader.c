@@ -52,6 +52,7 @@
 #define TIME_OFFSET                 100  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
 #define START_OFFSET_MS             500  // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time)
 #define RECEIVE_BUFFER_SIZE         1024
+#define PRINT_BUFFER_SIZE           (RECEIVE_BUFFER_SIZE + 128)
 #define LOG_VERBOSITY               LOG_DEBUG
 #define LOG_FILENAME                "/home/flocklab/log/serialreader.log"
 #define LOG_PRINT_STDOUT            1    // also print log to stdout?
@@ -197,7 +198,7 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
   tty.c_iflag  = 0;           /* clear input flags */
   tty.c_iflag |= IGNCR;       /* ignore carriage return */
   tty.c_iflag |= IGNBRK;      /* ignore break */
-  //tty.c_iflag |= ISTRIP;      /* strip off 8th bit (ensures character is ASCII) */
+  tty.c_iflag |= ISTRIP;      /* strip off 8th bit (ensures character is ASCII) */
   //tty.c_iflag |= IGNPAR;      /* ignore framing and parity errors */
 
   fl_log(LOG_DEBUG, "tty config: 0x%x, 0x%x, 0x%x, 0x%x", tty.c_iflag, tty.c_oflag, tty.c_cflag, tty.c_lflag);
@@ -213,7 +214,7 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
 int main(int argc, char** argv)
 {
   unsigned char   rcvbuf[RECEIVE_BUFFER_SIZE];
-  char            printbuf[RECEIVE_BUFFER_SIZE + 128];
+  char            printbuf[PRINT_BUFFER_SIZE];
   const char*     portname    = "/dev/ttyS5";
   const char*     outfilename = NULL;
   FILE*           logfile     = NULL;
@@ -224,7 +225,7 @@ int main(int argc, char** argv)
   struct timespec currtime;
   struct timespec prevtime;
   unsigned long   bufofs      = 0;
-  bool            rawmode     = false;
+  bool            rawmode     = true; // false;
 
   if (argc > 1) {
     // first parameter is the port
@@ -295,7 +296,7 @@ int main(int argc, char** argv)
       currtime.tv_nsec -= 1e9;
     }
     int diff_sec  = (starttime - currtime.tv_sec);
-    int diff_usec = (1000000 - (currtime.tv_nsec / 1000));
+    int diff_usec = (1e6 - (currtime.tv_nsec / 1000));
     if (diff_sec > 0) {
       fl_log(LOG_DEBUG, "waiting for start time... (%u.%06us)", (diff_sec - 1), diff_usec);
       fflush(stdout);
@@ -315,12 +316,12 @@ int main(int argc, char** argv)
         clock_gettime(CLOCK_REALTIME, &currtime);
         currtime.tv_nsec = currtime.tv_nsec / 1000;   // convert to us
     #if SUBTRACT_TRANSMIT_TIME
-        int transmit_time = (10000000 / baudrate) * len + TIME_OFFSET;   // 10 clock cycles per symbol (byte), plus const offset
-        if (currtime.tv_nsec < transmit_time) {
+        int transmit_time_ns = 1000 * ((1e7 / baudrate) * len + TIME_OFFSET);   // 10 clock cycles per symbol (byte), plus const offset
+        if (currtime.tv_nsec < transmit_time_ns) {
           currtime.tv_sec--;
-          currtime.tv_nsec = 1000000 - (transmit_time - currtime.tv_nsec);
+          currtime.tv_nsec = 1e9 - (transmit_time_ns - currtime.tv_nsec);
         } else {
-          currtime.tv_nsec -= transmit_time;
+          currtime.tv_nsec -= transmit_time_ns;
         }
     #endif /* SUBTRACT_TRANSMIT_TIME */
         // start time after test end?
@@ -344,7 +345,11 @@ int main(int argc, char** argv)
             break;
           }
           if (logfile) {
-            int prlen = sprintf(printbuf, "%ld.%06ld,%s\n", prevtime.tv_sec, prevtime.tv_nsec, rcvbuf);
+            int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,%s\n", prevtime.tv_sec, prevtime.tv_nsec, rcvbuf);
+            if (!prlen) {
+              fl_log(LOG_ERROR, "invalid print length\r\n");
+              break;
+            }
             fwrite(printbuf, prlen, 1, logfile);
             //fflush(logfile);
           } else {
@@ -353,6 +358,13 @@ int main(int argc, char** argv)
           }
           // copy the remainder of the input string to the beginning of the buffer
           if (nlpos) {
+            // increment the timestamp by the transmit time
+            int transmit_time_ns = 1000 * ((1e7 / baudrate) * ((unsigned int)nlpos - (unsigned int)rcvbuf));
+            currtime.tv_nsec += transmit_time_ns;
+            if (currtime.tv_nsec > 1e9) {
+              currtime.tv_sec++;
+              currtime.tv_nsec -= 1e9;
+            }
             bufofs = 0;
             while (*nlpos) {
               rcvbuf[bufofs++] = *nlpos;
@@ -385,12 +397,12 @@ int main(int argc, char** argv)
         clock_gettime(CLOCK_REALTIME, &currtime);
         currtime.tv_nsec = currtime.tv_nsec / 1000;   // convert to us
     #if SUBTRACT_TRANSMIT_TIME
-        int transmit_time = (10000000 / baudrate) * len + TIME_OFFSET;   // 10 clock cycles per symbol (byte), plus const offset
-        if (currtime.tv_nsec < transmit_time) {
+        int transmit_time_ns = 1000 * ((1e7 / baudrate) * len + TIME_OFFSET);   // 10 clock cycles per symbol (byte), plus const offset
+        if (currtime.tv_nsec < transmit_time_ns) {
           currtime.tv_sec--;
-          currtime.tv_nsec = 1000000 - (transmit_time - currtime.tv_nsec);
+          currtime.tv_nsec = 1e9 - (transmit_time_ns - currtime.tv_nsec);
         } else {
-          currtime.tv_nsec -= transmit_time;
+          currtime.tv_nsec -= transmit_time_ns;
         }
     #endif /* SUBTRACT_TRANSMIT_TIME */
         // start time after test end?
@@ -399,7 +411,11 @@ int main(int argc, char** argv)
         }
         rcvbuf[len] = 0;  /* just to be sure, but should already be terminated by zero character in canonical mode */
         if (logfile) {
-          int prlen = sprintf(printbuf, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
+          int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
+          if (!prlen) {
+            fl_log(LOG_ERROR, "invalid print length\r\n");
+            break;
+          }
           if (printbuf[prlen - 1] != '\n') {
             printbuf[prlen++] = '\n';
             printbuf[prlen] = 0;
