@@ -381,6 +381,7 @@ int main(int argc, char** argv)
         } while (1);
 
       } else if (len < 0) {
+        fflush(logfile);
         fl_log(LOG_WARNING, "read error: %s", strerror(errno));
         break;
       }
