@@ -104,7 +104,10 @@ def start_logger(outputfile=None):
                         logger.debug("Start sequence found.")
                         sys.stdin.flush()   # discard input
                 else:
-                    f.write("%.7f,%s\n" % (time.time(), line))
+                    try:
+                        f.write("%.7f,%s\n" % (time.time(), line))
+                    except UnicodeEncodeError:
+                        pass
     except Exception:
         logger.error("Encountered error: %s\n%s" % (str(sys.exc_info()[1]), traceback.format_exc()))
         return flocklab.FAILED

@@ -516,6 +516,7 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
 
     jlink.memory_write32(0xe0000fd0, zero)
 
+    jlink.reset(halt=False)
     jlink.close()
 
     return 0
@@ -578,7 +579,7 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
         jlink.set_tif(pylink.enums.JLinkInterfaces.SWD)
 
         try:
-            jlink.connect(device_name, verbose=True)
+            jlink.connect(device_name, verbose=False)
         except:
             log('could not connect to the target')
             return 1
@@ -596,11 +597,12 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
         if logging_on:
             log('target CPU speed is %d Hz, using SWO speed %d Hz' % (cpu_speed, swo_speed))
 
+        # Make sure the target is release from reset
+        jlink.set_reset_pin_high()
+
         # Start logging serial wire output.
-        #if cpu_speed:
-        #    jlink.swo_enable(cpu_speed=cpu_speed, swo_speed=swo_speed, port_mask=0xffffffff)   # enable SWO on the target and set the CPU and SWO speed
-        #else:
-        jlink.swo_start(swo_speed)
+        #jlink.swo_enable(cpu_speed=cpu_speed, swo_speed=swo_speed, port_mask=0xffffffff)
+        jlink.swo_start(swo_speed)    # same as swo_enable()
         jlink.swo_flush()
 
         loop_delay_in_s = loop_delay_in_ms/1000

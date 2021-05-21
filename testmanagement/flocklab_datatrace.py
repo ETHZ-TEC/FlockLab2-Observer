@@ -124,7 +124,6 @@ def main(argv):
     filename = None
     platform = None
     dwtconf  = None
-    reset    = False
     cpuspeed = None
     swospeed = flocklab.max_swo_speed
 
@@ -234,6 +233,7 @@ def main(argv):
                 # apply config
                 logger.info("Configuring data trace service for MCU %s with prescaler %d and loop delay %dms..." % (flocklab.jlink_mcu_str(platform), prescaler, loopdelay))
                 # make sure target is released from reset state before configuring the MCU
+                reset = False
                 if flocklab.gpio_get(flocklab.gpio_tg_nrst) == 0:
                     flocklab.tg_reset()
                     reset = True
@@ -243,13 +243,12 @@ def main(argv):
                                               trace_address2=dwtvalues[2][0], access_mode2=dwtvalues[2][1], trace_pc2=dwtvalues[2][2], size2=dwtvalues[2][3],
                                               trace_address3=dwtvalues[3][0], access_mode3=dwtvalues[3][1], trace_pc3=dwtvalues[3][2], size3=dwtvalues[3][3],
                                               swo_speed=swospeed, cpu_speed=cpuspeed)
+                if reset:
+                    flocklab.tg_reset(False)
             else:
                 logger.warning("No configuration found for data trace service.")
         except:
             flocklab.error_logandexit("Failed to configure data trace service (%s).\n%s" % (str(sys.exc_info()[1]), traceback.format_exc()))
-
-    if reset:
-        flocklab.tg_reset(False)
 
     logger.info("Starting SWO read (output file: %s, CPU speed: %s, SWO speed: %s)." % (filename, str(cpuspeed), str(swospeed)))
 
