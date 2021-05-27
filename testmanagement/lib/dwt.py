@@ -313,15 +313,15 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
         # convert variable size in bytes to the corresponding DWT mask register value
         try:
             size = int(size)
-            if size == 1:
-                size = 0
-            elif size == 2:
-                size = 1
-            else:
-                size = 2    # default (4 bytes)
+            if size == 0:
+                size = 4
         except:
-            size = 2        # default (4 bytes)
-        return size
+            size = 4        # default (4 bytes)
+        logsize = -1
+        while size:
+            size = size >> 1
+            logsize = logsize + 1
+        return logsize
 
 
     # convert in case wrong type given as input
