@@ -107,7 +107,7 @@ rl_default_rate = 1000
 rl_samp_rates   = [1, 10, 100, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
 rl_max_samples  = 100000000
 rl_time_offset  = -0.0037       # rocketlogger is about ~3.7ms behind the actual time
-max_act_events  = 1024          # max. number of actuation events
+max_act_events  = 2000          # max. number of actuation events
 i2c_bus         = 2             # I2C2 is used to control the DAC and read the SHT31 sensor
 max_swo_speed   = 4000000       # max. supported SWO speed by the JLink OB debug probe
 
