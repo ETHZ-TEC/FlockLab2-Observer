@@ -37,8 +37,9 @@ Author: Reto Da Forno
 Helper script that utilizes fl_logic on a BeagleBone to collect signal traces
 
 Notes:
-- 8 pins are traces (P8.39 - P8.46)
+- 8 pins can be traced (P8.39 - P8.46)
 - pin P8.40 can also be used as an output (fl_logic will set it high at the beginning of the test and low at the end)
+- connect one of the ground pins as well (e.g. P9.43 - P9.46)
 
 How to:
 - make sure the beaglebone is accessible via SSH (adjust your ssh config to include the key file and port number)
@@ -61,9 +62,13 @@ import flocklab
 
 # --- config ---
 
-host      = "fl-03"
-outputdir = "/tmp/fl_logic_analyzer"
+host      = "192.168.7.2"
+outputdir = "/tmp/fl_logic"
 showplot  = True
+
+pinmapping = {
+  "P845": "LED1", "P846": "LED2", "P843": "LED3", "P844": "INT1", "P841": "INT2", "P842": "SIG2", "P839": "SIG2", "P840": "nRST", "P827": "PPS"
+}
 
 
 def usage(argv):
@@ -155,13 +160,18 @@ def main(argv):
     filename = outputdir + '/' + filename + ".csv"
     with open(filename, 'r') as csvinfile, open(outputdir + '/gpiotracing.csv', 'w') as csvoutfile:
         csvoutfile.write("timestamp,node_id,pin_name,value\n")
+        csvoutfile.write("0.0000000,1,nRST,1\n")    # required by flocklab-tools for plotting (for plotting)
+        timestamp = 0
         for line in csvinfile.readlines():
             try:
                 (timestamp, pin, val) = line.split(',', 2)
+                if pin in pinmapping:
+                    pin = pinmapping[pin]     # pins must be renamed such that the flocklab-tools recognize it (for plotting)
             except:
                 print("failed to parse line %s" % line)
                 continue
             csvoutfile.write("%s,1,%s,%s" % (timestamp, pin, val))
+        csvoutfile.write("%.7f,1,nRST,0\n" % (float(timestamp) + 1.0))    # required by flocklab-tools (for plotting)
     os.remove(filename)
     if not os.path.isfile(outputdir + '/powerprofiling.csv'):
         with open(outputdir + '/powerprofiling.csv', 'w') as f:
