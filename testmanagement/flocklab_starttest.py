@@ -305,6 +305,7 @@ def main(argv):
                     flocklab.tg_off()
                     flocklab.error_logandexit(msg)
                 else:
+                    logger.error(msg)
                     flocklab.log_test_error(testid, msg)
         # if there are no scheduled pin actuations and neither debugging nor the serial proxy is used, then disable actuation during the test
         if (not actuationused) and (socketport == None) and (not debugserviceused):

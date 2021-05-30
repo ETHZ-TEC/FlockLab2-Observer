@@ -57,8 +57,8 @@
 #define TIMER_ID            CLOCK_REALTIME      // realtime or monotonic
 #define TIMER_OFS_US        -90                // timer offset compensation in microseconds, applies to the start marker only
 #define MIN_PERIOD          10                  // minimum time between two consecutive actuation events, in microseconds
-#define DEVICE_BUFFER_SIZE  8192                // max. buffer size for character device
-#define EVENT_QUEUE_SIZE    1024                // limits the max. number of actuations that can be registered at a time; must be a power of 2
+#define DEVICE_BUFFER_SIZE  32768               // max. buffer size for character device
+#define EVENT_QUEUE_SIZE    2048                // limits the max. number of actuations that can be registered at a time; must be a power of 2
 #define FLOCKLAB_SIG1_PIN   89                  // P8.30 -> must be configured as GPIO output
 #define FLOCKLAB_SIG2_PIN   88                  // P8.28 -> must be configured as GPIO output
 #define FLOCKLAB_nRST_PIN   77                  // P8.40 -> must be configured as GPIO output
