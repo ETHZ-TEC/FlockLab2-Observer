@@ -34,7 +34,7 @@
 #
 # FlockLab2 observer setup script
 #
-# Make sure to first execute ./debian/setup_system.sh before running this script.
+# Make sure to first execute ./rocketlogger/software/system/remote_setup.sh before running this script.
 #
 
 REBOOT_TIMEOUT=120

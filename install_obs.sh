@@ -44,6 +44,7 @@ LOGDIR="/var/log/flocklab"
 CONFIGDIR="/etc/flocklab"
 TESTDIR="/home/flocklab/data/curtest";
 SDCARDLINK="/home/flocklab/data"                      # path to the SD card
+INSTALLRLCAL=0                                        # whether to install files required for RL calibration
 
 # installation directories
 SCRIPTPATH="/home/flocklab/observer/testmanagement"   # will be appended to PATH
@@ -111,10 +112,21 @@ cd ${HOMEDIR}/observer/device_tree_overlay && ./install.sh > /dev/null 2>> $ERRO
 check_retval "Failed to install device tree overlay." "Device tree overlay installed."
 
 ##########################################################
+# install am355x PRU support package from git
+echo "       Compiling and installing am335x-pru-package..."
+git clone https://github.com/beagleboard/am335x_pru_package.git > /dev/null 2>> $ERRORLOG
+check_retval "Failed to clone repository." "Repository cloned."
+(cd am335x_pru_package && make && make install) > /dev/null 2>> $ERRORLOG
+check_retval "Failed to install am335x-pru-package." "am335x-pru-package installed."
+ldconfig
+
+##########################################################
 # install rocketlogger software
 echo "       Compiling RocketLogger code..."
-cd ${HOMEDIR}/observer/rocketlogger && make install > /dev/null 2>> $ERRORLOG
+cd ${HOMEDIR}/observer/rocketlogger  # && make install > /dev/null 2>> $ERRORLOG
+meson builddir > /dev/null 2>> $ERRORLOG && cd builddir && ninja > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install RocketLogger software." "RocketLogger software installed."
+meson install --no-rebuild > /dev/null 2>> $ERRORLOG    # don't check retval, may be 1 if executed the 2nd time
 
 ##########################################################
 # install binary for GPIO tracing
@@ -144,9 +156,11 @@ check_retval "Failed to install JLink." "JLink installed."
 
 ##########################################################
 # install required packages for rocketlogger calibration
-echo "       Installing required packages for Rocketlogger calibration..."
-apt-get --assume-yes install libfreetype6 libatlas3-base > /dev/null 2>> $ERRORLOG && pip3 install pyvisa pyvisa-py rocketlogger==1.99a6 >> /dev/null 2>> $ERRORLOG
-check_retval "Failed to install packages." "Packages installed."
+if [ $INSTALLRLCAL -ne 0 ]; then
+  echo "       Installing required packages for Rocketlogger calibration..."
+  apt-get --assume-yes install libfreetype6 libatlas3-base > /dev/null 2>> $ERRORLOG && pip3 install pyvisa pyvisa-py rocketlogger==1.99a6 >> /dev/null 2>> $ERRORLOG
+  check_retval "Failed to install packages." "Packages installed."
+fi
 
 ##########################################################
 # install required packages for serial logging and BSL programming
@@ -233,6 +247,9 @@ CRONTAB="/etc/crontab"
 grep "ping_watchdog" ${CRONTAB} > /dev/null 2>&1 || echo "0  *    * * *   root    /bin/bash /home/flocklab/observer/scripts/ping_watchdog.sh 2>&1 | /usr/bin/logger -t flocklab" >> ${CRONTAB}
 
 ##########################################################
+
+# make sure user flocklab owns all files within the home directory
+chown --recursive flocklab:flocklab /home/flocklab/
 
 # cleanup
 apt-get --assume-yes autoremove > /dev/null 2>> $ERRORLOG
