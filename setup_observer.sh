@@ -34,7 +34,8 @@
 #
 # FlockLab2 observer setup script
 #
-# Make sure to first execute ./rocketlogger/software/system/remote_setup.sh before running this script.
+# Make sure to first execute remote_setup.sh in RocketLogger repository
+# (https://github.com/ETHZ-TEC/RocketLogger) before running this script.
 #
 
 REBOOT_TIMEOUT=120
@@ -52,12 +53,14 @@ echo "Setting up FlockLab observer '${HOST}'..."
 sleep 3   # give the user time to abort, just in case
 
 # remove IP address / host name from known_hosts file
-ssh-keygen -R $HOST > /dev/null 2>&1
+IPADDR=$(host fl-32 | awk '{print $NF}')
+ssh-keygen -R "[${HOST}]:${PORT}" > /dev/null 2>&1
+ssh-keygen -R "[${IPADDR}]:${PORT}" > /dev/null 2>&1
 
 # verify that SSH login works
 ssh -q -p ${PORT} ${USER}@${HOST} "exit" > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-  echo "[ !! ] SSH login failed."
+  echo "[ !! ] SSH login failed (check SSH config and/or execute 'copy_sshkeys.sh' first)."
   exit 1
 fi
 echo "[ OK ] SSH login successful."

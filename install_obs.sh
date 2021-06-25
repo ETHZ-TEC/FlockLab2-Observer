@@ -44,6 +44,7 @@ LOGDIR="/var/log/flocklab"
 CONFIGDIR="/etc/flocklab"
 TESTDIR="/home/flocklab/data/curtest";
 SDCARDLINK="/home/flocklab/data"                      # path to the SD card
+SDCARD="/media/sdcard"
 INSTALLRLCAL=0                                        # whether to install files required for RL calibration
 
 # installation directories
@@ -85,11 +86,15 @@ fi
 echo "[ OK ] Checking for root permission."
 
 # clear log file
-[ -f $ERRORLOG ] && rm $ERRORLOG
+echo "" > $ERRORLOG
 
 ##########################################################
+# make sure an SD card is mounted
+mount | grep "$SDCARD" > /dev/null
+check_retval "No SD card mounted!" "SD card is mounted."
+
 # link to SD card and log folder
-ln -sf /media/card $SDCARDLINK
+#ln -sf $SDCARD $SDCARDLINK  -> done via fstab
 ln -sf $LOGDIR $HOMEDIR/log
 
 # create various directories
@@ -107,26 +112,33 @@ check_retval "Failed to set PATH variable." "PATH variable adjusted."
 #grep ${LIBPATH} ${HOMEDIR}/.profile > /dev/null 2>&1 || echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:'${LIBPATH} >> ${HOMEDIR}/.profile
 
 ##########################################################
-# install device tree overlay
-cd ${HOMEDIR}/observer/device_tree_overlay && ./install.sh > /dev/null 2>> $ERRORLOG
-check_retval "Failed to install device tree overlay." "Device tree overlay installed."
+# install device tree overlay -> already done in RocketLogger system installation
+#cd ${HOMEDIR}/observer/device_tree_overlay && ./install.sh > /dev/null 2>> $ERRORLOG
+#check_retval "Failed to install device tree overlay." "Device tree overlay installed."
+echo "[ -- ] Device tree overlay installation skipped."
 
 ##########################################################
 # install am355x PRU support package from git
-echo "       Compiling and installing am335x-pru-package..."
+cd ${HOMEDIR} && rm -rf am335x_pru_package  > /dev/null 2>&1
 git clone https://github.com/beagleboard/am335x_pru_package.git > /dev/null 2>> $ERRORLOG
-check_retval "Failed to clone repository." "Repository cloned."
+check_retval "Failed to download am335x_pru_package code." "am335x_pru_package code downloaded."
+echo "       Compiling and installing am335x-pru-package..."
 (cd am335x_pru_package && make && make install) > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install am335x-pru-package." "am335x-pru-package installed."
+cd ${HOMEDIR} && rm -rf am335x_pru_package
 ldconfig
 
 ##########################################################
 # install rocketlogger software
+cd ${HOMEDIR} rm -rf RocketLogger > /dev/null 2>&1
+git clone --single-branch --branch flocklab --depth 1 https://github.com/ETHZ-TEC/RocketLogger.git > /dev/null 2>> $ERRORLOG
+check_retval "Failed to get RocketLogger code." "RocketLogger code downloaded."
 echo "       Compiling RocketLogger code..."
-cd ${HOMEDIR}/observer/rocketlogger  # && make install > /dev/null 2>> $ERRORLOG
+cd ${HOMEDIR}/RocketLogger/software/rocketlogger  # && make install > /dev/null 2>> $ERRORLOG
 meson builddir > /dev/null 2>> $ERRORLOG && cd builddir && ninja > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install RocketLogger software." "RocketLogger software installed."
 meson install --no-rebuild > /dev/null 2>> $ERRORLOG    # don't check retval, may be 1 if executed the 2nd time
+cd ${HOMEDIR} && rm -rf RocketLogger
 
 ##########################################################
 # install binary for GPIO tracing
