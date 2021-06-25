@@ -84,9 +84,13 @@ fi
 echo "[ OK ] Checking for root permission."
 
 # clear log file
-[ -f $ERRORLOG ] && rm $ERRORLOG
+echo "" > $ERRORLOG
 
 ##########################################################
+# make sure an SD card is mounted
+mount | grep "$SDCARD" > /dev/null
+check_retval "No SD card mounted!" "SD card is mounted."
+
 # link to SD card and log folder
 ln -sf /media/card $SDCARDLINK
 ln -sf $LOGDIR $HOMEDIR/log
