@@ -1,0 +1,3 @@
+[submodule "rocketlogger"]
+	path = rocketlogger
+	url = https://github.com/ETHZ-TEC/RocketLogger.git
