@@ -260,8 +260,9 @@ grep "ping_watchdog" ${CRONTAB} > /dev/null 2>&1 || echo "0  *    * * *   root  
 
 ##########################################################
 
-# make sure user flocklab owns all files within the home directory
+# make sure user flocklab owns all files within the home and log directory
 chown --recursive flocklab:flocklab /home/flocklab/
+chown --recursive flocklab:flocklab /var/log/flocklab
 
 # cleanup
 apt-get --assume-yes autoremove > /dev/null 2>> $ERRORLOG
