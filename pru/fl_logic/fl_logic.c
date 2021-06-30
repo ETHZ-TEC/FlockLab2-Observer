@@ -940,7 +940,6 @@ int main(int argc, char** argv)
   datafile = fopen(filename, "wb");
   if (NULL == datafile) {
     fl_log(LOG_ERROR, "failed to open file %s", filename);
-    pru1_deinit();
     return 2;
   }
 
