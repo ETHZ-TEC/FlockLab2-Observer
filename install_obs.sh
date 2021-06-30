@@ -127,6 +127,8 @@ echo "       Compiling and installing am335x-pru-package..."
 check_retval "Failed to install am335x-pru-package." "am335x-pru-package installed."
 cd ${HOMEDIR} && rm -rf am335x_pru_package
 ldconfig
+usermod --append --groups remoteproc flocklab
+[ -e /etc/udev/rules.d/uio.rules ] || echo 'SUBSYSTEM=="uio", GROUP="users", MODE="0660"' > /etc/udev/rules.d/uio.rules
 
 ##########################################################
 # install rocketlogger software
