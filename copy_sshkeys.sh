@@ -24,8 +24,9 @@ HOST=$1
 KEYFILE=$2
 
 # remove IP address / host name from known_hosts file
-IPADDR=$(host fl-32 | awk '{print $NF}')
-ssh-keygen -R "[${HOST}]:${PORT}" > /dev/null 2>&1
+IPADDR=$(host $HOST | awk '{print $NF}')
+HOSTNAME=$(host $HOST | awk '{print $1}')
+ssh-keygen -R "[${HOSTNAME}]:${PORT}" > /dev/null 2>&1
 ssh-keygen -R "[${IPADDR}]:${PORT}" > /dev/null 2>&1
 
 ssh -p $PORT -i $KEYFILE -t ${USER}@$HOST "echo '$PUBLICKEYS' > flkeys.pub && sudo cat flkeys.pub > ~/.ssh/authorized_keys && rm flkeys.pub"
