@@ -45,7 +45,6 @@ CONFIGDIR="/etc/flocklab"
 TESTDIR="/home/flocklab/data/curtest";
 SDCARDLINK="/home/flocklab/data"                      # path to the SD card
 SDCARD="/media/sdcard"
-INSTALLRLCAL=0                                        # whether to install files required for RL calibration
 
 # installation directories
 SCRIPTPATH="/home/flocklab/observer/testmanagement"   # will be appended to PATH
@@ -170,11 +169,9 @@ check_retval "Failed to install JLink." "JLink installed."
 
 ##########################################################
 # install required packages for rocketlogger calibration
-if [ $INSTALLRLCAL -ne 0 ]; then
-  echo "       Installing required packages for Rocketlogger calibration..."
-  apt-get --assume-yes install libfreetype6 libatlas3-base > /dev/null 2>> $ERRORLOG && pip3 install pyvisa pyvisa-py rocketlogger==1.99a6 >> /dev/null 2>> $ERRORLOG
-  check_retval "Failed to install packages." "Packages installed."
-fi
+echo "       Installing required packages for Rocketlogger calibration..."
+apt-get --assume-yes install libfreetype6 libatlas3-base > /dev/null 2>> $ERRORLOG && pip3 install pyvisa pyvisa-py rocketlogger==1.99a6 >> /dev/null 2>> $ERRORLOG
+check_retval "Failed to install packages." "Packages installed."
 
 ##########################################################
 # install required packages for serial logging and BSL programming
