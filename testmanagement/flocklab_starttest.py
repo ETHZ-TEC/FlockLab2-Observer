@@ -111,11 +111,12 @@ def main(argv):
     flocklab.gpio_set(flocklab.gpio_led_status)
 
     # Rename XML ---
-    try:
-        os.rename(xmlfile, "%s/config.xml" % os.path.dirname(xmlfile))
-        xmlfile = "%s/config.xml" % os.path.dirname(xmlfile)
-    except (OSError) as err:
-        flocklab.error_logandexit("Could not rename XML config file.")
+    if os.path.basename(xmlfile) != "config.xml":
+        try:
+            os.rename(xmlfile, "%s/config.xml" % os.path.dirname(xmlfile))
+            xmlfile = "%s/config.xml" % os.path.dirname(xmlfile)
+        except (OSError) as err:
+            flocklab.error_logandexit("Could not rename XML config file.")
 
     # Process XML ---
     # Open and parse XML:
@@ -378,7 +379,7 @@ def main(argv):
                     flocklab.error_logandexit(msg)
                 else:
                     flocklab.log_test_error(testid, msg)
-        if port > 0:
+        elif port > 0:
             # start GDB server 10s after test start
             if flocklab.start_gdb_server(platform, port, int(teststarttime - time.time() + 10)) != flocklab.SUCCESS:
                 msg = "Failed to start debug service."
@@ -389,7 +390,8 @@ def main(argv):
                     flocklab.log_test_error(testid, msg)
             else:
                 logger.debug("GDB server will be listening on port %d." % port)
-        logger.debug("Debug service configured.")
+        else:
+          logger.warn("Incomplete debug service config.")
     else:
         logger.debug("No config for debug service found.")
         # disable MUX for more accurate current measurements only if serial port is not USB

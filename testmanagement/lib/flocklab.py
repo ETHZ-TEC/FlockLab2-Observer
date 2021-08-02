@@ -61,6 +61,9 @@ gpio_jlink_nrst = 44
 gpio_usb_nrst   = 68
 gpio_gnss_nrst  = 67
 
+# pin designators
+gpio_tg_nrst_alt = "P840"
+
 # list of all output GPIOs and their default state
 out_pin_list    = [gpio_tg_nrst,
                    gpio_tg_prog,
@@ -564,7 +567,9 @@ def tg_select(slotnr):
 # tg_reset - Reset target on active interface
 #
 ##############################################################################
-def tg_reset(release=True):
+def tg_reset(release=True, reconfigure=False):
+    if reconfigure:
+        os.system("config-pin -a %s out" % gpio_tg_nrst_alt)
     gpio_clr(gpio_tg_prog)    # ensure prog pin is low
     gpio_clr(gpio_tg_nrst)
     if release:

@@ -105,9 +105,10 @@ def collect_error_logs(testid=None):
 ##############################################################################
 def main(argv):
     
-    debug  = False
-    errors = []
-    testid = None
+    debug   = False
+    errors  = []
+    testid  = None
+    xmlfile = None
     
     # Get config:
     config = flocklab.get_config()
@@ -116,12 +117,16 @@ def main(argv):
     
     # Get command line parameters.
     try:
-        opts, args = getopt.getopt(argv, "dht:", ["debug", "help", "testid="])
+        opts, args = getopt.getopt(argv, "dht:x:", ["debug", "help", "testid=", "xml="])
     except (getopt.GetoptError) as err:
         flocklab.error_logandexit(str(err), errno.EINVAL)
     for opt, arg in opts:
         if opt in ("-t", "--testid"):
             testid = int(arg)
+        elif opt in ("-x", "--xml"):
+            xmlfile = arg
+            if not (os.path.exists(xmlfile)):
+                flocklab.error_logandexit("Error: file %s does not exist" % (str(xmlfile)), errno.EINVAL)
         elif opt in ("-d", "--debug"):
             debug = True
         elif opt in ("-h", "--help"):
@@ -148,10 +153,11 @@ def main(argv):
     slotnr = None
     platform = None
     imagepath = []
-    xmlfilename = "%s/%d/config.xml" % (config.get("observer", "testconfigfolder"), testid)
+    if not xmlfile:
+        xmlfile = "%s/%d/config.xml" % (config.get("observer", "testconfigfolder"), testid)
     try:
         tree = xml.etree.ElementTree.ElementTree()
-        tree.parse(xmlfilename)
+        tree.parse(xmlfile)
         rs = tree.find('obsTargetConf')
         if rs != None:
             slotnr = int(rs.find('slotnr').text)
@@ -162,10 +168,10 @@ def main(argv):
             for img in imagefiles_to_process:
                 imagepath.append(img.text)
         else:
-            errors.append("Could not find element <obsTargetConf> in %s" % xmlfilename)
+            errors.append("Could not find element <obsTargetConf> in %s" % xmlfile)
     except (IOError) as err:
         # most likely the test has not yet been started
-        logger.warning("Could not find or open XML file '%s'." % (xmlfilename))
+        logger.warning("Could not find or open XML file '%s'." % (xmlfile))
         sys.exit(flocklab.SUCCESS)
     
     # Activate interface ---
