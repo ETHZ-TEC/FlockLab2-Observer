@@ -55,7 +55,7 @@ fi
 TESTIMAGE=$1
 
 CURDIR=$(pwd)
-if [[ $TESTIMAGE != *"${CURDIR}"* ]]
+if [ ! -e $TESTIMAGE ] && [[ $TESTIMAGE != *"${CURDIR}"* ]]
 then
   TESTIMAGE=${CURDIR}/${TESTIMAGE}
 fi
@@ -83,6 +83,11 @@ sed -i "s/STOPTIME/${STOPTIME}/" $XMLCONFIG
 echo "configuring..."
 
 /home/flocklab/observer/testmanagement/flocklab_starttest.py --testid=${TESTID} --xml=${XMLCONFIG}
+if [ $? -ne 0 ]
+then
+  echo "test start failed"
+  exit 1
+fi
 
 CURTIME=$(date +%s)
 TIMELEFT=$(echo "${STARTTIME} - ${CURTIME}" | bc)
@@ -103,6 +108,8 @@ echo ""
 echo "cleaning up..."
 
 /home/flocklab/observer/testmanagement/flocklab_stoptest.py --testid=${TESTID} --xml=${XMLCONFIG}
+
+rm $XMLCONFIG
 
 echo "test finished!"
 
