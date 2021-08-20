@@ -232,19 +232,16 @@ def main(argv):
                     dwtvalues.append([None, None, None, None])
                 # apply config
                 logger.info("Configuring data trace service for MCU %s with prescaler %d and loop delay %dms..." % (flocklab.jlink_mcu_str(platform), prescaler, loopdelay))
-                # make sure target is released from reset state before configuring the MCU
-                reset = False
-                if flocklab.gpio_get(flocklab.gpio_tg_nrst) == 0:
-                    flocklab.tg_reset()
-                    reset = True
+                # if target is in reset state, it will be released by the config function below
+                reset = flocklab.gpio_get(flocklab.gpio_tg_nrst)
                 dwt.config_dwt_for_data_trace(device_name=flocklab.jlink_mcu_str(platform), ts_prescaler=prescaler,
                                               trace_address0=dwtvalues[0][0], access_mode0=dwtvalues[0][1], trace_pc0=dwtvalues[0][2], size0=dwtvalues[0][3],
                                               trace_address1=dwtvalues[1][0], access_mode1=dwtvalues[1][1], trace_pc1=dwtvalues[1][2], size1=dwtvalues[1][3],
                                               trace_address2=dwtvalues[2][0], access_mode2=dwtvalues[2][1], trace_pc2=dwtvalues[2][2], size2=dwtvalues[2][3],
                                               trace_address3=dwtvalues[3][0], access_mode3=dwtvalues[3][1], trace_pc3=dwtvalues[3][2], size3=dwtvalues[3][3],
                                               swo_speed=swospeed, cpu_speed=cpuspeed)
-                if reset:
-                    flocklab.tg_reset(False)
+                if not reset:
+                    flocklab.tg_reset(False)  # hold target in reset state
             else:
                 logger.warning("No configuration found for data trace service.")
         except:

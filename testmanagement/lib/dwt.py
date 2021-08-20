@@ -48,6 +48,7 @@ import time
 import datetime
 import traceback
 import numpy as np
+import lib.flocklab as flocklab
 
 
 jlinklibpath = '/opt/jlink/libjlinkarm.so'
@@ -126,15 +127,20 @@ def disable_and_reset_all_comparators(jlink_serial=None, device_name='STM32L433C
         jlink.open()
 
     jlink.set_tif(pylink.enums.JLinkInterfaces.SWD)
+
+    if not flocklab.tg_reset_state():
+        flocklab.tg_reset()   # release from reset
+        log("target released from reset")
+
     jlink.connect(device_name, verbose=True)
     jlink.coresight_configure()
     jlink.set_reset_strategy(pylink.enums.JLinkResetStrategyCortexM3.RESETPIN)
 
-    # In case the reset pin is not low must halt MCU before config, throws error in case reset pin is low
+    # halt MCU before config
     try:
         jlink.halt()
     except:
-        pass
+        log("failed to halt target")
 
     # now disable all comparators
     dwt_fun0 = 0xe0001028  # Comparator Function registers, DWT_FUNCTIONn
@@ -340,21 +346,28 @@ def config_dwt_for_data_trace(jlink_serial=None, device_name='STM32L433CC', ts_p
     buf = StringIO.StringIO()
     jlinklib = pylink.library.Library(dllpath=jlinklibpath)
     jlink = pylink.JLink(lib=jlinklib, log=buf.write, detailed_log=buf.write)
+
     if jlink_serial:  # if have several emulators connected, user can specify one by the serial number
         jlink.open(serial_no=jlink_serial)
     else:
         jlink.open()
 
     jlink.set_tif(pylink.enums.JLinkInterfaces.SWD)
+
+    # In case the reset pin is not low must halt MCU before config, throws error in case reset pin is low
+    if not flocklab.tg_reset_state():
+        flocklab.tg_reset()   # release from reset
+        #log("target released from reset")
+
     jlink.connect(device_name, verbose=True)
     jlink.coresight_configure()
     jlink.set_reset_strategy(pylink.enums.JLinkResetStrategyCortexM3.RESETPIN)
 
-    # In case the reset pin is not low must halt MCU before config, throws error in case reset pin is low
+    # halt MCU before config
     try:
         jlink.halt()
     except:
-        pass
+        log("failed to halt target")
 
     dwt_fun0 = 0xe0001028
     dwt_fun1 = 0xe0001038
@@ -624,6 +637,7 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
             # # DEBUG END
             # vars for loopdelay compensation
             last_global_time = None
+            last_loop_start = time.time()
             delta = 5e-6
             comp_val = 0
             # for i in range(numSamples): # DEBUG
@@ -646,8 +660,9 @@ def read_swo_buffer(jlink_serial=None, device_name='STM32L433CC', loop_delay_in_
                 last_global_time = global_time
 
                 # sleep
-                time_used = time.time() - global_time
+                time_used = time.time() - last_loop_start
                 time_sleep = (loop_delay_in_s) - sleep_overhead - time_used + comp_val
+                last_loop_start += loop_delay_in_s
                 if time_sleep > 0:
                     time.sleep(time_sleep)
             # np.savetxt('/home/flocklab/tmp_arr_global.txt', tmp_arr_global) # DEBUG
