@@ -32,7 +32,8 @@ echo "[ OK ] Checking for root permission."
 
 ##########################################################
 # install rocketlogger software
-cd ${HOMEDIR} rm -rf RocketLogger > /dev/null
+cd ${HOMEDIR}
+[ -e RocketLogger ] && rm -rf RocketLogger > /dev/null
 git clone --single-branch --branch flocklab --depth 1 https://github.com/ETHZ-TEC/RocketLogger.git > /dev/null
 check_retval "Code download"
 cd ${HOMEDIR}/RocketLogger/software/rocketlogger
@@ -43,5 +44,5 @@ cd ${HOMEDIR} && rm -rf RocketLogger
 
 ##########################################################
 # restart RocketLogger service
-systemctl daemon-reload && systemctl restart rocketlogger && sleep 1 && systemctl status rocketlogger
+systemctl daemon-reload && systemctl restart rocketlogger && sleep 2 && systemctl is-active --quiet rocketlogger
 check_retval "Restart service"

@@ -49,7 +49,7 @@
 
 
 #define SUBTRACT_TRANSMIT_TIME      1    // subtract the estimated transfer time over uart from the receive timestamp
-#define TIME_OFFSET                 100  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
+#define TIME_OFFSET_US              100  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
 #define START_OFFSET_MS             500  // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time)
 #define RECEIVE_BUFFER_SIZE         1024
 #define PRINT_BUFFER_SIZE           (RECEIVE_BUFFER_SIZE + 128)
@@ -314,9 +314,8 @@ int main(int argc, char** argv)
       if (len > 0) {
         // take a timestamp
         clock_gettime(CLOCK_REALTIME, &currtime);
-        currtime.tv_nsec = currtime.tv_nsec / 1000;   // convert to us
     #if SUBTRACT_TRANSMIT_TIME
-        int transmit_time_ns = 1000 * ((1e7 / baudrate) * len + TIME_OFFSET);   // 10 clock cycles per symbol (byte), plus const offset
+        int transmit_time_ns = 1000 * ((1e7 / baudrate) * len + TIME_OFFSET_US);   // 10 clock cycles per symbol (byte), plus const offset
         if (currtime.tv_nsec < transmit_time_ns) {
           currtime.tv_sec--;
           currtime.tv_nsec = 1e9 - (transmit_time_ns - currtime.tv_nsec);
@@ -396,9 +395,8 @@ int main(int argc, char** argv)
       int len = read(fd, rcvbuf, sizeof(rcvbuf) - 1);
       if (len > 0) {
         clock_gettime(CLOCK_REALTIME, &currtime);
-        currtime.tv_nsec = currtime.tv_nsec / 1000;   // convert to us
     #if SUBTRACT_TRANSMIT_TIME
-        int transmit_time_ns = 1000 * ((1e7 / baudrate) * len + TIME_OFFSET);   // 10 clock cycles per symbol (byte), plus const offset
+        int transmit_time_ns = 1000 * ((1e7 / baudrate) * len + TIME_OFFSET_US);   // 10 clock cycles per symbol (byte), plus const offset
         if (currtime.tv_nsec < transmit_time_ns) {
           currtime.tv_sec--;
           currtime.tv_nsec = 1e9 - (transmit_time_ns - currtime.tv_nsec);
