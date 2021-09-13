@@ -93,8 +93,8 @@ mount | grep "$SDCARD" > /dev/null
 check_retval "No SD card mounted!" "SD card is mounted."
 
 # link to SD card and log folder
-#ln -sf $SDCARD $SDCARDLINK  -> done via fstab
-ln -sf $LOGDIR $HOMEDIR/log
+#ln -sf $SDCARD $SDCARDLINK  -> done via fstab during system setup
+#ln -sf $LOGDIR $HOMEDIR/log -> done via fstab during system setup
 
 # create various directories
 [ -d $RESULTSDIR ] || (mkdir -p $RESULTSDIR && chown flocklab:flocklab $RESULTSDIR)
