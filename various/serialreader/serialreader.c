@@ -49,8 +49,8 @@
 
 
 #define SUBTRACT_TRANSMIT_TIME      1    // subtract the estimated transfer time over uart from the receive timestamp
-#define TIME_OFFSET                 100  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
-#define START_OFFSET_MS             500  // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time)
+#define TIME_OFFSET_US              100  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
+#define START_OFFSET_MS             1000 // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time)
 #define RECEIVE_BUFFER_SIZE         1024
 #define PRINT_BUFFER_SIZE           (RECEIVE_BUFFER_SIZE + 128)
 #define LOG_VERBOSITY               LOG_DEBUG
@@ -192,7 +192,7 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
     cfmakeraw(&tty);
     memset(tty.c_cc, 0, sizeof(tty.c_cc));
     /* note: at 1MBaud, there will be one byte every 10us (and one interrupt per byte if VMIN is set to 1) */
-    tty.c_cc[VMIN]  = 32;     /* at least 1 character */
+    tty.c_cc[VMIN]  = 32;     /* at least 32 characters */
     tty.c_cc[VTIME] = 1;      /* read timeout of 100ms */
   }
   tty.c_iflag  = 0;           /* clear input flags */
@@ -203,11 +203,19 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
 
   fl_log(LOG_DEBUG, "tty config: 0x%x, 0x%x, 0x%x, 0x%x", tty.c_iflag, tty.c_oflag, tty.c_cflag, tty.c_lflag);
 
-  if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+  if (tcsetattr(fd, TCSAFLUSH, &tty) != 0) {
     fl_log(LOG_ERROR, "error from tcsetattr: %s", strerror(errno));
     return 3;
   }
   return 0;
+}
+
+
+// returns the transmission time over the serial port in ns
+unsigned int get_tx_time_ns(unsigned long baudrate, unsigned long num_chars)
+{
+  // 10 clock cycles per symbol
+  return num_chars * 10 * (1e9 / baudrate);
 }
 
 
@@ -225,7 +233,7 @@ int main(int argc, char** argv)
   struct timespec currtime;
   struct timespec prevtime;
   unsigned long   bufofs      = 0;
-  bool            rawmode     = true; // false;
+  bool            rawmode     = false;
 
   if (argc > 1) {
     // first parameter is the port
@@ -235,9 +243,6 @@ int main(int argc, char** argv)
     // 2nd argument is the baudrate
     baudrate = strtol(argv[2], NULL, 10);
   }
-  /*if (baudrate > 460800) {
-    rawmode = true;
-  }*/
   if (argc > 3) {
     // 3rd argument is the output filename
     outfilename = argv[3];
@@ -306,17 +311,18 @@ int main(int argc, char** argv)
   }
   // flush input queue
   tcflush(fd, TCIFLUSH);
+  usleep(10000);
 
   if (rawmode) {
 
     while (running && (duration == 0 || (unsigned int)time(NULL) < (starttime + duration))) {
+
       int len = read(fd, rcvbuf + bufofs, sizeof(rcvbuf) - 1 - bufofs);
       if (len > 0) {
         // take a timestamp
         clock_gettime(CLOCK_REALTIME, &currtime);
-        currtime.tv_nsec = currtime.tv_nsec / 1000;   // convert to us
     #if SUBTRACT_TRANSMIT_TIME
-        int transmit_time_ns = 1000 * ((1e7 / baudrate) * len + TIME_OFFSET);   // 10 clock cycles per symbol (byte), plus const offset
+        int transmit_time_ns = get_tx_time_ns(baudrate, len) + TIME_OFFSET_US;
         if (currtime.tv_nsec < transmit_time_ns) {
           currtime.tv_sec--;
           currtime.tv_nsec = 1e9 - (transmit_time_ns - currtime.tv_nsec);
@@ -345,26 +351,29 @@ int main(int argc, char** argv)
             break;
           }
           if (logfile) {
-            int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,%s\n", prevtime.tv_sec, prevtime.tv_nsec, rcvbuf);
-            if (!prlen) {
-              fl_log(LOG_ERROR, "invalid print length\r\n");
-              break;
-            }
-            fwrite(printbuf, prlen, 1, logfile);
-            //fflush(logfile);
+            // only write to file if the timestamp is after the test start
+            if ((unsigned int)prevtime.tv_sec >= starttime) {
+              int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,%s\n", prevtime.tv_sec, prevtime.tv_nsec / 1000, rcvbuf);
+              if (!prlen) {
+                fl_log(LOG_ERROR, "invalid print length\r\n");
+                break;
+              }
+              fwrite(printbuf, prlen, 1, logfile);
+            } // else: ignore
           } else {
-            printf("[%ld.%06ld] %s\n", prevtime.tv_sec, prevtime.tv_nsec, rcvbuf);
+            printf("[%ld.%06ld] %s\n", prevtime.tv_sec, prevtime.tv_nsec / 1000, rcvbuf);
             fflush(stdout);
           }
           // copy the remainder of the input string to the beginning of the buffer
           if (nlpos) {
+    #if SUBTRACT_TRANSMIT_TIME
             // increment the timestamp by the transmit time
-            int transmit_time_ns = 1000 * ((1e7 / baudrate) * ((unsigned int)nlpos - (unsigned int)rcvbuf));
-            currtime.tv_nsec += transmit_time_ns;
+            currtime.tv_nsec += get_tx_time_ns(baudrate, (unsigned int)nlpos - (unsigned int)rcvbuf);
             if (currtime.tv_nsec > 1e9) {
               currtime.tv_sec++;
               currtime.tv_nsec -= 1e9;
             }
+    #endif /* SUBTRACT_TRANSMIT_TIME */
             bufofs = 0;
             while (*nlpos) {
               rcvbuf[bufofs++] = *nlpos;
@@ -374,7 +383,7 @@ int main(int argc, char** argv)
             rcvbuf[bufofs] = 0;
           } else {
             // there is no remainder -> clear the receive buffer
-            bufofs = 0;
+            bufofs    = 0;
             rcvbuf[0] = 0;
             break;
           }
@@ -392,13 +401,12 @@ int main(int argc, char** argv)
     // CANONICAL mode
 
     while (running && (duration == 0 || (unsigned int)time(NULL) < (starttime + duration))) {
-      //memset(rcvbuf, 0, sizeof(rcvbuf));
+
       int len = read(fd, rcvbuf, sizeof(rcvbuf) - 1);
       if (len > 0) {
         clock_gettime(CLOCK_REALTIME, &currtime);
-        currtime.tv_nsec = currtime.tv_nsec / 1000;   // convert to us
     #if SUBTRACT_TRANSMIT_TIME
-        int transmit_time_ns = 1000 * ((1e7 / baudrate) * len + TIME_OFFSET);   // 10 clock cycles per symbol (byte), plus const offset
+        int transmit_time_ns = get_tx_time_ns(baudrate, len) + TIME_OFFSET_US;
         if (currtime.tv_nsec < transmit_time_ns) {
           currtime.tv_sec--;
           currtime.tv_nsec = 1e9 - (transmit_time_ns - currtime.tv_nsec);
@@ -410,28 +418,30 @@ int main(int argc, char** argv)
         if (duration > 0 && currtime.tv_sec >= (int)(starttime + duration)) {
           break;
         }
-        rcvbuf[len] = 0;  /* just to be sure, but should already be terminated by zero character in canonical mode */
+        rcvbuf[len] = 0;  // just to be sure, but should already be terminated by zero character in canonical mode
         if (logfile) {
-          int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
-          if (!prlen) {
-            fl_log(LOG_ERROR, "invalid print length\r\n");
-            break;
-          }
-          if (printbuf[prlen - 1] != '\n') {
-            printbuf[prlen++] = '\n';
-            printbuf[prlen] = 0;
-          }
-          fwrite(printbuf, prlen, 1, logfile);
-          //fflush(logfile);
+          // only write to file if the timestamp is after the test start
+          if ((unsigned int)currtime.tv_sec >= starttime) {
+            int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
+            if (!prlen) {
+              fl_log(LOG_ERROR, "invalid print length\r\n");
+              break;
+            }
+            if (printbuf[prlen - 1] != '\n') {
+              printbuf[prlen++] = '\n';
+              printbuf[prlen]   = 0;
+            }
+            fwrite(printbuf, prlen, 1, logfile);
+          } // else: ignore
         } else {
-          printf("[%ld.%06ld] %s", currtime.tv_sec, currtime.tv_nsec, rcvbuf);
+          printf("[%ld.%06ld] %s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
           fflush(stdout);
         }
       } else if (len < 0) {
         fflush(logfile);
         fl_log(LOG_WARNING, "read error: %s", strerror(errno));
         break;
-      } else {  /* len == 0 */
+      } else {  // len == 0
         fl_log(LOG_WARNING, "read timeout");
       }
     }
