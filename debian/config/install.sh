@@ -150,7 +150,7 @@ fi
 
 # move log directory onto the SD card
 mkdir /media/card/log
-chmod 777 /media/card/log
+chmod 755 /media/card/log
 rm -rf /var/log
 ln -sf /media/card/log /var/log
 

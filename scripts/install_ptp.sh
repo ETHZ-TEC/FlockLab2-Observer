@@ -76,6 +76,7 @@ verbose             0
 time_stamping       hardware
 step_threshold      1.0
 summary_interval    0
+use_syslog          0
 
 [eth0]
 logAnnounceInterval 1
