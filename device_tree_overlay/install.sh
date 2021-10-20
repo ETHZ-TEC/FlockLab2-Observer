@@ -33,6 +33,15 @@
 # Compile and install the RocketLogger device tree overlay
 #
 
+# check root permission
+if [[ $(id -u) -ne 0 ]]; then
+  echo "Script must run as root. Aborting."
+  exit 1
+fi
+
+# enter directory of the script
+cd $(dirname "$0")
+
 # clone beaglebone device tree repo
 if [ ! -d bb.org-overlays ]; then
   git clone https://github.com/beagleboard/bb.org-overlays.git
