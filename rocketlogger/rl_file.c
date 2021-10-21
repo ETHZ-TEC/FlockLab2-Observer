@@ -354,7 +354,7 @@ void rl_file_add_data_block(FILE *data_file, pru_buffer_t const *const buffer,
 
     // aggregation
     int32_t aggregate_count = ADS131E0X_RATE_MIN / config->sample_rate;
-    int32_t aggregate_channel_data[RL_CHANNEL_COUNT] = {0};
+    int64_t aggregate_channel_data[RL_CHANNEL_COUNT] = {0};
     uint32_t aggregate_bin_data = 0xffffffff;
 
     // HANDLE BUFFER //
@@ -408,7 +408,8 @@ void rl_file_add_data_block(FILE *data_file, pru_buffer_t const *const buffer,
         }
 
         // handle data aggregation for low sampling rates
-        if (config->sample_rate < ADS131E0X_RATE_MIN) {
+        if (aggregate_count > 1) {
+
             switch (config->aggregation_mode) {
             case RL_AGGREGATION_MODE_DOWNSAMPLE:
                 // drop intermediate samples (skip writing to file)
@@ -420,21 +421,21 @@ void rl_file_add_data_block(FILE *data_file, pru_buffer_t const *const buffer,
 
             case RL_AGGREGATION_MODE_AVERAGE:
                 // accumulate intermediate samples only (skip writing)
-                if ((i + 1) % aggregate_count > 0) {
-                    for (int i = 0; i < channel_count; i++) {
-                        aggregate_channel_data[i] += channel_data[i];
-                    }
-                    aggregate_bin_data = aggregate_bin_data & bin_data;
+                for (int j = 0; j < channel_count; j++) {
+                    aggregate_channel_data[j] += channel_data[j];
+                }
+                aggregate_bin_data = aggregate_bin_data & bin_data;
 
+                if ((i + 1) % aggregate_count > 0) {
                     // aggregate this sample only, skip file writing for now
                     continue;
                 }
 
                 // calculate average for writing to file
-                for (int i = 0; i < channel_count; i++) {
-                    channel_data[i] =
-                        aggregate_channel_data[i] / aggregate_count;
-                    aggregate_channel_data[i] = 0;
+                for (int j = 0; j < channel_count; j++) {
+                    channel_data[j] =
+                        aggregate_channel_data[j] / aggregate_count;
+                    aggregate_channel_data[j] = 0;
                 }
 
                 bin_data = aggregate_bin_data;

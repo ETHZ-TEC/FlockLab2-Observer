@@ -89,3 +89,5 @@ if [ $? -eq 0 ]; then
     systemctl restart ptp4l
 fi
 
+echo "FlockLab init done"
+
