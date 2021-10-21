@@ -98,6 +98,6 @@ meson install --no-rebuild > /dev/null
 cd ${HOMEDIR} && rm -rf RocketLogger
 
 ##########################################################
--# restart RocketLogger service
--systemctl daemon-reload && systemctl restart rocketlogger && sleep 2 && systemctl is-active --quiet rocketlogger
--check_retval "Restart service"
+# restart RocketLogger service
+systemctl daemon-reload && systemctl restart rocketlogger && sleep 2 && systemctl is-active --quiet rocketlogger
+check_retval "Restart service"
