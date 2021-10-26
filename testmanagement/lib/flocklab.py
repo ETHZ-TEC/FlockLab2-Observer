@@ -873,7 +873,7 @@ def start_pwr_measurement(out_file=None, sampling_rate=rl_default_rate, num_samp
         return errno.EINVAL
     if not out_file:
         out_file = "%s/powerprofiling_%s.rld" % (config.get("observer", "testresultfolder"), time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-    cmd = ["rocketlogger", "start", "-b", "--channel=V1,V2,I1L,I1H", "--output=%s" % out_file, "--rate=%d" % int(sampling_rate), "--offset=%f" % rl_time_offset, "--web=0", "--aggregate=average"]
+    cmd = ["rocketlogger", "start", "-b", "--channel=V1,V2,I1L,I1H", "--output=%s" % out_file, "--rate=%d" % int(sampling_rate), "--offset=%f" % rl_time_offset, "--web=0"] #, "--aggregate=average"]
     if num_samples:
         if num_samples > rl_max_samples:
             num_samples = rl_max_samples
