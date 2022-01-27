@@ -423,7 +423,7 @@ def main(argv):
             flocklab.tg_reset(False)
         elif not socketport and serialport != "usb":    # note: serial logger seems to have issues with the tmote (USB connection)
             # serial forwarder (proxy) not used -> logging only (use the faster C implementation)
-            if flocklab.start_serial_logging(serialport, baudrate, serialfile, teststarttime, teststoptime - teststarttime) != flocklab.SUCCESS:
+            if flocklab.start_serial_logging(serialport, baudrate, serialfile, teststarttime - 1, teststoptime - teststarttime + 1) != flocklab.SUCCESS:
                 msg = "Failed to start serial logging service."
                 if abortonerror:
                     flocklab.tg_off()
