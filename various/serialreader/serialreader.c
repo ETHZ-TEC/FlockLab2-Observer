@@ -48,9 +48,9 @@
 #include <signal.h>
 
 
-#define SUBTRACT_TRANSMIT_TIME      1    // subtract the estimated transfer time over uart from the receive timestamp
-#define TIME_OFFSET_US              100  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
-#define START_OFFSET_MS             1000 // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time)
+#define SUBTRACT_TRANSMIT_TIME      1       // subtract the estimated transfer time over uart from the receive timestamp
+#define TIME_OFFSET_NS              100000  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
+#define START_OFFSET_MS             1000    // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time)
 #define RECEIVE_BUFFER_SIZE         1024
 #define PRINT_BUFFER_SIZE           (RECEIVE_BUFFER_SIZE + 128)
 #define LOG_VERBOSITY               LOG_DEBUG
@@ -322,7 +322,7 @@ int main(int argc, char** argv)
         // take a timestamp
         clock_gettime(CLOCK_REALTIME, &currtime);
     #if SUBTRACT_TRANSMIT_TIME
-        int transmit_time_ns = get_tx_time_ns(baudrate, len) + TIME_OFFSET_US;
+        int transmit_time_ns = get_tx_time_ns(baudrate, len) + TIME_OFFSET_NS;
         if (currtime.tv_nsec < transmit_time_ns) {
           currtime.tv_sec--;
           currtime.tv_nsec = 1e9 - (transmit_time_ns - currtime.tv_nsec);
@@ -369,7 +369,7 @@ int main(int argc, char** argv)
     #if SUBTRACT_TRANSMIT_TIME
             // increment the timestamp by the transmit time
             currtime.tv_nsec += get_tx_time_ns(baudrate, (unsigned int)nlpos - (unsigned int)rcvbuf);
-            if (currtime.tv_nsec > 1e9) {
+            if (currtime.tv_nsec >= 1e9) {
               currtime.tv_sec++;
               currtime.tv_nsec -= 1e9;
             }
@@ -406,7 +406,7 @@ int main(int argc, char** argv)
       if (len > 0) {
         clock_gettime(CLOCK_REALTIME, &currtime);
     #if SUBTRACT_TRANSMIT_TIME
-        int transmit_time_ns = get_tx_time_ns(baudrate, len) + TIME_OFFSET_US;
+        int transmit_time_ns = get_tx_time_ns(baudrate, len) + TIME_OFFSET_NS;
         if (currtime.tv_nsec < transmit_time_ns) {
           currtime.tv_sec--;
           currtime.tv_nsec = 1e9 - (transmit_time_ns - currtime.tv_nsec);
@@ -414,15 +414,25 @@ int main(int argc, char** argv)
           currtime.tv_nsec -= transmit_time_ns;
         }
     #endif /* SUBTRACT_TRANSMIT_TIME */
+        // detect jumps in time
+        if ((prevtime.tv_sec >= currtime.tv_sec) && (prevtime.tv_nsec > currtime.tv_nsec)) {
+          fl_log(LOG_WARNING, "timestamp jump detected (current: %ld.%09ld, previous: %ld.%09ld, txtime: %ld)", currtime.tv_sec, currtime.tv_nsec, prevtime.tv_sec, prevtime.tv_nsec, transmit_time_ns);
+          currtime          = prevtime;
+          currtime.tv_nsec += 1000; // add 1us to have a strictly monotonic timestamp in the log
+          if (currtime.tv_nsec > 1e9) {
+            currtime.tv_sec++;
+            currtime.tv_nsec -= 1e9;
+          }
+        }
         // start time after test end?
-        if (duration > 0 && currtime.tv_sec >= (int)(starttime + duration)) {
+        if ((duration > 0) && (currtime.tv_sec >= (int)(starttime + duration))) {
           break;
         }
         rcvbuf[len] = 0;  // just to be sure, but should already be terminated by zero character in canonical mode
         if (logfile) {
           // only write to file if the timestamp is after the test start
           if ((unsigned int)currtime.tv_sec >= starttime) {
-            int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
+            int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE - 1, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
             if (!prlen) {
               fl_log(LOG_ERROR, "invalid print length\r\n");
               break;
@@ -439,11 +449,15 @@ int main(int argc, char** argv)
         }
       } else if (len < 0) {
         fflush(logfile);
-        fl_log(LOG_WARNING, "read error: %s", strerror(errno));
+        clock_gettime(CLOCK_REALTIME, &currtime);
+        if (currtime.tv_sec < (int)(starttime + duration)) {
+          fl_log(LOG_WARNING, "read error: %s", strerror(errno));
+        } // else: ok (most likely interrupted system call)
         break;
       } else {  // len == 0
         fl_log(LOG_WARNING, "read timeout");
       }
+      prevtime = currtime;
     }
   }
 
