@@ -296,7 +296,7 @@ int main(int argc, char** argv)
     // append the start offset
     currtime.tv_sec  += (START_OFFSET_MS / 1000);
     currtime.tv_nsec += (START_OFFSET_MS % 1000) * 1000000;
-    if (currtime.tv_nsec > 1e9) {
+    if (currtime.tv_nsec >= 1e9) {
       currtime.tv_sec++;
       currtime.tv_nsec -= 1e9;
     }
@@ -419,7 +419,7 @@ int main(int argc, char** argv)
           fl_log(LOG_WARNING, "timestamp jump detected (current: %ld.%09ld, previous: %ld.%09ld, txtime: %ld)", currtime.tv_sec, currtime.tv_nsec, prevtime.tv_sec, prevtime.tv_nsec, transmit_time_ns);
           currtime          = prevtime;
           currtime.tv_nsec += 1000; // add 1us to have a strictly monotonic timestamp in the log
-          if (currtime.tv_nsec > 1e9) {
+          if (currtime.tv_nsec >= 1e9) {
             currtime.tv_sec++;
             currtime.tv_nsec -= 1e9;
           }
