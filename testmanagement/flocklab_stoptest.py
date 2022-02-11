@@ -60,7 +60,7 @@ def usage():
 # collect_error_logs
 #
 ##############################################################################
-def collect_error_logs(testid=None):
+def collect_error_logs(testid=None, starttime=0):
     # check if results directory exists
     if not os.path.isdir("%s/%d" % (flocklab.config.get("observer", "testresultfolder"), testid)):
         return
@@ -76,7 +76,8 @@ def collect_error_logs(testid=None):
                 try:
                     (timestamp, level, msg) = line.split("\t", 2)
                     t = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())   # convert to UNIX timestamp
-                    errorlog.write("%s,GPIO tracing error: %s\n" % (t, msg))
+                    if t >= starttime:
+                        errorlog.write("%s,GPIO tracing error: %s\n" % (t, msg))
                 except ValueError:
                     continue        # probably invalid line / empty line
     
@@ -90,7 +91,8 @@ def collect_error_logs(testid=None):
                     (timestamp, level, msg) = line.split("\t", 2)
                     if level in ("ERROR", "WARN"):
                         t = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())   # convert to UNIX timestamp
-                        errorlog.write("%s,RocketLogger error: %s\n" % (t, msg))
+                        if t >= starttime:
+                            errorlog.write("%s,RocketLogger error: %s\n" % (t, msg))
                 except ValueError:
                     continue        # probably invalid line / empty line
     
@@ -152,6 +154,7 @@ def main(argv):
     # Get xml file for current test, find out slot number, platform and image location:
     slotnr = None
     platform = None
+    teststarttime = 0
     imagepath = []
     if not xmlfile:
         xmlfile = "%s/%d/config.xml" % (config.get("observer", "testconfigfolder"), testid)
@@ -169,6 +172,14 @@ def main(argv):
                 imagepath.append(img.text)
         else:
             errors.append("Could not find element <obsTargetConf> in %s" % xmlfile)
+        # extract start time
+        subtree  = tree.find('obsGpioSettingConf')
+        pinconfs = list(subtree.getiterator("pinConf"))
+        for pinconf in pinconfs:
+            pin = pinconf.find('pin').text
+            if pin == 'RST':
+                teststarttime = flocklab.parse_int(pinconf.find('timestamp').text)
+                break
     except (IOError) as err:
         # most likely the test has not yet been started
         logger.warning("Could not find or open XML file '%s'." % (xmlfile))
@@ -218,7 +229,7 @@ def main(argv):
     
     # collect error logs from services ---
     try:
-        collect_error_logs(testid)
+        collect_error_logs(testid, teststarttime - 60)  # include setup time
     except:
         errors.append("An error occurred while collecting error logs: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
     
