@@ -48,9 +48,10 @@
 #include <signal.h>
 
 
-#define SUBTRACT_TRANSMIT_TIME      1       // subtract the estimated transfer time over uart from the receive timestamp
-#define TIME_OFFSET_NS              100000  // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
-#define START_OFFSET_MS             1000    // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time)
+#define RAW_MODE                    0
+#define SUBTRACT_TRANSMIT_TIME      RAW_MODE  // subtract the estimated transfer time over uart from the receive timestamp (only makes sense in raw mode since the delays are too unpredictable in canonical mode)
+#define TIME_OFFSET_NS              100000    // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
+#define START_OFFSET_MS             1000      // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time)
 #define RECEIVE_BUFFER_SIZE         1024
 #define PRINT_BUFFER_SIZE           (RECEIVE_BUFFER_SIZE + 128)
 #define LOG_VERBOSITY               LOG_DEBUG
@@ -224,7 +225,6 @@ int main(int argc, char** argv)
   struct timespec currtime;
   struct timespec prevtime;
   unsigned long   bufofs      = 0;
-  bool            rawmode     = false;
 
   if (argc > 1) {
     // first parameter is the port
@@ -258,7 +258,7 @@ int main(int argc, char** argv)
     fl_log(LOG_ERROR, "error opening %s: %s", portname, strerror(errno));
     return 1;
   }
-  if (set_interface_attributes(fd, baudrate, !rawmode) != 0) {
+  if (set_interface_attributes(fd, baudrate, !RAW_MODE) != 0) {
     fl_log(LOG_ERROR, "failed to set attributes for device");
     close(fd);
     return 2;
@@ -304,7 +304,7 @@ int main(int argc, char** argv)
   tcflush(fd, TCIFLUSH);
   usleep(10000);
 
-  if (rawmode) {
+  if (RAW_MODE) {
 
     while (running && (duration == 0 || (unsigned int)time(NULL) < (starttime + duration))) {
 
@@ -409,7 +409,7 @@ int main(int argc, char** argv)
     #endif /* SUBTRACT_TRANSMIT_TIME */
         // detect jumps in time
         if ((prevtime.tv_sec >= currtime.tv_sec) && (prevtime.tv_nsec > currtime.tv_nsec)) {
-          fl_log(LOG_WARNING, "timestamp jump detected (current: %ld.%09ld, previous: %ld.%09ld, txtime: %ld, len: %ld)", currtime.tv_sec, currtime.tv_nsec, prevtime.tv_sec, prevtime.tv_nsec, transmit_time_ns, len);
+          fl_log(LOG_WARNING, "timestamp jump detected (current: %ld.%09ld, previous: %ld.%09ld)", currtime.tv_sec, currtime.tv_nsec, prevtime.tv_sec, prevtime.tv_nsec);
           currtime          = prevtime;
           currtime.tv_nsec += 1000; // add 1us to have a strictly monotonic timestamp in the log
           if (currtime.tv_nsec >= 1e9) {
