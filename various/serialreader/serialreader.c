@@ -55,7 +55,6 @@
 #define PRINT_BUFFER_SIZE           (RECEIVE_BUFFER_SIZE + 128)
 #define LOG_VERBOSITY               LOG_DEBUG
 #define LOG_FILENAME                "/home/flocklab/log/serialreader.log"
-#define LOG_PRINT_STDOUT            1    // also print log to stdout?
 
 
 enum log_level {
@@ -96,16 +95,8 @@ void fl_log(log_level_t log_level, char const *const format, ...)
       fprintf(log_fp, levelstr[log_level]);
       vfprintf(log_fp, format, args);
       fprintf(log_fp, "\n");
+      fflush(log_fp);
       fclose(log_fp);
-    }
-
-    if (LOG_PRINT_STDOUT) {
-      // also print to stdout
-      printf(time_str);
-      printf(levelstr[log_level]);
-      vprintf(format, args);
-      printf("\n");
-      fflush(stdout);
     }
   }
 
@@ -390,7 +381,9 @@ int main(int argc, char** argv)
         } while (1);
 
       } else if (len < 0) {
-        fflush(logfile);
+        if (logfile) {
+          fflush(logfile);
+        }
         fl_log(LOG_WARNING, "read error: %s", strerror(errno));
         break;
       }
@@ -416,7 +409,7 @@ int main(int argc, char** argv)
     #endif /* SUBTRACT_TRANSMIT_TIME */
         // detect jumps in time
         if ((prevtime.tv_sec >= currtime.tv_sec) && (prevtime.tv_nsec > currtime.tv_nsec)) {
-          fl_log(LOG_WARNING, "timestamp jump detected (current: %ld.%09ld, previous: %ld.%09ld, txtime: %ld)", currtime.tv_sec, currtime.tv_nsec, prevtime.tv_sec, prevtime.tv_nsec, transmit_time_ns);
+          fl_log(LOG_WARNING, "timestamp jump detected (current: %ld.%09ld, previous: %ld.%09ld, txtime: %ld, len: %ld)", currtime.tv_sec, currtime.tv_nsec, prevtime.tv_sec, prevtime.tv_nsec, transmit_time_ns, len);
           currtime          = prevtime;
           currtime.tv_nsec += 1000; // add 1us to have a strictly monotonic timestamp in the log
           if (currtime.tv_nsec >= 1e9) {
@@ -447,13 +440,18 @@ int main(int argc, char** argv)
           printf("[%ld.%06ld] %s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
           fflush(stdout);
         }
+
       } else if (len < 0) {
-        fflush(logfile);
-        clock_gettime(CLOCK_REALTIME, &currtime);
-        if (currtime.tv_sec < (int)(starttime + duration)) {
+        if (logfile) {
+          fflush(logfile);
+        }
+        if (errno == EINTR) {
+          fl_log(LOG_DEBUG, "sigterm received");
+        } else {
           fl_log(LOG_WARNING, "read error: %s", strerror(errno));
-        } // else: ok (most likely interrupted system call)
+        }
         break;
+
       } else {  // len == 0
         fl_log(LOG_WARNING, "read timeout");
       }
