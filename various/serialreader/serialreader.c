@@ -335,7 +335,7 @@ int main(int argc, char** argv)
           // look for a newline character
           char* nlpos = strchr((char*)rcvbuf, '\n');
           if (nlpos) {
-            *nlpos = 0;      // terminate the string
+            len = (unsigned int)nlpos - (unsigned int)rcvbuf;
             nlpos++;
           } else if (bufofs < (sizeof(rcvbuf) - 1)) {
             // no newline found and buffer not yet full -> abort
@@ -344,12 +344,13 @@ int main(int argc, char** argv)
           if (logfile) {
             // only write to file if the timestamp is after the test start
             if ((unsigned int)prevtime.tv_sec >= starttime) {
-              int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,%s\n", prevtime.tv_sec, prevtime.tv_nsec / 1000, rcvbuf);
+              int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "\n%ld.%06ld,", prevtime.tv_sec, prevtime.tv_nsec / 1000);
               if (!prlen) {
                 fl_log(LOG_ERROR, "invalid print length\r\n");
                 break;
               }
               fwrite(printbuf, prlen, 1, logfile);
+              fwrite(rcvbuf, len, 1, logfile);
             } // else: ignore
           } else {
             printf("[%ld.%06ld] %s\n", prevtime.tv_sec, prevtime.tv_nsec / 1000, rcvbuf);
@@ -425,16 +426,13 @@ int main(int argc, char** argv)
         if (logfile) {
           // only write to file if the timestamp is after the test start
           if ((unsigned int)currtime.tv_sec >= starttime) {
-            int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE - 1, "%ld.%06ld,%s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
+            int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE - 1, "%ld.%06ld,", currtime.tv_sec, currtime.tv_nsec / 1000);
             if (!prlen) {
               fl_log(LOG_ERROR, "invalid print length\r\n");
               break;
             }
-            if (printbuf[prlen - 1] != '\n') {
-              printbuf[prlen++] = '\n';
-              printbuf[prlen]   = 0;
-            }
             fwrite(printbuf, prlen, 1, logfile);
+            fwrite(rcvbuf, len, 1, logfile);      // note: rcvbuf already contains a newline
           } // else: ignore
         } else {
           printf("[%ld.%06ld] %s", currtime.tv_sec, currtime.tv_nsec / 1000, rcvbuf);
