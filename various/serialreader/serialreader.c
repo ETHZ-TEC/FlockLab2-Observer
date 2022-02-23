@@ -452,7 +452,7 @@ int main(int argc, char** argv)
           // only write to file if the timestamp is after the test start
           if ((unsigned int)currtime.tv_sec >= starttime) {
             int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,", currtime.tv_sec, currtime.tv_nsec / 1000);
-            if (!prlen) {
+            if (prlen) {
               fwrite(printbuf, prlen, 1, logfile);
               fwrite(rcvbuf, len, 1, logfile);
             }
