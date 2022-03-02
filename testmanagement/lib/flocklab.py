@@ -110,7 +110,7 @@ rl_default_rate = 1000
 rl_samp_rates   = [1, 10, 100, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
 rl_max_samples  = 100000000
 rl_time_offset  = -0.0037       # rocketlogger is about ~3.7ms behind the actual time
-max_act_events  = 2000          # max. number of actuation events
+max_act_events  = 8192          # max. number of actuation events
 i2c_bus         = 2             # I2C2 is used to control the DAC and read the SHT31 sensor
 max_swo_speed   = 4000000       # max. supported SWO speed by the JLink OB debug probe
 
@@ -1091,8 +1091,8 @@ def start_gpio_actuation(start_time=None, act_events=[]):
         last_event = evt[1]
     # Append the start command
     act_cmd += "S%u" % (start_time)
-    if logger:
-        logger.debug("Configuring GPIO actuation service with command: '%s'" % act_cmd);
+    #if logger:
+    #    logger.debug("Configuring GPIO actuation service with command: '%s'" % act_cmd);
     # write the command string into the actuation device
     with open(actuationdev, 'w') as f:
         f.write(act_cmd)

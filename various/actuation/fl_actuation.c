@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2020, ETH Zurich, Computer Engineering Group
+ * Copyright (c) 2020 - 2022, ETH Zurich, Computer Engineering Group
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,8 +27,6 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * Author: Reto Da Forno
  */
 
 /**
@@ -55,10 +53,10 @@
 #define DEVICE_NAME         "flocklab_act"      // name of the device in '/dev/'
 #define TIMER_MODE          HRTIMER_MODE_ABS    // absolute or relative
 #define TIMER_ID            CLOCK_REALTIME      // realtime or monotonic
-#define TIMER_OFS_US        -90                // timer offset compensation in microseconds, applies to the start marker only
+#define TIMER_OFS_US        -10                 // timer offset compensation in microseconds, applies to the start marker only
 #define MIN_PERIOD          10                  // minimum time between two consecutive actuation events, in microseconds
-#define DEVICE_BUFFER_SIZE  32768               // max. buffer size for character device
-#define EVENT_QUEUE_SIZE    2048                // limits the max. number of actuations that can be registered at a time; must be a power of 2
+#define DEVICE_BUFFER_SIZE  65536               // max. buffer size for character device
+#define EVENT_QUEUE_SIZE    8192                // limits the max. number of actuations that can be registered at a time; must be a power of 2
 #define FLOCKLAB_SIG1_PIN   89                  // P8.30 -> must be configured as GPIO output
 #define FLOCKLAB_SIG2_PIN   88                  // P8.28 -> must be configured as GPIO output
 #define FLOCKLAB_nRST_PIN   77                  // P8.40 -> must be configured as GPIO output
