@@ -2,7 +2,7 @@
 
 # a simple ping watchdog, reboots the host system if the target host is inaccessible
 
-HOSTNAME=whymper.ee.ethz.ch   # target host to ping
+HOSTNAME=flocklab.ethz.ch     # target host to ping
 TIMEOUT=60                    # timeout in seconds
 INTERFACE=""
 
