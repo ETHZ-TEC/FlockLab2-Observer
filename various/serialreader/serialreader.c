@@ -362,7 +362,7 @@ int main(int argc, char** argv)
           // write to file
           if (logfile) {
             // only write to file if the timestamp is after the test start
-            if ((unsigned int)prevtime.tv_sec >= starttime) {
+            if (((unsigned int)prevtime.tv_sec + 1) >= starttime) {
               int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,", prevtime.tv_sec, prevtime.tv_nsec / 1000);
               if (prlen) {
                 fwrite(printbuf, prlen, 1, logfile);
@@ -449,8 +449,8 @@ int main(int argc, char** argv)
         }
         // write to file
         if (logfile) {
-          // only write to file if the timestamp is after the test start
-          if ((unsigned int)currtime.tv_sec >= starttime) {
+          // only write to file if the timestamp is after the test start (+1 slack to account for timing errors)
+          if (((unsigned int)currtime.tv_sec + 1) >= starttime) {
             int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,", currtime.tv_sec, currtime.tv_nsec / 1000);
             if (prlen) {
               fwrite(printbuf, prlen, 1, logfile);
