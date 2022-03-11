@@ -136,7 +136,7 @@ def main(argv):
     serialport          = None
     noimage             = False
     actuationused       = False
-    resetactuationused  = False
+    resetactuationused  = True
     abortonerror        = False
     ptpsynced           = False
     tracingserviceused  = tree.find('obsGpioMonitorConf') != None
@@ -226,7 +226,7 @@ def main(argv):
             logger.debug("Programmed target with image %s." % (image))
 
     # Hold target in reset state
-    flocklab.tg_reset(False)
+    flocklab.tg_reset(release=False, reconfigure=True)
 
     # Set voltage ---
     if flocklab.tg_set_vcc(voltage) != flocklab.SUCCESS:
@@ -260,8 +260,8 @@ def main(argv):
                 resets.append(pinconf.find('timestamp').text)
                 continue
             actuationused = True
-            if pin == 'nRST':   # target reset actuation during the test
-                resetactuationused = True
+            #if pin == 'nRST':   # target reset actuation during the test
+            #    resetactuationused = True
             cmd = flocklab.level_str2abbr(pinconf.find('level').text, pin)
             microsecs = int(flocklab.parse_float(pinconf.find('offset').text) * 1000000)
             if pinconf.findtext('period'):
