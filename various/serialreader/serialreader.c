@@ -51,7 +51,8 @@
 #define RAW_MODE                    0
 #define SUBTRACT_TRANSMIT_TIME      RAW_MODE  // subtract the estimated transfer time over uart from the receive timestamp (only makes sense in raw mode since the delays are too unpredictable in canonical mode)
 #define TIME_OFFSET_NS              100000    // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
-#define START_OFFSET_MS             1000      // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time)
+#define START_OFFSET_MS             1000      // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time), only considered if WAIT_FOR_STARTTIME enabled
+#define WAIT_FOR_STARTTIME          0         // whether to wait for the start time (if set to 0, the read loop will be entered immediately, but data received before the start time will still be disregarded)
 #define CHECK_FOR_TIME_JUMPS        1
 #define RECEIVE_BUFFER_SIZE         4096
 #define PRINT_BUFFER_SIZE           128
@@ -178,7 +179,7 @@ int set_interface_attributes(int fd, int speed, bool canonical_mode)
   tty.c_lflag  = 0;           // clear local flags
 
   if (canonical_mode) {
-    fl_log(LOG_DEBUG, "using canonical mode");
+    //fl_log(LOG_DEBUG, "using canonical mode");
     tty.c_lflag |= ICANON;    // canonical mode
   } else {
     tty.c_lflag &= ~ICANON;   // clear canonical mode bit
@@ -255,7 +256,7 @@ int main(int argc, char** argv)
   if (argc > 5) {
     // 5th argument is the duration (optional)
     duration = strtol(argv[5], NULL, 10);
-    fl_log(LOG_INFO, "logging duration: %us", duration);
+    //fl_log(LOG_INFO, "logging duration: %us", duration);
   }
 
   // open the serial device
@@ -287,6 +288,7 @@ int main(int argc, char** argv)
   }
 
   // wait for start time
+#if WAIT_FOR_STARTTIME
   if (starttime) {
     struct timespec currtime;
     clock_gettime(CLOCK_REALTIME, &currtime);
@@ -306,9 +308,9 @@ int main(int argc, char** argv)
       usleep(diff_usec);
     }
   }
+#endif
   // flush input queue
   tcflush(fd, TCIOFLUSH);
-  usleep(10000);
 
   if (RAW_MODE) {
 
@@ -362,12 +364,15 @@ int main(int argc, char** argv)
           // write to file
           if (logfile) {
             // only write to file if the timestamp is after the test start
-            if (((unsigned int)prevtime.tv_sec + 1) >= starttime) {
+            if ((unsigned int)prevtime.tv_sec >= starttime) {
               int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,", prevtime.tv_sec, prevtime.tv_nsec / 1000);
               if (prlen) {
                 fwrite(printbuf, prlen, 1, logfile);
                 fwrite(rcvbuf, len, 1, logfile);
               }
+            } else {
+              rcvbuf[len - 1] = 0;  // make sure the line is a valid string (zero terminated)
+              fl_log(LOG_DEBUG, "message dropped (before starttime): %s", rcvbuf);
             }
           // write to stdout
           } else {
@@ -450,12 +455,15 @@ int main(int argc, char** argv)
         // write to file
         if (logfile) {
           // only write to file if the timestamp is after the test start (+1 slack to account for timing errors)
-          if (((unsigned int)currtime.tv_sec + 1) >= starttime) {
+          if ((unsigned int)currtime.tv_sec >= starttime) {
             int prlen = snprintf(printbuf, PRINT_BUFFER_SIZE, "%ld.%06ld,", currtime.tv_sec, currtime.tv_nsec / 1000);
             if (prlen) {
               fwrite(printbuf, prlen, 1, logfile);
               fwrite(rcvbuf, len, 1, logfile);
             }
+          } else {
+            rcvbuf[len - 1] = 0;  // make sure the line is a valid string (zero terminated)
+            fl_log(LOG_DEBUG, "message dropped (before starttime): %s", rcvbuf);
           }
         // write to stdout
         } else {
