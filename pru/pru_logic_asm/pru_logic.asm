@@ -229,6 +229,9 @@ use_default_mask:
 skip_use_default_mask:
         AND     PINMASK, PINMASK, TRACING_PINS      ; make sure the upper bits are cleared
 
+        ; make sure set target reset is low
+        CLR     GPO.t7
+
         ; enable OCP master port
         LBCO    &TMP, PRUSS_CFG, PRUSS_SYSCFG_OFS, 4
         CLR     TMP, TMP, 4               ; clear bit 4 (STANDBY_INIT)
