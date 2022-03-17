@@ -260,8 +260,8 @@ def main(argv):
                 resets.append(pinconf.find('timestamp').text)
                 continue
             actuationused = True
-            #if pin == 'nRST':   # target reset actuation during the test
-            #    resetactuationused = True
+            if pin == 'nRST':   # target reset actuation during the test
+                resetactuationused = True
             cmd = flocklab.level_str2abbr(pinconf.find('level').text, pin)
             microsecs = int(flocklab.parse_float(pinconf.find('offset').text) * 1000000)
             if pinconf.findtext('period'):

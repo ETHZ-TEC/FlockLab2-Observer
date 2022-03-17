@@ -369,9 +369,9 @@ def gpio_clr(pin):
 def gpio_get(pin):
     try:
         #p = subprocess.Popen(["cat", "/sys/class/gpio/gpio%s/value" % (pin)], stdout=subprocess.PIPE, universal_newlines=True)
-        #out = p.communicate()[0]
+        #out = parse_int(p.communicate()[0])
         f = open("/sys/class/gpio/gpio%s/value" % (pin), 'r')
-        out = f.read()
+        out = parse_int(f.read())
         f.close()
     except IOError:
         return FAILED
