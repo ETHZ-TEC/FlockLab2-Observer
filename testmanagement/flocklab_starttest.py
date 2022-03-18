@@ -226,7 +226,7 @@ def main(argv):
             logger.debug("Programmed target with image %s." % (image))
 
     # Hold target in reset state
-    flocklab.tg_reset(release=False, reconfigure=True)
+    flocklab.tg_reset(release=False)
 
     # Set voltage ---
     if flocklab.tg_set_vcc(voltage) != flocklab.SUCCESS:
