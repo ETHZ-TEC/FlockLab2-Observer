@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
 """
-Copyright (c) 2020, ETH Zurich, Computer Engineering Group
+Copyright (c) 2020 - 2022, ETH Zurich, Computer Engineering Group
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -64,7 +64,7 @@ def collect_error_logs(testid=None, starttime=0):
     # check if results directory exists
     if not os.path.isdir("%s/%d" % (flocklab.config.get("observer", "testresultfolder"), testid)):
         return
-    
+
     # collect GPIO tracing error log
     errorlogfile = "%s/%d/error_%s.log" % (flocklab.config.get("observer", "testresultfolder"), testid, time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     errorlog = open(errorlogfile, 'a')
@@ -80,7 +80,7 @@ def collect_error_logs(testid=None, starttime=0):
                         errorlog.write("%s,GPIO tracing error: %s\n" % (t, msg))
                 except ValueError:
                     continue        # probably invalid line / empty line
-    
+
     # collect RL error log
     if os.path.isfile(flocklab.rllog):
         flocklab.logger.debug("Log file %s found." % flocklab.rllog)
@@ -95,7 +95,7 @@ def collect_error_logs(testid=None, starttime=0):
                             errorlog.write("%s,RocketLogger error: %s\n" % (t, msg))
                 except ValueError:
                     continue        # probably invalid line / empty line
-    
+
     errorlog.close()
 ### END collect_error_messages()
 
@@ -106,17 +106,17 @@ def collect_error_logs(testid=None, starttime=0):
 #
 ##############################################################################
 def main(argv):
-    
+
     debug   = False
     errors  = []
     testid  = None
     xmlfile = None
-    
+
     # Get config:
     config = flocklab.get_config()
     if not config:
         flocklab.error_logandexit("Could not read configuration file.")
-    
+
     # Get command line parameters.
     try:
         opts, args = getopt.getopt(argv, "dht:x:", ["debug", "help", "testid=", "xml="])
@@ -136,20 +136,20 @@ def main(argv):
             sys.exit(flocklab.SUCCESS)
         else:
             flocklab.error_logandexit("Wrong API usage", errno.EINVAL)
-    
+
     # Check for mandatory arguments:
     if not testid:
         flocklab.error_logandexit("No test ID supplied", errno.EINVAL)
-    
+
     # Init logger
     logger = flocklab.get_logger(debug=debug)
     if not logger:
         flocklab.error_logandexit("Could not get logger.")
-    
+
     # Check if SD card is mounted ---
     if not flocklab.is_sdcard_mounted():
         errors.append("SD card is not mounted.")
-    
+
     # Get info from XML ---
     # Get xml file for current test, find out slot number, platform and image location:
     slotnr = None
@@ -184,7 +184,7 @@ def main(argv):
         # most likely the test has not yet been started
         logger.warning("Could not find or open XML file '%s'." % (xmlfile))
         sys.exit(flocklab.SUCCESS)
-    
+
     # Activate interface ---
     if flashdefaultimage:
         if slotnr:
@@ -194,7 +194,7 @@ def main(argv):
             # Assume that the interface is still activated.
             slotnr = flocklab.tg_get_selected()
             errors.append("Could not activate interface because slot number could not be determined. Working on currently active interface %d." % slotnr)
-      
+
     # Reset all services ---
     if flocklab.stop_serial_service(debug) != flocklab.SUCCESS:
         errors.append("Failed to stop serial service.")
@@ -212,12 +212,12 @@ def main(argv):
         errors.append("Failed to stop debug service.")
     if flocklab.stop_data_trace() != flocklab.SUCCESS:
         errors.append("Failed to stop data trace service.")
-    
-    logger.info("All services stopped.")
-    
+
+    logger.debug("All services stopped.")
+
     # wait for all background services to stop
     time.sleep(10)
-    
+
     # add some more info to the timesync log ---
     try:
         if flocklab.get_timesync_method() == "GPS":
@@ -226,13 +226,13 @@ def main(argv):
             flocklab.log_timesync_info(testid=testid, includepps=False)
     except:
         errors.append("An error occurred while collecting timesync info: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
-    
+
     # collect error logs from services ---
     try:
         collect_error_logs(testid, teststarttime - 60)  # include setup time
     except:
         errors.append("An error occurred while collecting error logs: %s, %s" % (str(sys.exc_info()[0]), str(sys.exc_info()[1])))
-    
+
     # Flash target with default image ---
     if flashdefaultimage:
         if platform:
@@ -255,28 +255,28 @@ def main(argv):
                 core = core + 1
         elif len(imagepath) > 0:
             logger.warn("Could not flash target with default image because slot number and/or platform could not be determined.")
-      
+
     # Set voltage to 3.3V, turn target off (cut all connections) ---
     flocklab.tg_set_vcc()
     flocklab.tg_off()
-    
+
     # Remove config directory ---
     testconfigpath = "%s/%d" % (config.get("observer", "testconfigfolder"), testid)
     if os.path.exists(testconfigpath):
         shutil.rmtree(testconfigpath)
         logger.debug("Test config '%s' removed." % (testconfigpath))
-    
+
     # Disable status LED
     flocklab.gpio_clr(flocklab.gpio_led_status)
-    
+
     # Error checking ---
     if errors:
         flocklab.error_logandexit("Process finished with %d errors:\n%s" % (len(errors), "\n".join(errors)))
-    
+
     # Successful
-    logger.info("Successfully stopped test.")
+    logger.info("Test %d stopped." % testid)
     flocklab.gpio_clr(flocklab.gpio_led_error)
-    
+
     sys.exit(flocklab.SUCCESS)
 ### END main()
 

@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
 """
-Copyright (c) 2020, ETH Zurich, Computer Engineering Group
+Copyright (c) 2020 - 2022, ETH Zurich, Computer Engineering Group
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -109,6 +109,8 @@ def main(argv):
 
     # Indicate start of the script by enabling status LED
     flocklab.gpio_set(flocklab.gpio_led_status)
+
+    logger.debug("Preparing test %d..." % testid)
 
     # Rename XML ---
     if os.path.basename(xmlfile) != "config.xml":
@@ -517,7 +519,7 @@ def main(argv):
             flocklab.log_test_error(testid, msg)
 
     flocklab.gpio_clr(flocklab.gpio_led_error)
-    logger.info("Test successfully started.")
+    logger.info("Test %d successfully started." % testid)
 
     sys.exit(flocklab.SUCCESS)
 ### END main()
