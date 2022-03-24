@@ -204,7 +204,7 @@ def prog_telosb(imagefile, speed=38400):
 ##############################################################################
 def prog_stm32l4(imagefile, port, speed=115200):
     tries = 2
-    
+
     # stm32loader expects a binary file
     if "hex" in os.path.splitext(imagefile)[1]:
         hex2bin(imagefile, imagefile + ".binary")
@@ -326,7 +326,7 @@ def prog_swd(imagefile, device, speed='auto'):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     out, err = p.communicate(input=jlinkcmd)
     if "Core found" not in out:
-        flocklab.log_error("Failed to connect to target via SWD. JLink output: %s" % out)
+        flocklab.log_error("Failed to connect to target via SWD. JLink output:\n%s" % out)
         return flocklab.FAILED
     #if out.find("Programming flash [100%] Done") < 0:
     if out.find("Verifying flash") < 0:
@@ -335,10 +335,38 @@ def prog_swd(imagefile, device, speed='auto'):
              dbg_pos = 0
         flocklab.log_error("Failed to program target via SWD. JLink output:\n%s" % out[dbg_pos:])
         return flocklab.FAILED
-    if debug:
-        flocklab.log_debug(out)
+    flocklab.log_debug(out)
     return flocklab.SUCCESS
 ### END prog_swd()
+
+
+def swd_disable_boot_pin(device, speed='auto'):
+    jlinkcmd = ""
+
+    if "STM32L4" in device:
+        # commands necessary to unlock the flash / option bytes and disable the BOOT0 pin
+        commands = [ "w4    0x40022008, 0x45670123", # write KEY1 to FLASH_KEYR
+                     "w4    0x40022008, 0xCDEF89AB", # write KEY2 to FLASH_KEYR
+                     "w4    0x4002200C, 0x08192A3B", # write OPTKEY1 to FLASH_OPTKEYR
+                     "w4    0x4002200C, 0x4C5D6E7F", # write OPTKEY2 to FLASH_OPTKEYR
+                     #"mem32 0x40022014, 1",         # read flash control register (FLASH_CR)
+                     "w1    0x40022023, 0xFB",       # write flash options register (clear nSWBOOT0)
+                     #"mem32 0x40022020, 1",         # read flash options register (FLASH_OPTR)
+                     "w1    0x40022016, 0x2",        # set bit OPTSTRT in FLASH_CR to initiate the option byte change
+                     "w1    0x40022017, 0xC0",       # lock the flash memory
+                     "mem8  0x1FFF7803, 1" ]         # read option byte register (should now read 'FBEFF8AA')
+        jlinkcmd = "r\n" + "\n".join(commands) + "\n"
+
+    if jlinkcmd:
+        cmd = ['JLinkExe', '-device', device, '-if', 'SWD', '-speed', str(speed), '-autoconnect', '1']
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        out, err = p.communicate(input=jlinkcmd)
+    if "1FFF7803 = FB" not in out:
+        flocklab.log_error("Failed to disable boot pin. JLink output:\n%s" % out)
+        return flocklab.FAILED
+    flocklab.log_debug(out)
+    flocklab.log_debug("Boot pin disabled.")
+    return flocklab.SUCCESS
 
 
 ##############################################################################
@@ -353,10 +381,11 @@ def main(argv):
     imagefile = None
     target    = None
     core      = 0
+    boot_dis  = False
 
     # Get command line parameters.
     try:
-        opts, args = getopt.getopt(argv, "dhi:t:p:c:", ["debug", "help", "image=", "target=", "port=", "core="])
+        opts, args = getopt.getopt(argv, "dhi:t:p:c:b", ["debug", "help", "image=", "target=", "port=", "core=", "bootpin"])
     except getopt.GetoptError  as err:
         flocklab.error_logandexit(str(err), errno.EINVAL)
     for opt, arg in opts:
@@ -373,6 +402,8 @@ def main(argv):
             porttype = arg
         elif opt in ("-c", "--core"):
             core = int(arg)
+        elif opt in ("-b", "--bootpin"):
+            boot_dis = True
         else:
             flocklab.error_logandexit("Unknown argument %s" % opt, errno.EINVAL)
 
@@ -409,6 +440,8 @@ def main(argv):
                 rs = 1
         else:
             rs = prog_swd(imagefile, "STM32L433CC")
+            if rs == flocklab.SUCCESS and boot_dis:
+                rs = swd_disable_boot_pin("STM32L433CC")
             # power cycle to make sure the debug circuit is disabled
             flocklab.tg_pwr_en(False)
             time.sleep(1)

@@ -849,7 +849,7 @@ def get_pids(process_name=None):
 def program_target(filename=None, platform=None, core=0, debug=False):
     if not config or not filename or not platform:
         return FAILED
-    cmd = [config.get("observer", "progscript"), '--image=%s' % filename, '--target=%s' % platform, '--core=%d' % core]
+    cmd = [config.get("observer", "progscript"), '--image=%s' % filename, '--target=%s' % platform, '--core=%d' % core, '--bootpin']
     if debug:
         cmd.append("--debug")
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)

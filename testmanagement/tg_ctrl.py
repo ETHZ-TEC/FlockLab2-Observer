@@ -74,8 +74,8 @@ def usage():
     print("  --mux, -m\t\tenable or disable the MUX (pass '?' to poll the current state)")
     print("  --actuation, -a\tenable or disable actuation (pass '?' to poll the current state)")
     print("  --reset, -r\t\treset the target")
-    print("  --reset-state\t\tpoll the reset state")
-    print("  --reset-low\t\tset the target reset low")
+    print("  --resetstate\t\tpoll the reset state")
+    print("  --resetlow\t\tset the target reset low")
     print("  --sig1\t\tset SIG1 pin level")
     print("  --sig2\t\tset SIG2 pin level")
     print("  --temperature\t\tget the current temperature (SHT31 sensor on the observer)")
@@ -94,7 +94,7 @@ def main(argv):
     # Get command line parameters
     try:
         # Note: a ':' indicates that the option requires an argument
-        opts, args = getopt.getopt(argv, "hedprs:m:a:tv:", ["help", "enable", "disable", "power", "reset", "select=", "mux=", "actuation=", "target", "voltage=", "reset-state", "reset-low", "temperature", "humidity", "temp", "humi", "sig1=", "sig2="])
+        opts, args = getopt.getopt(argv, "hedprs:m:a:tv:", ["help", "enable", "disable", "power", "reset", "select=", "mux=", "actuation=", "target", "voltage=", "resetstate", "resetlow", "temperature", "humidity", "temp", "humi", "sig1=", "sig2="])
     except getopt.GetoptError as err:
         print(str(err))
         sys.exit(errno.EINVAL)
@@ -126,10 +126,10 @@ def main(argv):
             flocklab.tg_reset()
             print("target reset")
 
-        elif opt in ("--reset-state"):
+        elif opt in ("--resetstate"):
             print("reset state: %d" % flocklab.tg_reset_state())
 
-        elif opt in ("--reset-low"):
+        elif opt in ("--resetlow"):
             flocklab.tg_act_en(True)  # make sure actuation is enabled
             flocklab.tg_reset(False)
             print("holding target in reset state")
