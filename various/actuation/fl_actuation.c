@@ -62,7 +62,7 @@
 #define FLOCKLAB_nRST_PIN   77                  // P8.40 -> must be configured as GPIO output
 #define FLOCKLAB_PPS_PIN    66                  // P8.07 -> must be configured as GPIO output
 #define FLOCKLAB_ACTnEN_PIN 65                  //
-#define PPS_MAX_WAIT_TIME   220000              // max. time to wait before actuating the PPS pin, in ns (set to 0 to disable this feature)
+#define PPS_MAX_WAITTIME_NS 220000              // max. time to wait before actuating the PPS pin, in ns (set to 0 to disable this feature)
 #define PPS_SHIFT           100                 // shift the PPS generation by x ns (positiv values will lead to an earlier actuation)
 #define DEBUG               0
 
@@ -78,6 +78,7 @@
 #define GPIO_CLR_OFS        0x190               // set data output low
 #define GPIO_SET_OFS        0x194               // set data output high
 #define PIN_TO_BITMASK(p)   (1 << ((p) & 31))
+#define INVALID_OFS         0xffffffff
 
 #if FLOCKLAB_SIG1_PIN < 32
   #define GPIO_ADDR         GPIO0_START_ADDR
@@ -108,9 +109,9 @@
 // --- TYPEDEFS ---
 
 typedef struct {
-  uint32_t ofs;     /* offset relative to the start time */
-  uint8_t  pin;     /* pin number */
-  uint8_t  lvl;     /* logic level (0 or 1) */
+  uint32_t ofs;     // offset relative to the start time
+  uint8_t  pin;     // pin number
+  uint8_t  lvl;     // logic level (0 or 1)
 } act_event_t;
 
 
@@ -207,7 +208,7 @@ static inline bool queue_full(void)
 }
 
 // adds a GPIO actuation event to the queue
-static bool add_event(uint32_t ofs, uint32_t pin, uint32_t level)
+static bool add_event(uint32_t ofs_us, uint32_t pin, uint32_t level)
 {
   // timer must be stopped
   if (timer_running) {
@@ -220,20 +221,20 @@ static bool add_event(uint32_t ofs, uint32_t pin, uint32_t level)
     return false;
   }
   // offset must be at least MIN_PERIOD (or zero)
-  if (ofs > 0 && ofs < MIN_PERIOD) {
+  if (ofs_us > 0 && ofs_us < MIN_PERIOD) {
     // set offset to 0, i.e. execute it together with the previous event
-    ofs = 0;
+    ofs_us = 0;
     LOG("WARNING offset too small\n");
   }
   // acquire queue access
   if (down_interruptible(&queue_sem) == 0) {
-    event_queue[write_idx].ofs = ofs;
+    event_queue[write_idx].ofs = ofs_us;
     event_queue[write_idx].pin = pin;
     event_queue[write_idx].lvl = level;
     write_idx = (write_idx + 1) & (EVENT_QUEUE_SIZE - 1);
     // release semaphore
     up(&queue_sem);
-    LOG_DEBUG("event added (%u, %u, %u), new queue size is %u\n", ofs, pin, level, queue_size());
+    LOG_DEBUG("event added (%u, %u, %u), new queue size is %u\n", ofs_us, pin, level, queue_size());
 
   } else {
     LOG("ERROR failed to get semaphore\n");
@@ -245,18 +246,20 @@ static bool add_event(uint32_t ofs, uint32_t pin, uint32_t level)
 static inline const act_event_t* get_next_event(void)
 {
   const act_event_t* ev = NULL;
-  if (queue_empty()) {
-    return NULL;
+  if (!queue_empty()) {
+    ev = &event_queue[read_idx];
+    read_idx++;
+    if (read_idx >= EVENT_QUEUE_SIZE) {
+      read_idx = 0;
+    }
   }
-  ev = &event_queue[read_idx];
-  read_idx = (read_idx + 1) & (EVENT_QUEUE_SIZE - 1);
   return ev;
 }
 
 static inline uint32_t get_next_event_offset(void)
 {
   if (queue_empty()) {
-    return 0xffffffff;
+    return INVALID_OFS;
   }
   return event_queue[read_idx].ofs;
 }
@@ -282,63 +285,70 @@ static void timer_reset(struct hrtimer* tim, uint32_t period_us)
 // timer callback function
 static enum hrtimer_restart timer_expired(struct hrtimer* tim)
 {
-  uint32_t extra_ofs = 0;
+  uint32_t extra_ofs_us = 0;
 
   do {
+    // note: on the first call of this function, next_evt will be NULL
     if (next_evt) {
 
-#if PPS_MAX_WAIT_TIME
+#if PPS_MAX_WAITTIME_NS
 
-      /* is it the PPS pin? (rising edge only) */
-      if (next_evt->pin == FLOCKLAB_PPS_PIN && next_evt->lvl > 0) {
+      // is it the PPS pin? (rising edge only)
+      if ((next_evt->pin == FLOCKLAB_PPS_PIN) && (next_evt->lvl > 0)) {
         struct   timespec ts_now;
-        uint32_t delta;
+        uint32_t delta_ns;
         bool     pps_lvl = next_evt->lvl;
         // get current UNIX timestamp in nanoseconds
         ktime_get_real_ts(&ts_now);    // same as getnstimeofday()
         // calculate time delta to the next full second
-        delta = 1000000000 - (uint32_t)ts_now.tv_nsec - PPS_SHIFT;
-        if (delta < PPS_MAX_WAIT_TIME) {
+        delta_ns = 1000000000 - (uint32_t)ts_now.tv_nsec - PPS_SHIFT;
+        if (delta_ns < PPS_MAX_WAITTIME_NS) {
           // check if the next event is within this time frame
-          uint64_t next_ofs = get_next_event_offset() * 1000;
-          while (next_ofs < delta) {
+          while (1) {
+            uint64_t next_ofs = get_next_event_offset();
+            if (next_ofs == INVALID_OFS) {  // no more events pending
+              break;
+            }
+            next_ofs *= 1000;               // convert from us to ns
+            if (next_ofs >= delta_ns) {     // too far in the future
+              break;
+            }
             next_evt = get_next_event();
-            // busy wait
-            ndelay(next_evt->ofs);
+            ndelay(next_ofs);               // busy wait
             // actuate pin
             gpio_update(next_evt->pin, next_evt->lvl);
             // update delta / offset
-            delta     -= next_ofs;
-            extra_ofs += next_evt->ofs;
-            next_ofs   = get_next_event_offset() * 1000;
+            delta_ns     -= next_ofs;
+            extra_ofs_us += next_evt->ofs;
           }
           // busy wait for the remaining time
-          ndelay(delta);
+          ndelay(delta_ns);
           gpio_update(FLOCKLAB_PPS_PIN, pps_lvl);
         } else {
           // else: too late or too early -> skip this event
           skipped_events++;
         }
-
       } else {
-        /* regular pin */
+        // regular pin or falling edge of PPS
         gpio_update(next_evt->pin, next_evt->lvl);
       }
-#else /* PPS_MAX_WAIT_TIME */
+#else /* PPS_MAX_WAITTIME_NS */
 
       gpio_update(next_evt->pin, next_evt->lvl);
 
-#endif /* PPS_MAX_WAIT_TIME */
+#endif /* PPS_MAX_WAITTIME_NS */
+
       LOG_DEBUG("GPIO level set\n");
     }
-    /* check if there are more actuation events that should happen now */
+    // check if there are more actuation events that should happen now
     next_evt = get_next_event();
   } while (next_evt && next_evt->ofs == 0);
 
-  /* if there are more events in the queue, then restart the timer */
+  // if there are more events in the queue, then restart the timer
   if (next_evt) {
-    timer_reset(tim, next_evt->ofs + extra_ofs);
+    timer_reset(tim, next_evt->ofs + extra_ofs_us);
     return HRTIMER_RESTART;
+
   } else {
     LOG("timer stopped (%u events skipped)\n", skipped_events);
     skipped_events = 0;
@@ -404,9 +414,9 @@ static void parse_argument(const char* arg)
             val += now.tv_sec;
           }
           if (val > now.tv_sec) {
-            ktime_t t_start;
-            t_start = ktime_set(val, 0) + (TIMER_OFS_US * 1000);
-            timer_set(t_start);
+            ktime_t t_start_ns;
+            t_start_ns = ktime_set(val, 0) + (TIMER_OFS_US * 1000);
+            timer_set(t_start_ns);
             LOG("start time set to %u, queue size is %u\n", val, queue_size());
           }
         } else {
