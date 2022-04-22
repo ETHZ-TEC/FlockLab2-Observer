@@ -51,7 +51,7 @@
 #define RAW_MODE                    0
 #define SUBTRACT_TRANSMIT_TIME      RAW_MODE  // subtract the estimated transfer time over uart from the receive timestamp (only makes sense in raw mode since the delays are too unpredictable in canonical mode)
 #define TIME_OFFSET_NS              100000    // constant offset in us, only effective if SUBTRACT_TRANSMIT_TIME is enabled
-#define START_OFFSET_MS             1000      // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time), only considered if WAIT_FOR_STARTTIME enabled
+#define START_OFFSET_MS             1         // offset of the start time (positive value means the read loop will be entered earlier than the scheduled start time), only considered if WAIT_FOR_STARTTIME enabled
 #define WAIT_FOR_STARTTIME          1         // whether to wait for the start time (if set to 0, the read loop will be entered immediately, but data received before the start time will still be disregarded)
 #define CHECK_FOR_TIME_JUMPS        1
 #define RECEIVE_BUFFER_SIZE         4096
