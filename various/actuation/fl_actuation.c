@@ -63,7 +63,7 @@
 #define FLOCKLAB_PPS_PIN    66                  // P8.07 -> must be configured as GPIO output
 #define FLOCKLAB_ACTnEN_PIN 65                  //
 #define PPS_MAX_WAITTIME_NS 220000              // max. time to wait before actuating the PPS pin, in ns (set to 0 to disable this feature)
-#define PPS_SHIFT           100                 // shift the PPS generation by x ns (positiv values will lead to an earlier actuation)
+#define PPS_SHIFT_NS        8000                // shift the PPS generation by x ns (positiv values will lead to an earlier actuation)
 #define DEBUG               0
 
 
@@ -301,7 +301,7 @@ static enum hrtimer_restart timer_expired(struct hrtimer* tim)
         // get current UNIX timestamp in nanoseconds
         ktime_get_real_ts(&ts_now);    // same as getnstimeofday()
         // calculate time delta to the next full second
-        delta_ns = 1000000000 - (uint32_t)ts_now.tv_nsec - PPS_SHIFT;
+        delta_ns = 1000000000 - (uint32_t)ts_now.tv_nsec - PPS_SHIFT_NS;
         if (delta_ns < PPS_MAX_WAITTIME_NS) {
           // check if the next event is within this time frame
           while (1) {

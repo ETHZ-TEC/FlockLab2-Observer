@@ -68,7 +68,7 @@ if [ $? -ne 0 ]; then
   echo "[ !! ] No network connectivity! Aborting."
   exit 2
 fi
-echo "[ OK ] Checking network connectifiy."
+echo "[ OK ] Checking network connectivity."
 
 # clear log file
 [ -f $ERRORLOG ] && rm $ERRORLOG
