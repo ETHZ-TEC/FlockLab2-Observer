@@ -124,6 +124,8 @@ check_retval "Failed to install RocketLogger software." "RocketLogger software i
 # install binary for GPIO tracing
 cd ${HOMEDIR}/observer/pru/fl_logic && make install > /dev/null 2>> $ERRORLOG
 check_retval "Failed to install GPIO tracing software." "GPIO tracing software installed."
+# add udev rule
+[ -e /etc/udev/rules.d/99-uio.rules ] || echo "SUBSYSTEM==\"uio\", GROUP=\"users\", MODE=\"0660\"" > /etc/udev/rules.d/99-uio.rules
 
 ##########################################################
 # install binary for serial logging
