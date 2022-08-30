@@ -1081,15 +1081,22 @@ def start_gpio_actuation(start_time=None, act_events=[]):
     # Sort the events
     act_events.sort(key=lambda pair: pair[1])
     act_cmd    = ""
-    last_event = 0
+    last_event = ['R', 0]
     limit      = min(max_act_events, len(act_events))
     for evt in act_events[0:limit]:
         if len(evt) != 2:
             if logger:
                 logger.warning("Invalid argument in act_events.")
             return FAILED
-        act_cmd += "%c%u " % (evt[0], (evt[1] - last_event))    # only send the time difference to the previous event
-        last_event = evt[1]
+        diff_us = evt[1] - last_event[1]
+        # Check for 32-bit limit: schedule intermediate "dummy" actuations if necessary
+        while diff_us > 0xffffffff:
+            #logger.warning("Actuation difference is larger than 2^32, adding intermediate actuation")
+            act_cmd       += "%c%u " % (last_event[0], 0xffffffff)    # only send the time difference to the previous event
+            last_event[1] += 0xffffffff
+            diff_us        = evt[1] - last_event[1]
+        act_cmd   += "%c%u " % (evt[0], diff_us)    # only send the time difference to the previous event
+        last_event = evt
     # Append the start command
     act_cmd += "S%u" % (start_time)
     #if logger:
